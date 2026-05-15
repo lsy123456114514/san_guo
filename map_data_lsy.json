@@ -1,0 +1,456 @@
+{
+  "username": "lsy",
+  "locations": [
+    {
+      "x": 527,
+      "y": 1463,
+      "type": "村庄",
+      "level": 4,
+      "desc": "🏠",
+      "power": 45,
+      "owner": "neutral"
+    },
+    {
+      "x": 840,
+      "y": 788,
+      "type": "关隘",
+      "level": 3,
+      "desc": "🏯",
+      "power": 80,
+      "owner": "neutral"
+    },
+    {
+      "x": 494,
+      "y": 1833,
+      "type": "村庄",
+      "level": 9,
+      "desc": "🏠",
+      "power": 70,
+      "owner": "neutral"
+    },
+    {
+      "x": 250,
+      "y": 1015,
+      "type": "矿山",
+      "level": 4,
+      "desc": "⛏️",
+      "power": 72,
+      "owner": "neutral"
+    },
+    {
+      "x": 1821,
+      "y": 155,
+      "type": "矿山",
+      "level": 9,
+      "desc": "⛏️",
+      "power": 112,
+      "owner": "neutral"
+    },
+    {
+      "x": 901,
+      "y": 1832,
+      "type": "军营",
+      "level": 4,
+      "desc": "⚔️",
+      "power": 135,
+      "owner": "enemy"
+    },
+    {
+      "x": 411,
+      "y": 861,
+      "type": "矿山",
+      "level": 4,
+      "desc": "⛏️",
+      "power": 72,
+      "owner": "neutral"
+    },
+    {
+      "x": 1735,
+      "y": 1562,
+      "type": "村庄",
+      "level": 3,
+      "desc": "🏠",
+      "power": 40,
+      "owner": "neutral"
+    },
+    {
+      "x": 141,
+      "y": 230,
+      "type": "关隘",
+      "level": 3,
+      "desc": "🏯",
+      "power": 80,
+      "owner": "neutral"
+    },
+    {
+      "x": 634,
+      "y": 1182,
+      "type": "港口",
+      "level": 10,
+      "desc": "🚢",
+      "power": 135,
+      "owner": "neutral"
+    },
+    {
+      "x": 1441,
+      "y": 1082,
+      "type": "港口",
+      "level": 6,
+      "desc": "🚢",
+      "power": 99,
+      "owner": "neutral"
+    },
+    {
+      "x": 382,
+      "y": 1677,
+      "type": "矿山",
+      "level": 8,
+      "desc": "⛏️",
+      "power": 104,
+      "owner": "neutral"
+    },
+    {
+      "x": 159,
+      "y": 1433,
+      "type": "关隘",
+      "level": 2,
+      "desc": "🏯",
+      "power": 70,
+      "owner": "neutral"
+    },
+    {
+      "x": 1094,
+      "y": 378,
+      "type": "矿山",
+      "level": 1,
+      "desc": "⛏️",
+      "power": 48,
+      "owner": "neutral"
+    },
+    {
+      "x": 1548,
+      "y": 396,
+      "type": "村庄",
+      "level": 1,
+      "desc": "🏠",
+      "power": 30,
+      "owner": "neutral"
+    },
+    {
+      "x": 842,
+      "y": 407,
+      "type": "矿山",
+      "level": 2,
+      "desc": "⛏️",
+      "power": 56,
+      "owner": "neutral"
+    },
+    {
+      "x": 584,
+      "y": 1020,
+      "type": "港口",
+      "level": 9,
+      "desc": "🚢",
+      "power": 125,
+      "owner": "neutral"
+    },
+    {
+      "x": 1239,
+      "y": 1380,
+      "type": "军营",
+      "level": 5,
+      "desc": "⚔️",
+      "power": 150,
+      "owner": "enemy"
+    },
+    {
+      "x": 679,
+      "y": 1587,
+      "type": "村庄",
+      "level": 10,
+      "desc": "🏠",
+      "power": 75,
+      "owner": "neutral"
+    },
+    {
+      "x": 810,
+      "y": 1252,
+      "type": "关隘",
+      "level": 7,
+      "desc": "🏯",
+      "power": 120,
+      "owner": "neutral"
+    },
+    {
+      "x": 1042,
+      "y": 1254,
+      "type": "关隘",
+      "level": 1,
+      "desc": "🏯",
+      "power": 60,
+      "owner": "neutral"
+    },
+    {
+      "x": 1124,
+      "y": 877,
+      "type": "关隘",
+      "level": 9,
+      "desc": "🏯",
+      "power": 140,
+      "owner": "neutral"
+    },
+    {
+      "x": 914,
+      "y": 207,
+      "type": "矿山",
+      "level": 3,
+      "desc": "⛏️",
+      "power": 64,
+      "owner": "neutral"
+    },
+    {
+      "x": 1540,
+      "y": 881,
+      "type": "矿山",
+      "level": 7,
+      "desc": "⛏️",
+      "power": 96,
+      "owner": "neutral"
+    },
+    {
+      "x": 644,
+      "y": 588,
+      "type": "关隘",
+      "level": 4,
+      "desc": "🏯",
+      "power": 90,
+      "owner": "neutral"
+    },
+    {
+      "x": 1875,
+      "y": 1436,
+      "type": "港口",
+      "level": 2,
+      "desc": "🚢",
+      "power": 62,
+      "owner": "neutral"
+    },
+    {
+      "x": 1742,
+      "y": 1872,
+      "type": "关隘",
+      "level": 10,
+      "desc": "🏯",
+      "power": 150,
+      "owner": "neutral"
+    },
+    {
+      "x": 1299,
+      "y": 507,
+      "type": "关隘",
+      "level": 2,
+      "desc": "🏯",
+      "power": 70,
+      "owner": "neutral"
+    },
+    {
+      "x": 1494,
+      "y": 1682,
+      "type": "军营",
+      "level": 4,
+      "desc": "⚔️",
+      "power": 135,
+      "owner": "enemy"
+    },
+    {
+      "x": 714,
+      "y": 1410,
+      "type": "村庄",
+      "level": 10,
+      "desc": "🏠",
+      "power": 75,
+      "owner": "neutral"
+    },
+    {
+      "x": 1809,
+      "y": 1095,
+      "type": "关隘",
+      "level": 4,
+      "desc": "🏯",
+      "power": 90,
+      "owner": "neutral"
+    },
+    {
+      "x": 1491,
+      "y": 1280,
+      "type": "军营",
+      "level": 9,
+      "desc": "⚔️",
+      "power": 210,
+      "owner": "enemy"
+    },
+    {
+      "x": 925,
+      "y": 1366,
+      "type": "矿山",
+      "level": 9,
+      "desc": "⛏️",
+      "power": 112,
+      "owner": "neutral"
+    },
+    {
+      "x": 1723,
+      "y": 1273,
+      "type": "矿山",
+      "level": 3,
+      "desc": "⛏️",
+      "power": 64,
+      "owner": "neutral"
+    },
+    {
+      "x": 1579,
+      "y": 116,
+      "type": "军营",
+      "level": 4,
+      "desc": "⚔️",
+      "power": 135,
+      "owner": "enemy"
+    },
+    {
+      "x": 304,
+      "y": 1521,
+      "type": "关隘",
+      "level": 9,
+      "desc": "🏯",
+      "power": 140,
+      "owner": "neutral"
+    },
+    {
+      "x": 1859,
+      "y": 582,
+      "type": "港口",
+      "level": 5,
+      "desc": "🚢",
+      "power": 90,
+      "owner": "neutral"
+    },
+    {
+      "x": 536,
+      "y": 223,
+      "type": "军营",
+      "level": 4,
+      "desc": "⚔️",
+      "power": 135,
+      "owner": "enemy"
+    },
+    {
+      "x": 1348,
+      "y": 1230,
+      "type": "军营",
+      "level": 8,
+      "desc": "⚔️",
+      "power": 195,
+      "owner": "enemy"
+    },
+    {
+      "x": 1122,
+      "y": 1864,
+      "type": "矿山",
+      "level": 8,
+      "desc": "⛏️",
+      "power": 104,
+      "owner": "neutral"
+    },
+    {
+      "x": 1319,
+      "y": 678,
+      "type": "村庄",
+      "level": 5,
+      "desc": "🏠",
+      "power": 50,
+      "owner": "neutral"
+    },
+    {
+      "x": 430,
+      "y": 490,
+      "type": "村庄",
+      "level": 2,
+      "desc": "🏠",
+      "power": 35,
+      "owner": "neutral"
+    },
+    {
+      "x": 1429,
+      "y": 1885,
+      "type": "村庄",
+      "level": 6,
+      "desc": "🏠",
+      "power": 55,
+      "owner": "neutral"
+    },
+    {
+      "x": 262,
+      "y": 523,
+      "type": "港口",
+      "level": 5,
+      "desc": "🚢",
+      "power": 90,
+      "owner": "neutral"
+    },
+    {
+      "x": 1329,
+      "y": 168,
+      "type": "村庄",
+      "level": 6,
+      "desc": "🏠",
+      "power": 55,
+      "owner": "neutral"
+    },
+    {
+      "x": 1341,
+      "y": 1648,
+      "type": "关隘",
+      "level": 10,
+      "desc": "🏯",
+      "power": 150,
+      "owner": "neutral"
+    },
+    {
+      "x": 178,
+      "y": 1176,
+      "type": "关隘",
+      "level": 9,
+      "desc": "🏯",
+      "power": 140,
+      "owner": "neutral"
+    },
+    {
+      "x": 1659,
+      "y": 1038,
+      "type": "村庄",
+      "level": 10,
+      "desc": "🏠",
+      "power": 75,
+      "owner": "neutral"
+    },
+    {
+      "x": 1011,
+      "y": 723,
+      "type": "关隘",
+      "level": 10,
+      "desc": "🏯",
+      "power": 150,
+      "owner": "neutral"
+    },
+    {
+      "x": 414,
+      "y": 1351,
+      "type": "矿山",
+      "level": 6,
+      "desc": "⛏️",
+      "power": 88,
+      "owner": "neutral"
+    }
+  ],
+  "timestamp": 1777006172.5785758
+}

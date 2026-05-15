@@ -1,0 +1,147 @@
+{
+  "password": "123456",
+  "resources": {
+    "水": 86149,
+    "煤炭": 43072,
+    "木头": 68919,
+    "食物": 60304,
+    "金元宝": 17226,
+    "时间卡": 0,
+    "宠物食物": 0,
+    "普通子弹": 0,
+    "高级子弹": 0,
+    "稀有子弹": 0
+  },
+  "normal_dungeon": 1,
+  "infinite_dungeon": 1,
+  "hero_fragments": {},
+  "heroes": {},
+  "equips": {
+    "weapon": 0,
+    "armor": 0,
+    "horse": 0,
+    "book": 0
+  },
+  "activities": {},
+  "settings": {
+    "graphics": {
+      "resolution": "1920x1080",
+      "fullscreen": false,
+      "fps_limit": 60
+    },
+    "map": {
+      "max_locations": 50
+    },
+    "sound": {
+      "enable": true,
+      "volume": 0.7
+    },
+    "language": {
+      "current": "zh",
+      "supported": [
+        "zh",
+        "en",
+        "ja"
+      ]
+    },
+    "time": {
+      "speed": 1,
+      "base_time": 60
+    }
+  },
+  "saves": [],
+  "username": "lsy",
+  "tutorial_completed": true,
+  "achievements": {
+    "completed": [],
+    "progress": {}
+  },
+  "last_login": 1777867273,
+  "resource_bonus": 1.0,
+  "passive_income": {
+    "水": 0.1,
+    "煤炭": 0.05,
+    "木头": 0.08,
+    "食物": 0.07,
+    "金元宝": 0.02
+  },
+  "weather": {
+    "current_weather": null,
+    "weather_start_time": 0,
+    "weather_duration": 0,
+    "current_holiday": null
+  },
+  "unlocked_income_slots": 1,
+  "tech_tree": {
+    "unlocked": [
+      "resource",
+      "occupation",
+      "combat",
+      "defense",
+      "special"
+    ]
+  },
+  "total_play_time": 0,
+  "hero_levels": {},
+  "equip_levels": {
+    "weapon": 1,
+    "armor": 1,
+    "horse": 1,
+    "book": 1
+  },
+  "unlocked_features": [],
+  "prestige_level": 0,
+  "tasks": {
+    "daily": {
+      "last_reset": 0,
+      "progress": {},
+      "completed": []
+    },
+    "weekly": {
+      "last_reset": 0,
+      "progress": {},
+      "completed": []
+    }
+  },
+  "rankings": {
+    "pvp_wins": [],
+    "mini_game_scores": {},
+    "total_play_time": [],
+    "achievements_unlocked": []
+  },
+  "checkin": {
+    "last_checkin": "",
+    "consecutive_days": 0,
+    "total_checkins": 0,
+    "rewards_claimed": []
+  },
+  "last_auto_save": 0,
+  "ai": {
+    "enabled": false,
+    "model": "",
+    "url": "http://localhost:11434"
+  },
+  "talents": {
+    "points": 0,
+    "unlocked": []
+  },
+  "fashion": {
+    "equipped": {
+      "hero_skin": "normal",
+      "weapon_skin": "normal",
+      "mount_skin": "normal"
+    },
+    "unlocked": {
+      "hero_skins": [
+        "normal"
+      ],
+      "weapon_skins": [
+        "normal"
+      ],
+      "mount_skins": [
+        "normal"
+      ]
+    }
+  },
+  "hero_guns": {}
+}

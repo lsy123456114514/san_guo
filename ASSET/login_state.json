@@ -1,0 +1,54 @@
+{
+  "username": "lsy",
+  "user_data": {
+    "password": "123456",
+    "resources": {
+      "水": 0,
+      "煤炭": 0,
+      "木头": 0,
+      "食物": 0,
+      "金元宝": 0,
+      "时间卡": 0,
+      "宠物食物": 0
+    },
+    "normal_dungeon": 1,
+    "infinite_dungeon": 1,
+    "hero_fragments": {},
+    "heroes": {},
+    "equips": {
+      "weapon": 0,
+      "armor": 0,
+      "horse": 0,
+      "book": 0
+    },
+    "activities": {},
+    "settings": {
+      "graphics": {
+        "resolution": "1920x1080",
+        "fullscreen": false,
+        "fps_limit": 60
+      },
+      "map": {
+        "max_locations": 50
+      },
+      "sound": {
+        "enable": true,
+        "volume": 0.7
+      },
+      "language": {
+        "current": "zh",
+        "supported": [
+          "zh",
+          "en",
+          "ja"
+        ]
+      },
+      "time": {
+        "speed": 1,
+        "base_time": 60
+      }
+    },
+    "saves": []
+  },
+  "logged_in": true
+}
