@@ -1339,6 +1339,110 @@ default_save = {
         "defeats": 0,
         "max_combo": 0,
         "ultimate_used_count": 0
+    },
+    "daily_reward": {
+        "last_checkin_date": "",
+        "consecutive_days": 0,
+        "monthly_checkins": 0,
+        "claimed_rewards": [],
+        "current_month": 0
+    },
+    "achievements": {
+        "unlocked": [],
+        "progress": {},
+        "claimed_rewards": []
+    },
+    "task_chains": {
+        "active_chains": [],
+        "completed_chains": [],
+        "current_tasks": {},
+        "task_progress": {},
+        "daily_tasks": [],
+        "weekly_tasks": [],
+        "claimed_rewards": [],
+        "last_daily_refresh": "",
+        "last_weekly_refresh": ""
+    },
+    "hero_collection": {
+        "collected": [],
+        "collection_progress": 0,
+        "unlocked_bonuses": [],
+        "claimed_rewards": []
+    },
+    "territory": {
+        "owned_territories": [],
+        "territory_levels": {},
+        "resource_production": {},
+        "garrisons": {},
+        "last_collection_time": 0,
+        "total_power": 0
+    },
+    "season": {
+        "current_season": 1,
+        "season_start_time": 0,
+        "season_duration": 7 * 24 * 3600,
+        "season_points": 0,
+        "season_rank": 0,
+        "season_rewards_claimed": [],
+        "historical_best_rank": 0
+    },
+    "guild": {
+        "id": None,
+        "name": "",
+        "level": 1,
+        "experience": 0,
+        "members": [],
+        "leader": "",
+        "join_requests": [],
+        "guild_war_score": 0,
+        "territories": [],
+        "daily_bonus_claimed": False,
+        "last_daily_claim": ""
+    },
+    "hero_advancement": {
+        "advanced_heroes": {},
+        "awakened_heroes": [],
+        "skill_enhancements": {}
+    },
+    "dungeon": {
+        "unlocked_dungeons": [],
+        "completed_floors": {},
+        "best_scores": {},
+        "daily_challenges": [],
+        "weekly_challenges": [],
+        "claimed_rewards": [],
+        "task_progress": {},
+        "last_daily_reset": "",
+        "last_weekly_reset": ""
+    },
+    "notifications": {
+        "unread": [],
+        "read": [],
+        "settings": {
+            "daily_reminder": True,
+            "activity_alert": True,
+            "reward_notification": True
+        }
+    },
+    "mail": {
+        "inbox": [],
+        "sent": [],
+        "archived": []
+    },
+    "checkin_calendar": {
+        "current_month": "",
+        "checkins": {},
+        "monthly_rewards_claimed": [],
+        "streak_rewards_claimed": []
+    },
+    "leaderboard": {
+        "player_rank": 0,
+        "categories": {
+            "power": [],
+            "wealth": [],
+            "achievements": [],
+            "pvp": []
+        }
     }
 }
 
@@ -1457,6 +1561,50 @@ def load():
             # 确保设置存在
             if 'settings' not in data:
                 data['settings'] = SETTINGS.copy()
+            
+            # 检查并添加每日签到系统相关键
+            if 'daily_reward' not in data:
+                data['daily_reward'] = default_save['daily_reward']
+            
+            # 检查并添加成就系统相关键（新格式）
+            if 'achievements' not in data:
+                data['achievements'] = default_save['achievements']
+            else:
+                if 'unlocked' not in data['achievements']:
+                    data['achievements']['unlocked'] = []
+                if 'progress' not in data['achievements']:
+                    data['achievements']['progress'] = {}
+                if 'claimed_rewards' not in data['achievements']:
+                    data['achievements']['claimed_rewards'] = []
+            
+            # 检查并添加任务链系统相关键
+            if 'task_chains' not in data:
+                data['task_chains'] = default_save['task_chains']
+            
+            # 检查并添加武将图鉴系统相关键
+            if 'hero_collection' not in data:
+                data['hero_collection'] = default_save['hero_collection']
+            
+            # 检查并添加领土系统相关键
+            if 'territory' not in data:
+                data['territory'] = default_save['territory']
+            
+            # 检查并添加赛季系统相关键
+            if 'season' not in data:
+                data['season'] = default_save['season']
+                data['season']['season_start_time'] = int(time.time())
+            
+            # 检查并添加公会系统相关键
+            if 'guild' not in data:
+                data['guild'] = default_save['guild']
+            
+            # 检查并添加武将进阶系统相关键
+            if 'hero_advancement' not in data:
+                data['hero_advancement'] = default_save['hero_advancement']
+            
+            # 检查并添加副本系统相关键
+            if 'dungeon' not in data:
+                data['dungeon'] = default_save['dungeon']
             
             # 计算离线被动收入
             calculate_passive_income()

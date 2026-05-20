@@ -11,16 +11,15 @@ from collections import deque
 
 try:
     import psutil
+    PSUTIL_AVAILABLE = True
 except ImportError:
-    messagebox.showerror("错误", "需要安装 psutil 库，请运行: pip install psutil")
-    sys.exit(1)
+    PSUTIL_AVAILABLE = False
 
 try:
     import mpmath as mp
     USE_MPMATH = True
 except ImportError:
     USE_MPMATH = False
-    messagebox.showwarning("警告", "安装 mpmath 库可获得更高精度计算: pip install mpmath")
 
 class PiCalculatorGUI:
     def __init__(self, root):
@@ -38,8 +37,15 @@ class PiCalculatorGUI:
         self.max_cpu = 0
         self.max_memory = 0
         
+        if not PSUTIL_AVAILABLE:
+            messagebox.showerror("错误", "需要安装 psutil 库，请运行: pip install psutil")
+            sys.exit(1)
+        
         self.setup_styles()
         self.create_widgets()
+        
+        if not USE_MPMATH:
+            messagebox.showwarning("警告", "安装 mpmath 库可获得更高精度计算: pip install mpmath")
         
     def setup_styles(self):
         style = ttk.Style()
@@ -75,15 +81,15 @@ class PiCalculatorGUI:
         row1 = ttk.Frame(settings_frame)
         row1.pack(fill=tk.X, pady=5)
         ttk.Label(row1, text="线程数量:", width=15).pack(side=tk.LEFT)
-        self.thread_var = tk.StringVar(value="100")
+        self.thread_var = tk.StringVar(value="4")
         thread_entry = ttk.Entry(row1, textvariable=self.thread_var, width=15, style='Custom.TEntry')
         thread_entry.pack(side=tk.LEFT, padx=5)
-        ttk.Label(row1, text="(默认100)", style='Info.TLabel').pack(side=tk.LEFT)
+        ttk.Label(row1, text="(建议: CPU核心数)", style='Info.TLabel').pack(side=tk.LEFT)
         
         row2 = ttk.Frame(settings_frame)
         row2.pack(fill=tk.X, pady=5)
         ttk.Label(row2, text="采样点总数:", width=15).pack(side=tk.LEFT)
-        self.points_var = tk.StringVar(value="10000000")
+        self.points_var = tk.StringVar(value="1000000")
         points_entry = ttk.Entry(row2, textvariable=self.points_var, width=15, style='Custom.TEntry')
         points_entry.pack(side=tk.LEFT, padx=5)
         ttk.Label(row2, text="(默认1000万)", style='Info.TLabel').pack(side=tk.LEFT)
@@ -302,17 +308,14 @@ class PiCalculatorGUI:
             
             if slow_mode:
                 self.update_result("\n慢速模式：正在进行密集计算...\n")
-                for i in range(digits * 100):
+                x = 0.0
+                total_steps = 1000000
+                for i in range(total_steps):
                     if self.stop_event.is_set():
                         break
-                    # 进行一些无用但密集的计算来浪费时间和CPU
-                    x = 0.0
-                    for j in range(1000):
-                        x += (i * j * 3.14159) % 2.71828
-                        if self.stop_event.is_set():
-                            break
-                    if i % 10000 == 0:
-                        self.update_result(f"进度: {i/(digits*100)*100:.1f}%\n")
+                    x = (x * 3.1415926535 + i) % 1000000
+                    if i % 50000 == 0:
+                        self.update_result(f"进度: {i/total_steps*100:.1f}%\n")
             
             return result
         else:
@@ -346,14 +349,8 @@ class PiCalculatorGUI:
                     local_hits += 1
                 
                 if slow_mode:
-                    for k in range(1000):
-                        r = math.sqrt(x*x + y*y)
-                        if r <= 1.0:
-                            local_hits += 1
-                        x = random.random()
-                        y = random.random()
-                        if self.stop_event.is_set():
-                            break
+                    x = (x * 3.1415926535 + y) % 1000000
+                    y = math.sin(x) + math.cos(y)
             
             with lock:
                 hit_count += local_hits
@@ -414,11 +411,6 @@ class PiCalculatorGUI:
         self.current_digits = digits
         slow_mode = self.slow_var.get()
         
-        if self.auto_thread_var.get():
-            cpu_count = os.cpu_count() or 4
-            num_threads = cpu_count * 4
-            points_per_thread = total_points // num_threads
-        
         monitor_thread = threading.Thread(target=self.monitor_resources, daemon=True)
         monitor_thread.start()
         
@@ -427,13 +419,14 @@ class PiCalculatorGUI:
             self.pi_result = ""
             
             actual_threads = num_threads
+            actual_points = total_points
             if self.auto_thread_var.get():
                 cpu_count = os.cpu_count() or 4
                 actual_threads = cpu_count * 4
-                total_points = actual_threads * (total_points // num_threads)
+                actual_points = actual_threads * (total_points // num_threads)
             
             self.update_result(f"开始计算...\n")
-            self.update_result(f"线程数: {actual_threads}, 采样点: {total_points}, 精度: {digits}位\n")
+            self.update_result(f"线程数: {actual_threads}, 采样点: {actual_points}, 精度: {digits}位\n")
             self.update_result(f"资源限制: {resource_limit}%\n")
             self.update_result(f"慢速模式: {'开启' if slow_mode else '关闭'}\n")
             self.update_result(f"自动线程: {'开启' if self.auto_thread_var.get() else '关闭'}\n\n")
@@ -442,10 +435,15 @@ class PiCalculatorGUI:
                 self.update_result("使用 mpmath 高精度计算模式...\n\n")
                 pi_result = self.calculate_pi_high_precision(digits, slow_mode)
                 self.pi_result = pi_result[:digits+2]
-                self.update_result(f"π = {self.pi_result}\n\n")
+                
+                if len(self.pi_result) > 5000:
+                    self.update_result(f"π = {self.pi_result[:200]}...\n\n")
+                    self.update_result(f"(结果太长，完整结果已保存，可以点击\"保存到文件\"查看)\n\n")
+                else:
+                    self.update_result(f"π = {self.pi_result}\n\n")
             else:
                 self.update_result("使用蒙特卡洛方法计算...\n\n")
-                pi_result = self.calculate_pi_monte_carlo(actual_threads, total_points, slow_mode)
+                pi_result = self.calculate_pi_monte_carlo(actual_threads, actual_points, slow_mode)
                 self.pi_result = pi_result
                 self.update_result(f"π ≈ {self.pi_result}\n\n")
                 self.update_result(f"实际 π = 3.14159265358979...\n")
