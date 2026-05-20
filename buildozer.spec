@@ -20,8 +20,7 @@ requirements = python3,kivy,pygame_sdl2,jaraco.functools,jaraco.context,jaraco.t
 
 orientation = landscape
 
-android.add_assets = ASSET/
-android.add_assets = data/
+android.add_assets = ASSET/ data/
 
 [buildozer]
 log_level = 2
