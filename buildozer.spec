@@ -13,10 +13,18 @@ android.fullscreen = 1
 android.icon = data/icon.png
 android.presplash = data/splash.png
 
-requirements = python3,kivy
+requirements = python3,kivy,pygame,pygame_sdl2,numpy,requests,pillow
 
 orientation = landscape
+
+android.add_assets = ASSET/ data/
 
 [buildozer]
 log_level = 2
 warn_on_root = 1
+
+[app:android]
+android.enable_androidx = True
+android.buildtools = 33.0.0
+android.minapi = 21
+android.maxapi = 33
