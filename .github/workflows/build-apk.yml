@@ -5,7 +5,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Java
+      - name: Install Java
         uses: actions/setup-java@v4
         with:
           java-version: '17'
@@ -16,15 +16,23 @@ jobs:
           sudo apt-get install -y python3-pip git python3-dev libffi-dev libssl-dev zlib1g-dev \
               libncurses5-dev libncursesw5-dev libreadline-dev libsqlite3-dev \
               libgdbm-dev libdb5.3-dev libbz2-dev libexpat1-dev liblzma-dev \
-              tk-dev build-essential libgl1-mesa-glx ant openjdk-17-jdk unzip wget
+              tk-dev build-essential ant unzip wget libgl1
       - name: Install Python dependencies
         run: |
           pip install --upgrade pip
           pip install --upgrade setuptools wheel
           pip install buildozer==1.5.0 cython==0.29.36
+      - name: Setup Android SDK licenses
+        run: |
+          mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
+          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          echo "8933bad161af4178b1185d1a37fbf41ea5269c55" >> ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          echo "33b6a2b64607f11b759f320ef9dff4ae5c47d97a" >> ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
       - name: Build APK
         run: |
           export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          export PATH=$JAVA_HOME/bin:$PATH
           buildozer android debug
       - name: Upload APK
         uses: actions/upload-artifact@v4
