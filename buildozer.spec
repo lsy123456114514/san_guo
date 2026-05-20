@@ -16,10 +16,19 @@ android.fullscreen = 1
 android.icon = data/icon.png
 android.presplash = data/splash.png
 
-requirements = python3,pygame_sdl2,jaraco.functools,jaraco.context,jaraco.text
+requirements = python3,kivy,pygame_sdl2,jaraco.functools,jaraco.context,jaraco.text,numpy,requests,pillow
 
 orientation = landscape
+
+android.add_assets = ASSET/
+android.add_assets = data/
 
 [buildozer]
 log_level = 2
 warn_on_root = 1
+
+[app:android]
+android.enable_androidx = True
+android.buildtools = 33.0.0
+android.minapi = 21
+android.maxapi = 33
