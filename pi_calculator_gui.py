@@ -445,7 +445,7 @@ class PiCalculatorGUI:
                 self.update_result(f"π = {self.pi_result}\n\n")
             else:
                 self.update_result("使用蒙特卡洛方法计算...\n\n")
-                pi_result = self.calculate_pi_monte_carlo(num_threads, total_points, slow_mode)
+                pi_result = self.calculate_pi_monte_carlo(actual_threads, total_points, slow_mode)
                 self.pi_result = pi_result
                 self.update_result(f"π ≈ {self.pi_result}\n\n")
                 self.update_result(f"实际 π = 3.14159265358979...\n")
