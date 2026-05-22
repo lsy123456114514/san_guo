@@ -16,17 +16,26 @@ jobs:
             git python3-dev libffi-dev libssl-dev zlib1g-dev \
             libncurses5-dev libncursesw5-dev libreadline-dev libsqlite3-dev \
             libgdbm-dev libdb5.3-dev libbz2-dev libexpat1-dev liblzma-dev \
-            tk-dev build-essential libgl1 libglib2.0-0 wget unzip
-    - name: Accept Android SDK licenses
+            tk-dev build-essential libgl1 libglib2.0-0 wget unzip ant openjdk-17-jdk
+    - name: Install Buildozer
+      run: |
+        pip install buildozer cython
+    - name: Install Android SDK
+      run: |
+        mkdir -p ~/.buildozer/android/platform/android-sdk/cmdline-tools
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+        unzip -q commandlinetools-linux-11076708_latest.zip -d ~/.buildozer/android/platform/android-sdk/cmdline-tools
+        mv ~/.buildozer/android/platform/android-sdk/cmdline-tools/cmdline-tools ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest
+        rm commandlinetools-linux-11076708_latest.zip
+    - name: Install Android NDK
+      run: |
+        wget -q https://dl.google.com/android/repository/android-ndk-r25b-linux.zip
+        unzip -q android-ndk-r25b-linux.zip -d ~/.buildozer/android/platform
+        rm android-ndk-r25b-linux.zip
+    - name: Accept licenses
       run: |
         mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
         echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-        echo "8933bad161af4178b1185d1a37fbf41ea5269c55" >> ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-        echo "33b6a2b64607f11b759f320ef9dff4ae5c47d97a" >> ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
-    - name: Install Buildozer
-      run: |
-        pip install buildozer
     - name: Build APK
       run: |
         buildozer android debug
