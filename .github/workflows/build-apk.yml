@@ -16,7 +16,14 @@ jobs:
             git python3-dev libffi-dev libssl-dev zlib1g-dev \
             libncurses5-dev libncursesw5-dev libreadline-dev libsqlite3-dev \
             libgdbm-dev libdb5.3-dev libbz2-dev libexpat1-dev liblzma-dev \
-            tk-dev build-essential libgl1 libglib2.0-0
+            tk-dev build-essential libgl1 libglib2.0-0 wget unzip
+    - name: Accept Android SDK licenses
+      run: |
+        mkdir -p ~/.android
+        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > ~/.android/android-sdk-license
+        echo "8933bad161af4178b1185d1a37fbf41ea5269c55" >> ~/.android/android-sdk-license
+        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> ~/.android/android-sdk-license
+        echo "33b6a2b64607f11b759f320ef9dff4ae5c47d97a" >> ~/.android/android-sdk-preview-license
     - name: Install Buildozer
       run: |
         pip install buildozer
