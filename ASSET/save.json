@@ -1,11 +1,12 @@
 {
-  "password": "123456",
+  "username": "",
+  "password": "",
   "resources": {
-    "水": 86149,
-    "煤炭": 43072,
-    "木头": 68919,
-    "食物": 60304,
-    "金元宝": 17226,
+    "水": 0,
+    "煤炭": 0,
+    "木头": 0,
+    "食物": 0,
+    "金元宝": 0,
     "时间卡": 0,
     "宠物食物": 0,
     "普通子弹": 0,
@@ -16,16 +17,62 @@
   "infinite_dungeon": 1,
   "hero_fragments": {},
   "heroes": {},
+  "hero_guns": {},
   "equips": {
     "weapon": 0,
     "armor": 0,
     "horse": 0,
     "book": 0
   },
-  "activities": {},
+  "activities": {
+    "春节活动": {
+      "start": "2026-02-01",
+      "end": "2026-02-20",
+      "reward": "金元宝*200, 食物*500, 限定武将皮肤*1"
+    },
+    "情人节活动": {
+      "start": "2026-02-10",
+      "end": "2026-02-20",
+      "reward": "金元宝*150, 玫瑰*99, 情侣时装*1"
+    },
+    "夏季庆典": {
+      "start": "2026-07-01",
+      "end": "2026-07-31",
+      "reward": "金元宝*250, 西瓜*100, 夏季限定坐骑*1"
+    },
+    "周年庆典": {
+      "start": "2026-10-01",
+      "end": "2026-10-15",
+      "reward": "金元宝*500, 周年限定武将*1, 传说装备*1"
+    },
+    "万圣节活动": {
+      "start": "2026-10-25",
+      "end": "2026-11-05",
+      "reward": "金元宝*200, 南瓜灯*50, 万圣节皮肤*1"
+    }
+  },
+  "achievements": {
+    "unlocked": [],
+    "progress": {},
+    "claimed_rewards": []
+  },
+  "tech_tree": {
+    "unlocked": [
+      "resource",
+      "occupation",
+      "combat",
+      "defense",
+      "special"
+    ]
+  },
+  "buildings": {},
+  "talents": {
+    "points": 0,
+    "unlocked": []
+  },
   "settings": {
     "graphics": {
-      "resolution": "1920x1080",
+      "resolution": "auto",
       "fullscreen": false,
       "fps_limit": 60
     },
@@ -49,14 +96,8 @@
       "base_time": 60
     }
   },
-  "saves": [],
-  "username": "lsy",
-  "tutorial_completed": true,
-  "achievements": {
-    "completed": [],
-    "progress": {}
-  },
-  "last_login": 1777867273,
+  "last_login": 1779687069,
+  "last_auto_save": 0,
   "resource_bonus": 1.0,
   "passive_income": {
     "水": 0.1,
@@ -65,22 +106,7 @@
     "食物": 0.07,
     "金元宝": 0.02
   },
-  "weather": {
-    "current_weather": null,
-    "weather_start_time": 0,
-    "weather_duration": 0,
-    "current_holiday": null
-  },
   "unlocked_income_slots": 1,
-  "tech_tree": {
-    "unlocked": [
-      "resource",
-      "occupation",
-      "combat",
-      "defense",
-      "special"
-    ]
-  },
   "total_play_time": 0,
   "hero_levels": {},
   "equip_levels": {
@@ -115,33 +141,134 @@
     "total_checkins": 0,
     "rewards_claimed": []
   },
-  "last_auto_save": 0,
-  "ai": {
-    "enabled": false,
-    "model": "",
-    "url": "http://localhost:11434"
+  "time_tasks": {
+    "active": [],
+    "completed": []
   },
-  "talents": {
-    "points": 0,
-    "unlocked": []
+  "weather": {
+    "current_weather": null,
+    "weather_start_time": 0,
+    "weather_duration": 0,
+    "current_holiday": null,
+    "current_season": null,
+    "current_time_of_day": null,
+    "game_time": 0,
+    "time_speed": 1.0
   },
-  "fashion": {
-    "equipped": {
-      "hero_skin": "normal",
-      "weapon_skin": "normal",
-      "mount_skin": "normal"
-    },
-    "unlocked": {
-      "hero_skins": [
-        "normal"
-      ],
-      "weapon_skins": [
-        "normal"
-      ],
-      "mount_skins": [
-        "normal"
-      ]
+  "event_system": {
+    "event_history": [],
+    "last_event_time": 0,
+    "event_cooldown": 30
+  },
+  "story_progress": {
+    "current_chapter": 0,
+    "completed_events": [],
+    "unlocked_endings": []
+  },
+  "battle_stats": {
+    "total_battles": 0,
+    "victories": 0,
+    "defeats": 0,
+    "max_combo": 0,
+    "ultimate_used_count": 0
+  },
+  "daily_reward": {
+    "last_checkin_date": "",
+    "consecutive_days": 0,
+    "monthly_checkins": 0,
+    "claimed_rewards": [],
+    "current_month": 0
+  },
+  "task_chains": {
+    "active_chains": [],
+    "completed_chains": [],
+    "current_tasks": {},
+    "task_progress": {},
+    "daily_tasks": [],
+    "weekly_tasks": [],
+    "claimed_rewards": [],
+    "last_daily_refresh": "",
+    "last_weekly_refresh": ""
+  },
+  "hero_collection": {
+    "collected": [],
+    "collection_progress": 0,
+    "unlocked_bonuses": [],
+    "claimed_rewards": []
+  },
+  "territory": {
+    "owned_territories": [],
+    "territory_levels": {},
+    "resource_production": {},
+    "garrisons": {},
+    "last_collection_time": 0,
+    "total_power": 0
+  },
+  "season": {
+    "current_season": 1,
+    "season_start_time": 0,
+    "season_duration": 604800,
+    "season_points": 0,
+    "season_rank": 0,
+    "season_rewards_claimed": [],
+    "historical_best_rank": 0
+  },
+  "guild": {
+    "id": null,
+    "name": "",
+    "level": 1,
+    "experience": 0,
+    "members": [],
+    "leader": "",
+    "join_requests": [],
+    "guild_war_score": 0,
+    "territories": [],
+    "daily_bonus_claimed": false,
+    "last_daily_claim": ""
+  },
+  "hero_advancement": {
+    "advanced_heroes": {},
+    "awakened_heroes": [],
+    "skill_enhancements": {}
+  },
+  "dungeon": {
+    "unlocked_dungeons": [],
+    "completed_floors": {},
+    "best_scores": {},
+    "daily_challenges": [],
+    "weekly_challenges": [],
+    "claimed_rewards": [],
+    "task_progress": {},
+    "last_daily_reset": "",
+    "last_weekly_reset": ""
+  },
+  "notifications": {
+    "unread": [],
+    "read": [],
+    "settings": {
+      "daily_reminder": true,
+      "activity_alert": true,
+      "reward_notification": true
     }
   },
-  "hero_guns": {}
+  "mail": {
+    "inbox": [],
+    "sent": [],
+    "archived": []
+  },
+  "checkin_calendar": {
+    "current_month": "",
+    "checkins": {},
+    "monthly_rewards_claimed": [],
+    "streak_rewards_claimed": []
+  },
+  "leaderboard": {
+    "player_rank": 0,
+    "categories": {
+      "power": [],
+      "wealth": [],
+      "achievements": [],
+      "pvp": []
+    }
+  }
 }

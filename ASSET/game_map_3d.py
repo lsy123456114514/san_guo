@@ -7,7 +7,6 @@ import time
 from ASSET.game_data import data, save, get_system_font_name, load_sound
 from ASSET import safe_exit
 
-# 尝试导入OpenGL
 try:
     from OpenGL.GL import *
     from OpenGL.GLU import *
@@ -15,7 +14,6 @@ try:
 except ImportError:
     opengl_available = False
 
-# 颜色定义
 COLORS = {
     "bg_dark": (20, 20, 30),
     "bg_light": (30, 30, 50),
@@ -27,14 +25,12 @@ COLORS = {
     "accent_blue_dark": (30, 60, 120)
 }
 
-# 地图配置
 MAP_SIZE = (2000, 2000)
 MAX_LOCATIONS = 50
 SCREEN_WIDTH = 1024
 SCREEN_HEIGHT = 768
 
 class GameMap3D:
-    """3D游戏地图系统"""
     def __init__(self):
         self.screen = None
         self.clock = None
@@ -46,9 +42,10 @@ class GameMap3D:
             "x": 0,
             "y": 10,
             "z": 20,
-            "pitch": -20,  # 俯仰角
-            "yaw": 0,      # 偏航角
-            "speed": 0.5
+            "pitch": -20,
+            "yaw": 0,
+            "speed": 0.5,
+            "mode": "first"
         }
         self.mouse_sensitivity = 0.05
         self.is_mouse_locked = False
@@ -56,41 +53,39 @@ class GameMap3D:
         self.follow_target = None
         self.message = None
         self.message_timer = 0
-        
-        # 物理参数
-        self.velocity = [0, 0, 0]  # x, y, z 方向速度
-        self.gravity = -0.2  # 重力加速度
-        
-        # 相机模式
-        self.camera["mode"] = "first"  # first 或 third
-        
+        self.velocity = [0, 0, 0]
+        self.gravity = -0.35
+        self.friction = 0.85
+        self.npcs = []
+        self.selected_npc = None
+        self.npc_interaction_distance = 8
+        self.large_structures = []
+        self.render_cache = {}
+        self.cache_valid = False
+        self.selected_location = None
+        self.owned_territories = []
+        self.trees = []
+
     def initialize(self):
-        """初始化3D地图"""
         if not opengl_available:
             print("错误: OpenGL不可用，无法启动3D地图")
             return False
         
         try:
-            # 初始化pygame
             pygame.init()
-            
-            # 设置OpenGL显示模式
             pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.OPENGL | pygame.DOUBLEBUF)
             self.screen = pygame.display.get_surface()
             self.clock = pygame.time.Clock()
             
-            # 初始化OpenGL
             glEnable(GL_DEPTH_TEST)
             glEnable(GL_TEXTURE_2D)
             glEnable(GL_LIGHTING)
             glEnable(GL_LIGHT0)
-            glClearColor(0.5, 0.7, 1.0, 1.0)  # 天空蓝色
+            glClearColor(0.1, 0.1, 0.2, 1.0)
             
-            # 设置光源
             light_position = [1.0, 1.0, 1.0, 0.0]
             glLightfv(GL_LIGHT0, GL_POSITION, light_position)
             
-            # 加载字体
             font_name = get_system_font_name()
             try:
                 if font_name:
@@ -103,45 +98,42 @@ class GameMap3D:
                 self.font_main = pygame.font.Font(None, 40)
                 self.font_small = pygame.font.Font(None, 24)
             
-            # 加载地图数据
             self.load_map_data()
-            
-            # 显示内存和显卡占用提示
+            self.load_owned_territories()
             self.show_performance_warning()
             
-            # 初始化玩家位置到第一个地点附近
             if self.locations:
                 first_loc = self.locations[0]
-                self.player_pos = [first_loc["x"] + 50, 0, first_loc["y"] + 50]
+                self.player_pos = [first_loc["x"] + 50, 2, first_loc["y"] + 50]
                 self.update_camera()
             
-            # 生成树木
             self.generate_trees()
+            self.generate_large_structures()
+            self.generate_npcs()
+            self.cache_terrain()
             
             return True
         except Exception as e:
             print(f"初始化错误: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def show_performance_warning(self):
-        """显示性能警告"""
-        warning = "警告: 3D模式可能会增加内存和显卡占用"
+        warning = "3D主城 - 按右键与NPC交互 | E进入地点 | R收集资源"
         text_surf = self.font_main.render(warning, True, COLORS["accent_gold"])
         text_rect = text_surf.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2))
         
-        # 背景
         bg_rect = pygame.Rect(text_rect.x-20, text_rect.y-10, text_rect.width+40, text_rect.height+20)
         pygame.draw.rect(self.screen, (30, 30, 55, 200), bg_rect, border_radius=10)
         pygame.draw.rect(self.screen, COLORS["accent_gold"], bg_rect, 2, border_radius=10)
         
         self.screen.blit(text_surf, text_rect)
         pygame.display.flip()
-        pygame.time.wait(3000)
+        pygame.time.wait(2000)
     
     def load_map_data(self):
-        """加载地图数据"""
         try:
-            # 验证用户名和密码
             username = data.get("username", "")
             password = data.get("password", "")
             if not username or not password:
@@ -157,7 +149,6 @@ class GameMap3D:
                 with open(map_path, 'r', encoding='utf-8') as f:
                     map_data = json.load(f)
                 
-                # 验证用户名
                 if map_data.get("username") != username:
                     print("错误: 地图数据与当前用户不匹配")
                     return
@@ -169,14 +160,20 @@ class GameMap3D:
             self.locations = self.generate_locations(MAX_LOCATIONS)
             self.save_map_data(self.locations)
     
+    def load_owned_territories(self):
+        try:
+            self.owned_territories = data.get('territory', {}).get('owned_territories', [])
+            print(f"已加载 {len(self.owned_territories)} 个占领地点")
+        except Exception as e:
+            print(f"加载占领数据失败: {e}")
+            self.owned_territories = []
+    
     def get_map_data_path(self):
-        """获取地图数据路径"""
         username = data.get("username", "")
         safe_username = username.replace('\\', '_').replace('/', '_').replace(':', '_')
         return f"map_data_{safe_username}.json"
     
     def save_map_data(self, locations):
-        """保存地图数据"""
         try:
             username = data.get("username", "")
             if not username:
@@ -198,14 +195,16 @@ class GameMap3D:
             return False
     
     def generate_locations(self, count):
-        """生成地图地点"""
         locations = []
         LOCATION_TYPES = {
-            "关隘": {"icon": "🏯", "power": 100},
-            "军营": {"icon": "⚔️", "power": 150},
-            "村庄": {"icon": "🏠", "power": 50},
-            "矿山": {"icon": "⛏️", "power": 80},
-            "港口": {"icon": "🚢", "power": 90}
+            "关隘": {"icon": "🏯", "power": 100, "color": (0.6, 0.55, 0.5)},
+            "军营": {"icon": "⚔️", "power": 150, "color": (0.7, 0.2, 0.2)},
+            "村庄": {"icon": "🏠", "power": 50, "color": (0.85, 0.75, 0.55)},
+            "矿山": {"icon": "⛏️", "power": 80, "color": (0.5, 0.5, 0.45)},
+            "港口": {"icon": "🚢", "power": 90, "color": (0.25, 0.55, 0.75)},
+            "城池": {"icon": "🏰", "power": 200, "color": (0.65, 0.45, 0.35)},
+            "驿站": {"icon": "🏇", "power": 60, "color": (0.6, 0.5, 0.4)},
+            "集市": {"icon": "🏪", "power": 70, "color": (0.75, 0.6, 0.4)}
         }
         
         for i in range(count):
@@ -213,7 +212,6 @@ class GameMap3D:
                 x = random.randint(100, MAP_SIZE[0] - 100)
                 y = random.randint(100, MAP_SIZE[1] - 100)
                 
-                # 检查与其他地点的距离
                 valid = True
                 for loc in locations:
                     distance = math.hypot(x - loc["x"], y - loc["y"])
@@ -223,9 +221,11 @@ class GameMap3D:
                 if valid:
                     break
             
-            loc_type = random.choice(["关隘", "军营", "村庄", "矿山", "港口"])
+            loc_type = random.choice(list(LOCATION_TYPES.keys()))
             level = random.randint(1, 10)
             power = int(LOCATION_TYPES[loc_type]["power"] * (0.5 + level * 0.1))
+            
+            is_owned = loc_type in self.owned_territories or random.random() < 0.2
             
             locations.append({
                 "x": x,
@@ -234,15 +234,15 @@ class GameMap3D:
                 "level": level,
                 "desc": LOCATION_TYPES[loc_type]["icon"],
                 "power": power,
-                "owner": "enemy" if loc_type == "军营" else "neutral"
+                "owner": "player" if is_owned else ("enemy" if loc_type == "军营" else "neutral"),
+                "color": LOCATION_TYPES[loc_type]["color"]
             })
         
         return locations
     
     def generate_trees(self):
-        """生成树木"""
         self.trees = []
-        tree_count = 200
+        tree_count = 300
         
         for _ in range(tree_count):
             x = random.randint(-1800, 1800)
@@ -250,39 +250,144 @@ class GameMap3D:
             
             too_close = False
             for loc in self.locations:
-                if math.hypot(x - loc["x"], z - loc["y"]) < 30:
+                if math.hypot(x - loc["x"], z - loc["y"]) < 40:
                     too_close = True
                     break
             for tree in self.trees:
-                if math.hypot(x - tree[0], z - tree[1]) < 5:
+                if math.hypot(x - tree[0], z - tree[1]) < 8:
                     too_close = True
                     break
             
             if not too_close:
-                self.trees.append((x, z))
+                self.trees.append((x, z, random.uniform(0.8, 1.5)))
+    
+    def generate_large_structures(self):
+        self.large_structures = []
+        
+        STRUCTURE_TYPES = [
+            {"name": "皇宫", "size": 30, "height": 25, "color": (0.8, 0.7, 0.2), "icon": "🏛️"},
+            {"name": "城墙", "size": 60, "height": 12, "color": (0.5, 0.5, 0.5), "icon": "🧱"},
+            {"name": "塔楼", "size": 15, "height": 30, "color": (0.6, 0.5, 0.4), "icon": "🗼"},
+            {"name": "神庙", "size": 20, "height": 18, "color": (0.7, 0.6, 0.5), "icon": "⛩️"},
+            {"name": "仓库", "size": 25, "height": 10, "color": (0.6, 0.4, 0.3), "icon": "🏭"}
+        ]
+        
+        for _ in range(8):
+            while True:
+                x = random.randint(-1500, 1500)
+                z = random.randint(-1500, 1500)
+                
+                too_close = False
+                for struct in self.large_structures:
+                    if math.hypot(x - struct["x"], z - struct["z"]) < 200:
+                        too_close = True
+                        break
+                if not too_close:
+                    break
+            
+            struct_type = random.choice(STRUCTURE_TYPES)
+            self.large_structures.append({
+                "x": x,
+                "z": z,
+                **struct_type
+            })
+    
+    def generate_npcs(self):
+        self.npcs = []
+        
+        NPC_TYPES = [
+            {"name": "武将招募官", "dialogue": "欢迎来到主城！需要招募武将吗？", "action": "hero_recruit", "module": "hero_recruitment.py", "color": (0.2, 0.6, 0.8)},
+            {"name": "商人", "dialogue": "欢迎光临！我这里有各种珍贵物品。", "action": "shop", "module": "shop_system.py", "color": (0.8, 0.6, 0.2)},
+            {"name": "任务发布者", "dialogue": "勇士，我有一个危险的任务...", "action": "quest", "module": "quest_system.py", "color": (0.6, 0.3, 0.8)},
+            {"name": "铁匠", "dialogue": "需要打造或强化装备吗？", "action": "equipment", "module": "equipment_system.py", "color": (0.5, 0.5, 0.5)},
+            {"name": "药师", "dialogue": "我可以帮你炼制药剂。", "action": "alchemy", "module": "alchemy_system.py", "color": (0.3, 0.7, 0.3)},
+            {"name": "史官", "dialogue": "想听三国的故事吗？", "action": "story", "module": "background_story.py", "color": (0.7, 0.5, 0.3)},
+            {"name": "军需官", "dialogue": "需要补给吗？金元宝、时间卡应有尽有！", "action": "resources", "module": "shop_system.py", "color": (0.2, 0.5, 0.8)},
+            {"name": "竞技场管理员", "dialogue": "想参加PVP竞技吗？", "action": "pvp", "module": "pvp_p2p.py", "color": (0.8, 0.3, 0.3)}
+        ]
+        
+        for npc_type in NPC_TYPES:
+            while True:
+                x = random.randint(-500, 500)
+                z = random.randint(-500, 500)
+                
+                too_close = False
+                for npc in self.npcs:
+                    if math.hypot(x - npc["x"], z - npc["z"]) < 50:
+                        too_close = True
+                        break
+                if not too_close:
+                    break
+            
+            self.npcs.append({
+                "x": x,
+                "z": z,
+                "y": 0,
+                **npc_type,
+                "animation_offset": random.uniform(0, math.pi * 2),
+                "move_dir": random.uniform(0, math.pi * 2),
+                "move_speed": random.uniform(0.3, 0.8),
+                "original_x": x,
+                "original_z": z,
+                "wander_range": 15
+            })
+    
+    def cache_terrain(self):
+        self.render_cache = {
+            "trees": [],
+            "locations": [],
+            "structures": [],
+            "npcs": []
+        }
+        
+        for tree in self.trees:
+            x, z, scale = tree
+            self.render_cache["trees"].append({
+                "x": x,
+                "z": z,
+                "scale": scale
+            })
+        
+        for loc in self.locations:
+            self.render_cache["locations"].append({
+                "x": loc["x"],
+                "y": loc["y"],
+                "type": loc["type"],
+                "color": loc["color"],
+                "owner": loc["owner"],
+                "level": loc["level"]
+            })
+        
+        for struct in self.large_structures:
+            self.render_cache["structures"].append({
+                "x": struct["x"],
+                "z": struct["z"],
+                "size": struct["size"],
+                "height": struct["height"],
+                "color": struct["color"],
+                "name": struct["name"]
+            })
+        
+        self.cache_valid = True
+        print("地形缓存已生成")
     
     def handle_input(self):
-        """处理输入"""
         keys = pygame.key.get_pressed()
         
-        # 相机移动
-        if keys[pygame.K_w]:
-            self.move_forward()
-        if keys[pygame.K_s]:
-            self.move_backward()
-        if keys[pygame.K_a]:
-            self.move_left()
-        if keys[pygame.K_d]:
-            self.move_right()
-        if keys[pygame.K_SPACE]:
-            if self.player_pos[1] <= 0:  # 只有在地面上才能跳跃
-                self.velocity[1] = 5.0  # 跳跃速度
-        if keys[pygame.K_LSHIFT]:
-            self.camera["speed"] = 0.3  # 减速
-        else:
-            self.camera["speed"] = 0.6  # 正常速度
+        move_speed = self.camera["speed"] * (0.4 if keys[pygame.K_LSHIFT] else 1.0)
         
-        # 事件处理
+        if keys[pygame.K_w]:
+            self.move_forward(move_speed)
+        if keys[pygame.K_s]:
+            self.move_backward(move_speed)
+        if keys[pygame.K_a]:
+            self.move_left(move_speed)
+        if keys[pygame.K_d]:
+            self.move_right(move_speed)
+        if keys[pygame.K_SPACE]:
+            if self.player_pos[1] <= 0.5:
+                self.velocity[1] = 6.0
+        
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
@@ -299,12 +404,10 @@ class GameMap3D:
                     pygame.mouse.set_visible(not self.is_mouse_locked)
                     pygame.event.set_grab(self.is_mouse_locked)
                 elif event.key == pygame.K_f:
-                    # 跟随模式
                     if self.follow_target:
                         self.follow_target = None
                         self.message = "取消跟随"
                     else:
-                        # 找到最近的地点作为跟随目标
                         if self.locations:
                             closest_loc = min(self.locations, key=lambda loc: math.hypot(loc["x"] - self.player_pos[0], loc["y"] - self.player_pos[2]))
                             self.follow_target = closest_loc
@@ -313,93 +416,427 @@ class GameMap3D:
                             self.message = "没有可跟随的地点"
                     self.message_timer = 2000
                 elif event.key == pygame.K_F5:
-                    # 切换视角模式
                     self.camera["mode"] = "third" if self.camera["mode"] == "first" else "first"
                     self.message = f"切换到{'第三人称' if self.camera['mode'] == 'third' else '第一人称'}视角"
                     self.message_timer = 2000
+                elif event.key == pygame.K_g:
+                    self.gravity = -0.35 if self.gravity != -0.35 else -0.2
+                    self.message = f"引力: {'正常' if self.gravity == -0.35 else '减弱'}"
+                    self.message_timer = 2000
+                elif event.key == pygame.K_e:
+                    self.check_location_interaction()
+                elif event.key == pygame.K_r:
+                    self.collect_nearby_resources()
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     if not self.is_mouse_locked:
-                        # 左键点击自动锁定鼠标
                         self.is_mouse_locked = True
                         pygame.mouse.set_visible(False)
                         pygame.event.set_grab(True)
                         self.message = "鼠标已锁定，按Tab键解锁"
                         self.message_timer = 3000
                     else:
-                        # 左键点击地面移动
                         self.move_to_mouse()
+                elif event.button == 3:
+                    self.check_npc_interaction()
             elif event.type == pygame.MOUSEMOTION:
-                # 鼠标控制
                 if self.is_mouse_locked:
                     rel_x, rel_y = event.rel
-                    # 修正鼠标方向：左右翻转，上下翻转
-                    self.camera["yaw"] += rel_x * self.mouse_sensitivity  # 左右方向正确
-                    self.camera["pitch"] -= rel_y * self.mouse_sensitivity  # 上下方向翻转
-                    
-                    # 限制俯仰角
+                    self.camera["yaw"] += rel_x * self.mouse_sensitivity
+                    self.camera["pitch"] -= rel_y * self.mouse_sensitivity
                     self.camera["pitch"] = max(-89, min(89, self.camera["pitch"]))
         
         return True
     
-    def move_forward(self):
-        """向前移动"""
+    def check_npc_interaction(self):
+        for npc in self.npcs:
+            distance = math.hypot(
+                npc["x"] - self.player_pos[0],
+                npc["z"] - self.player_pos[2]
+            )
+            if distance <= self.npc_interaction_distance:
+                self.selected_npc = npc
+                self.message = f"右键NPC: {npc['name']}"
+                self.message_timer = 3000
+                self.show_npc_dialog(npc)
+                return
+        
+        self.selected_npc = None
+        self.message = "附近没有NPC"
+        self.message_timer = 2000
+    
+    def show_npc_dialog(self, npc):
+        self.npc_dialog_active = True
+        self.selected_option = 0
+        
+        options = [
+            {"text": f"进入{npc['name']}功能", "action": "enter"},
+            {"text": "继续探索", "action": "cancel"}
+        ]
+        
+        while self.npc_dialog_active:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.npc_dialog_active = False
+                    return
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_UP:
+                        self.selected_option = (self.selected_option - 1) % len(options)
+                    elif event.key == pygame.K_DOWN:
+                        self.selected_option = (self.selected_option + 1) % len(options)
+                    elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                        if options[self.selected_option]["action"] == "enter":
+                            self.npc_dialog_active = False
+                            self.execute_npc_action(npc)
+                            return
+                        else:
+                            self.npc_dialog_active = False
+                            return
+                    elif event.key == pygame.K_ESCAPE:
+                        self.npc_dialog_active = False
+                        return
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 1:
+                        mouse_pos = pygame.mouse.get_pos()
+                        for i, option in enumerate(options):
+                            option_rect = pygame.Rect(SCREEN_WIDTH//2 - 150, SCREEN_HEIGHT - 180 + i * 40, 300, 35)
+                            if option_rect.collidepoint(mouse_pos):
+                                if option["action"] == "enter":
+                                    self.npc_dialog_active = False
+                                    self.execute_npc_action(npc)
+                                    return
+                                else:
+                                    self.npc_dialog_active = False
+                                    return
+            
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+            self.draw_3d_scene()
+            
+            dialog_width = 400
+            dialog_height = 200
+            dialog_x = SCREEN_WIDTH // 2 - dialog_width // 2
+            dialog_y = SCREEN_HEIGHT - 250
+            
+            dialog_surf = pygame.Surface((dialog_width, dialog_height), pygame.SRCALPHA)
+            pygame.draw.rect(dialog_surf, (20, 20, 40, 230), (0, 0, dialog_width, dialog_height), border_radius=15)
+            pygame.draw.rect(dialog_surf, COLORS["accent_gold"], (0, 0, dialog_width, dialog_height), 3, border_radius=15)
+            
+            name_surf = self.font_main.render(npc["name"], True, COLORS["accent_gold"])
+            dialog_surf.blit(name_surf, (20, 15))
+            
+            dialogue_surf = self.font_small.render(npc["dialogue"], True, COLORS["text_white"])
+            dialog_surf.blit(dialogue_surf, (20, 55))
+            
+            pygame.draw.line(dialog_surf, COLORS["accent_gold"], (20, 90), (dialog_width - 20, 90), 1)
+            
+            for i, option in enumerate(options):
+                option_y = 100 + i * 40
+                option_rect = pygame.Rect(20, option_y, dialog_width - 40, 35)
+                
+                if i == self.selected_option:
+                    pygame.draw.rect(dialog_surf, (60, 60, 100), option_rect, border_radius=8)
+                    pygame.draw.rect(dialog_surf, COLORS["accent_gold"], option_rect, 2, border_radius=8)
+                    option_color = COLORS["accent_gold"]
+                else:
+                    pygame.draw.rect(dialog_surf, (40, 40, 70), option_rect, border_radius=8)
+                    option_color = COLORS["text_white"]
+                
+                option_surf = self.font_small.render(option["text"], True, option_color)
+                dialog_surf.blit(option_surf, (option_rect.x + 15, option_rect.y + 8))
+            
+            self.screen.blit(dialog_surf, (dialog_x, dialog_y))
+            
+            hint_surf = self.font_small.render("↑↓选择 | 回车确认 | ESC取消", True, (150, 150, 150))
+            self.screen.blit(hint_surf, (SCREEN_WIDTH//2 - 120, SCREEN_HEIGHT - 40))
+            
+            pygame.display.flip()
+            self.clock.tick(60)
+    
+    def execute_npc_action(self, npc):
+        module_file = npc.get("module", "")
+        if module_file:
+            self.message = f"正在打开: {npc['name']}"
+            self.message_timer = 2000
+            
+            pygame.time.wait(500)
+            
+            try:
+                if module_file == "hero_recruitment.py":
+                    from ASSET.hero_recruitment import main as hero_main
+                    hero_main()
+                elif module_file == "shop_system.py":
+                    from ASSET.shop_system import main as shop_main
+                    shop_main()
+                elif module_file == "quest_system.py":
+                    from ASSET.quest_system import main as quest_main
+                    quest_main()
+                elif module_file == "equipment_system.py":
+                    from ASSET.equipment_system import main as equipment_main
+                    equipment_main()
+                elif module_file == "alchemy_system.py":
+                    from ASSET.alchemy_system import main as alchemy_main
+                    alchemy_main()
+                elif module_file == "background_story.py":
+                    from ASSET.background_story import main as story_main
+                    story_main()
+                elif module_file == "pvp_p2p.py":
+                    from ASSET.pvp_p2p import main as pvp_main
+                    pvp_main()
+                else:
+                    self.message = f"功能模块 {module_file} 尚未实现"
+                    self.message_timer = 2000
+            except Exception as e:
+                self.message = f"打开功能失败: {str(e)[:20]}"
+                self.message_timer = 2000
+            
+            pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.OPENGL | pygame.DOUBLEBUF)
+            self.screen = pygame.display.get_surface()
+    
+    def check_location_interaction(self):
+        interaction_distance = 25
+        closest_location = None
+        closest_distance = float('inf')
+        
+        for loc in self.locations:
+            distance = math.hypot(
+                loc["x"] - self.player_pos[0],
+                loc["y"] - self.player_pos[2]
+            )
+            if distance < closest_distance:
+                closest_distance = distance
+                closest_location = loc
+        
+        if closest_location and closest_distance <= interaction_distance:
+            self.show_location_dialog(closest_location)
+        else:
+            self.message = "附近没有可进入的地点"
+            self.message_timer = 2000
+    
+    def show_location_dialog(self, loc):
+        self.location_dialog_active = True
+        self.selected_option = 0
+        
+        loc_type = loc.get("type", "地点")
+        owner = loc.get("owner", "neutral")
+        level = loc.get("level", 1)
+        power = loc.get("power", 0)
+        
+        if owner == "player":
+            options = [
+                {"text": "进入地点", "action": "enter"},
+                {"text": "查看详情", "action": "info"},
+                {"text": "离开", "action": "cancel"}
+            ]
+        elif owner == "enemy":
+            options = [
+                {"text": "挑战占领", "action": "battle"},
+                {"text": "查看详情", "action": "info"},
+                {"text": "离开", "action": "cancel"}
+            ]
+        else:
+            options = [
+                {"text": "尝试占领", "action": "capture"},
+                {"text": "查看详情", "action": "info"},
+                {"text": "离开", "action": "cancel"}
+            ]
+        
+        while self.location_dialog_active:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.location_dialog_active = False
+                    return
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_UP:
+                        self.selected_option = (self.selected_option - 1) % len(options)
+                    elif event.key == pygame.K_DOWN:
+                        self.selected_option = (self.selected_option + 1) % len(options)
+                    elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                        action = options[self.selected_option]["action"]
+                        self.location_dialog_active = False
+                        self.handle_location_action(loc, action)
+                        return
+                    elif event.key == pygame.K_ESCAPE:
+                        self.location_dialog_active = False
+                        return
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 1:
+                        mouse_pos = pygame.mouse.get_pos()
+                        for i, option in enumerate(options):
+                            option_rect = pygame.Rect(SCREEN_WIDTH//2 - 150, SCREEN_HEIGHT - 220 + i * 40, 300, 35)
+                            if option_rect.collidepoint(mouse_pos):
+                                action = option["action"]
+                                self.location_dialog_active = False
+                                self.handle_location_action(loc, action)
+                                return
+            
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+            self.draw_3d_scene()
+            
+            dialog_width = 400
+            dialog_height = 280
+            dialog_x = SCREEN_WIDTH // 2 - dialog_width // 2
+            dialog_y = SCREEN_HEIGHT - 330
+            
+            dialog_surf = pygame.Surface((dialog_width, dialog_height), pygame.SRCALPHA)
+            pygame.draw.rect(dialog_surf, (20, 20, 40, 230), (0, 0, dialog_width, dialog_height), border_radius=15)
+            pygame.draw.rect(dialog_surf, COLORS["accent_gold"], (0, 0, dialog_width, dialog_height), 3, border_radius=15)
+            
+            name_surf = self.font_main.render(loc_type, True, COLORS["accent_gold"])
+            dialog_surf.blit(name_surf, (20, 15))
+            
+            owner_text = f"归属: {'已占领' if owner == 'player' else '敌方' if owner == 'enemy' else '中立'}"
+            owner_color = COLORS["accent_green"] if owner == "player" else COLORS["accent_red"] if owner == "enemy" else COLORS["text_white"]
+            owner_surf = self.font_small.render(owner_text, True, owner_color)
+            dialog_surf.blit(owner_surf, (20, 55))
+            
+            level_surf = self.font_small.render(f"等级: {level}", True, COLORS["text_white"])
+            dialog_surf.blit(level_surf, (20, 80))
+            
+            power_surf = self.font_small.render(f"战力: {power}", True, COLORS["text_white"])
+            dialog_surf.blit(power_surf, (20, 105))
+            
+            pygame.draw.line(dialog_surf, COLORS["accent_gold"], (20, 135), (dialog_width - 20, 135), 1)
+            
+            for i, option in enumerate(options):
+                option_y = 145 + i * 40
+                option_rect = pygame.Rect(20, option_y, dialog_width - 40, 35)
+                
+                if i == self.selected_option:
+                    pygame.draw.rect(dialog_surf, (60, 60, 100), option_rect, border_radius=8)
+                    pygame.draw.rect(dialog_surf, COLORS["accent_gold"], option_rect, 2, border_radius=8)
+                    option_color = COLORS["accent_gold"]
+                else:
+                    pygame.draw.rect(dialog_surf, (40, 40, 70), option_rect, border_radius=8)
+                    option_color = COLORS["text_white"]
+                
+                option_surf = self.font_small.render(option["text"], True, option_color)
+                dialog_surf.blit(option_surf, (option_rect.x + 15, option_rect.y + 8))
+            
+            self.screen.blit(dialog_surf, (dialog_x, dialog_y))
+            
+            hint_surf = self.font_small.render("↑↓选择 | 回车确认 | ESC取消", True, (150, 150, 150))
+            self.screen.blit(hint_surf, (SCREEN_WIDTH//2 - 120, SCREEN_HEIGHT - 40))
+            
+            pygame.display.flip()
+            self.clock.tick(60)
+    
+    def handle_location_action(self, loc, action):
+        if action == "enter":
+            self.message = f"进入 {loc['type']}..."
+            self.message_timer = 2000
+            try:
+                from ASSET.game_map_pygame import main as map_main
+                map_main()
+                pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.OPENGL | pygame.DOUBLEBUF)
+                self.screen = pygame.display.get_surface()
+            except Exception as e:
+                self.message = f"进入失败: {str(e)[:20]}"
+                self.message_timer = 2000
+        elif action == "battle":
+            self.message = f"开始挑战 {loc['type']}..."
+            self.message_timer = 2000
+            try:
+                from ASSET.battle_system import main as battle_main
+                battle_main()
+                pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.OPENGL | pygame.DOUBLEBUF)
+                self.screen = pygame.display.get_surface()
+                self.message = f"战斗结束!"
+                self.message_timer = 3000
+            except Exception as e:
+                self.message = f"挑战失败: {str(e)[:20]}"
+                self.message_timer = 2000
+        elif action == "capture":
+            self.message = f"尝试占领 {loc['type']}..."
+            self.message_timer = 2000
+            loc["owner"] = "player"
+            self.message = f"成功占领 {loc['type']}!"
+            self.message_timer = 3000
+        elif action == "info":
+            info_text = f"{loc['type']} - 等级{loc.get('level', 1)} - 战力{loc.get('power', 0)}"
+            self.message = info_text
+            self.message_timer = 3000
+    
+    def collect_nearby_resources(self):
+        collect_distance = 30
+        collected = {"金元宝": 0, "时间卡": 0}
+        
+        for loc in self.locations:
+            if loc.get("owner") == "player":
+                distance = math.hypot(
+                    loc["x"] - self.player_pos[0],
+                    loc["y"] - self.player_pos[2]
+                )
+                if distance <= collect_distance:
+                    loc_type = loc.get("type", "")
+                    if loc_type in ["矿山", "集市", "港口"]:
+                        gold_bonus = loc.get("level", 1) * 10
+                        collected["金元宝"] += gold_bonus
+                    elif loc_type in ["驿站", "城池"]:
+                        time_bonus = loc.get("level", 1)
+                        collected["时间卡"] += time_bonus
+        
+        if collected["金元宝"] > 0 or collected["时间卡"] > 0:
+            resources = data.get('resources', {})
+            resources['金元宝'] = resources.get('金元宝', 0) + collected["金元宝"]
+            resources['时间卡'] = resources.get('时间卡', 0) + collected["时间卡"]
+            data['resources'] = resources
+            save()
+            
+            self.message = f"收集: 金元宝+{collected['金元宝']} 时间卡+{collected['时间卡']}"
+            self.message_timer = 3000
+        else:
+            self.message = "附近没有可收集的资源"
+            self.message_timer = 2000
+    
+    def move_forward(self, speed):
         yaw_rad = math.radians(self.camera["yaw"])
-        self.player_pos[0] += math.cos(yaw_rad) * self.camera["speed"]
-        self.player_pos[2] += math.sin(yaw_rad) * self.camera["speed"]
+        self.velocity[0] += math.cos(yaw_rad) * speed
+        self.velocity[2] += math.sin(yaw_rad) * speed
         self.update_camera()
     
-    def move_backward(self):
-        """向后移动"""
+    def move_backward(self, speed):
         yaw_rad = math.radians(self.camera["yaw"])
-        self.player_pos[0] -= math.cos(yaw_rad) * self.camera["speed"]
-        self.player_pos[2] -= math.sin(yaw_rad) * self.camera["speed"]
+        self.velocity[0] -= math.cos(yaw_rad) * speed
+        self.velocity[2] -= math.sin(yaw_rad) * speed
         self.update_camera()
     
-    def move_left(self):
-        """向左移动"""
+    def move_left(self, speed):
         yaw_rad = math.radians(self.camera["yaw"])
-        self.player_pos[0] -= math.sin(yaw_rad) * self.camera["speed"]
-        self.player_pos[2] += math.cos(yaw_rad) * self.camera["speed"]
+        self.velocity[0] -= math.sin(yaw_rad) * speed
+        self.velocity[2] += math.cos(yaw_rad) * speed
         self.update_camera()
     
-    def move_right(self):
-        """向右移动"""
+    def move_right(self, speed):
         yaw_rad = math.radians(self.camera["yaw"])
-        self.player_pos[0] += math.sin(yaw_rad) * self.camera["speed"]
-        self.player_pos[2] -= math.cos(yaw_rad) * self.camera["speed"]
+        self.velocity[0] += math.sin(yaw_rad) * speed
+        self.velocity[2] -= math.cos(yaw_rad) * speed
         self.update_camera()
     
     def update_camera(self):
-        """更新相机位置"""
         yaw_rad = math.radians(self.camera["yaw"])
         pitch_rad = math.radians(self.camera["pitch"])
         
         if self.camera["mode"] == "first":
-            # 第一人称视角：相机位置与玩家位置相同
-            # 但稍微偏移到玩家前方
             distance = 0.5
             self.camera["x"] = self.player_pos[0] + math.cos(yaw_rad) * math.cos(pitch_rad) * distance
-            self.camera["y"] = self.player_pos[1] + 1.5 + math.sin(pitch_rad) * distance  # 眼睛高度
+            self.camera["y"] = self.player_pos[1] + 1.8 + math.sin(pitch_rad) * distance
             self.camera["z"] = self.player_pos[2] + math.sin(yaw_rad) * math.cos(pitch_rad) * distance
         else:
-            # 第三人称视角：相机位于玩家背后
-            distance = 5.0
+            distance = 6.0
             self.camera["x"] = self.player_pos[0] - math.cos(yaw_rad) * math.cos(pitch_rad) * distance
-            self.camera["y"] = self.player_pos[1] + 2.0 - math.sin(pitch_rad) * distance  # 相机高度
+            self.camera["y"] = self.player_pos[1] + 2.5 - math.sin(pitch_rad) * distance
             self.camera["z"] = self.player_pos[2] - math.sin(yaw_rad) * math.cos(pitch_rad) * distance
     
     def move_to_mouse(self):
-        """移动到鼠标点击位置"""
-        # 这里需要实现射线检测，简化处理
         mx, my = pygame.mouse.get_pos()
-        # 简单的直线移动
-        self.follow_target = {"x": self.player_pos[0] + (mx - SCREEN_WIDTH//2) * 0.1, "y": self.player_pos[2] + (my - SCREEN_HEIGHT//2) * 0.1}
+        self.follow_target = {
+            "x": self.player_pos[0] + (mx - SCREEN_WIDTH//2) * 0.15,
+            "y": self.player_pos[2] + (my - SCREEN_HEIGHT//2) * 0.15
+        }
         self.message = "移动到指定位置"
         self.message_timer = 2000
     
     def update_followers(self):
-        """更新跟随者"""
         if self.follow_target:
             for follower in self.followers:
                 dx = self.follow_target["x"] - follower["x"]
@@ -409,27 +846,31 @@ class GameMap3D:
                     follower["x"] += dx / distance * 0.3
                     follower["z"] += dz / distance * 0.3
     
+    def update_npcs(self):
+        for npc in self.npcs:
+            npc["animation_offset"] += 0.02
+            
+            wander_angle = npc["move_dir"] + time.time() * npc["move_speed"]
+            npc["x"] = npc["original_x"] + math.sin(wander_angle) * npc["wander_range"]
+            npc["z"] = npc["original_z"] + math.cos(wander_angle) * npc["wander_range"]
+    
     def draw_3d_scene(self):
-        """绘制3D场景"""
         try:
-            # 清除屏幕
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
             
-            # 设置相机
             glMatrixMode(GL_PROJECTION)
             glLoadIdentity()
-            gluPerspective(60, SCREEN_WIDTH / SCREEN_HEIGHT, 0.1, 1000.0)
+            gluPerspective(60, SCREEN_WIDTH / SCREEN_HEIGHT, 0.1, 5000.0)
             
             glMatrixMode(GL_MODELVIEW)
             glLoadIdentity()
-            # 计算相机看向的方向
+            
             yaw_rad = math.radians(self.camera["yaw"])
             pitch_rad = math.radians(self.camera["pitch"])
             
-            # 计算看向点（玩家前方）
             look_distance = 10
             look_x = self.player_pos[0] + math.cos(yaw_rad) * math.cos(pitch_rad) * look_distance
-            look_y = self.player_pos[1] + 1.5 + math.sin(pitch_rad) * look_distance  # 眼睛高度
+            look_y = self.player_pos[1] + 1.8 + math.sin(pitch_rad) * look_distance
             look_z = self.player_pos[2] + math.sin(yaw_rad) * math.cos(pitch_rad) * look_distance
             
             gluLookAt(
@@ -438,100 +879,78 @@ class GameMap3D:
                 0, 1, 0
             )
             
-            # 绘制地形
             self.draw_terrain()
             
-            # 绘制树木
             if hasattr(self, 'trees'):
-                for tree_x, tree_z in self.trees:
-                    self.draw_tree(tree_x, tree_z)
+                for tree in self.trees:
+                    x, z, scale = tree
+                    self.draw_tree(x, z, scale)
             
-            # 绘制地点
+            for struct in self.large_structures:
+                self.draw_large_structure(struct)
+            
             for loc in self.locations:
                 self.draw_location(loc)
             
-            # 绘制玩家（只在第三人称视角下绘制）
+            for npc in self.npcs:
+                self.draw_npc(npc)
+            
             if self.camera["mode"] == "third":
                 self.draw_player()
             
-            # 绘制跟随者
             for follower in self.followers:
                 self.draw_follower(follower)
             
-            # 交换缓冲区
             pygame.display.flip()
         except Exception as e:
             print(f"渲染错误: {e}")
+            import traceback
+            traceback.print_exc()
     
     def draw_terrain(self):
-        """绘制像素化地形 - 类似我的世界风格"""
         try:
             glDisable(GL_LIGHTING)
             
-            block_size = 4
-            height = -1
+            block_size = 5
+            height = -2
             
-            for x in range(-2000, 2000, block_size):
-                for z in range(-2000, 2000, block_size):
-                    noise = math.sin(x * 0.01) * math.cos(z * 0.01) * 2
+            visible_range = 200
+            
+            start_x = int((self.player_pos[0] - visible_range) / block_size) * block_size
+            end_x = int((self.player_pos[0] + visible_range) / block_size) * block_size
+            start_z = int((self.player_pos[2] - visible_range) / block_size) * block_size
+            end_z = int((self.player_pos[2] + visible_range) / block_size) * block_size
+            
+            for x in range(start_x, end_x, block_size):
+                for z in range(start_z, end_z, block_size):
+                    noise = math.sin(x * 0.008) * math.cos(z * 0.008) * 3 + \
+                            math.sin(x * 0.015) * math.sin(z * 0.015) * 2
                     block_y = height + noise
                     
-                    glColor3f(0.2, 0.5, 0.2)
+                    if block_y < self.player_pos[1] - 30:
+                        continue
+                    
+                    grass_color_intensity = 0.2 + noise * 0.05
+                    glColor3f(0.2 + grass_color_intensity, 0.5 + grass_color_intensity, 0.2 + grass_color_intensity)
+                    
                     glBegin(GL_QUADS)
                     glVertex3f(x, block_y, z)
                     glVertex3f(x + block_size, block_y, z)
                     glVertex3f(x + block_size, block_y, z + block_size)
                     glVertex3f(x, block_y, z + block_size)
-                    glEnd()
-                    
-                    glColor3f(0.15, 0.35, 0.15)
-                    glBegin(GL_QUADS)
-                    glVertex3f(x, block_y - block_size/2, z)
-                    glVertex3f(x + block_size, block_y - block_size/2, z)
-                    glVertex3f(x + block_size, block_y - block_size/2, z + block_size)
-                    glVertex3f(x, block_y - block_size/2, z + block_size)
-                    glEnd()
-            
-            grass_colors = [
-                (0.25, 0.55, 0.25),
-                (0.2, 0.5, 0.2),
-                (0.3, 0.6, 0.3),
-                (0.22, 0.52, 0.22)
-            ]
-            
-            for x in range(-2000, 2000, block_size):
-                for z in range(-2000, 2000, block_size):
-                    noise = math.sin(x * 0.01) * math.cos(z * 0.01) * 2
-                    block_y = height + noise
-                    
-                    color = grass_colors[((x // block_size) + (z // block_size)) % len(grass_colors)]
-                    glColor3f(*color)
-                    glBegin(GL_QUADS)
-                    glVertex3f(x, block_y, z)
-                    glVertex3f(x + block_size, block_y, z)
-                    glVertex3f(x + block_size, block_y, z + block_size)
-                    glVertex3f(x, block_y, z + block_size)
-                    glEnd()
-                    
-                    glColor3f(0.4, 0.25, 0.15)
-                    glBegin(GL_QUADS)
-                    glVertex3f(x, block_y - block_size/2, z)
-                    glVertex3f(x + block_size, block_y - block_size/2, z)
-                    glVertex3f(x + block_size, block_y - block_size/2, z + block_size)
-                    glVertex3f(x, block_y - block_size/2, z + block_size)
                     glEnd()
             
             glEnable(GL_LIGHTING)
         except Exception as e:
             print(f"绘制地形错误: {e}")
     
-    def draw_tree(self, x, z):
-        """绘制树木"""
+    def draw_tree(self, x, z, scale=1.0):
         try:
             glDisable(GL_LIGHTING)
             
             glPushMatrix()
             glTranslatef(x, -1, z)
+            glScalef(scale, scale, scale)
             
             trunk_height = 3
             trunk_width = 0.3
@@ -563,8 +982,8 @@ class GameMap3D:
             leaf_colors = [(0.2, 0.6, 0.2), (0.15, 0.55, 0.15), (0.25, 0.65, 0.25)]
             
             for layer, layer_height in enumerate([1.5, 1.2, 0.8]):
-                y = leaves_base + layer * 0.8
-                size = 2.0 - layer * 0.4
+                y = leaves_base + layer * 0.6
+                size = 2.0 - layer * 0.35
                 color = leaf_colors[layer % len(leaf_colors)]
                 glColor3f(*color)
                 
@@ -589,61 +1008,110 @@ class GameMap3D:
                 glVertex3f(-size, y + layer_height, -size)
                 glVertex3f(-size, y + layer_height, size)
                 glEnd()
-                
-                glColor3f(*[c * 0.8 for c in color])
-                glBegin(GL_QUADS)
-                glVertex3f(-size, y + layer_height, -size)
-                glVertex3f(size, y + layer_height, -size)
-                glVertex3f(size * 0.7, y + layer_height + 0.5, 0)
-                glVertex3f(-size * 0.7, y + layer_height + 0.5, 0)
-                glEnd()
             
             glPopMatrix()
             glEnable(GL_LIGHTING)
         except Exception as e:
             print(f"绘制树木错误: {e}")
     
-    def draw_location(self, loc):
-        """绘制地点 - 优化版，增加高度和细节"""
+    def draw_large_structure(self, struct):
         try:
-            x, z = loc["x"], loc["y"]
-            loc_type = loc.get("type", "村庄")
+            x, z = struct["x"], struct["z"]
+            size = struct["size"]
+            height = struct["height"]
+            color = struct["color"]
             
             glPushMatrix()
             glTranslatef(x, 0, z)
             
             glDisable(GL_LIGHTING)
             
-            base_width = 12
-            base_depth = 12
+            glColor3f(*color)
+            
+            glBegin(GL_QUADS)
+            glVertex3f(-size/2, 0, -size/2)
+            glVertex3f(size/2, 0, -size/2)
+            glVertex3f(size/2, height, -size/2)
+            glVertex3f(-size/2, height, -size/2)
+            
+            glVertex3f(size/2, 0, -size/2)
+            glVertex3f(size/2, 0, size/2)
+            glVertex3f(size/2, height, size/2)
+            glVertex3f(size/2, height, -size/2)
+            
+            glVertex3f(size/2, 0, size/2)
+            glVertex3f(-size/2, 0, size/2)
+            glVertex3f(-size/2, height, size/2)
+            glVertex3f(size/2, height, size/2)
+            
+            glVertex3f(-size/2, 0, size/2)
+            glVertex3f(-size/2, 0, -size/2)
+            glVertex3f(-size/2, height, -size/2)
+            glVertex3f(-size/2, height, size/2)
+            glEnd()
+            
+            glEnable(GL_LIGHTING)
+            glPopMatrix()
+        except Exception as e:
+            print(f"绘制大型结构错误: {e}")
+    
+    def draw_location(self, loc):
+        try:
+            x, z = loc["x"], loc["y"]
+            loc_type = loc.get("type", "村庄")
+            color = loc.get("color", (0.6, 0.5, 0.4))
+            owner = loc.get("owner", "neutral")
+            
+            glPushMatrix()
+            glTranslatef(x, 0, z)
+            
+            glDisable(GL_LIGHTING)
+            
+            base_width = 15
+            base_depth = 15
             base_height = 2
             
-            glColor3f(0.5, 0.4, 0.3)
-            self.draw_cube(base_width, base_height, base_depth)
-            
-            wall_thickness = 0.5
-            wall_height = 12
-            
-            if loc_type == "关隘":
-                wall_color = (0.6, 0.55, 0.5)
-                wall_height = 18
-            elif loc_type == "军营":
-                wall_color = (0.7, 0.2, 0.2)
-                wall_height = 15
-            elif loc_type == "村庄":
-                wall_color = (0.85, 0.75, 0.55)
-                wall_height = 10
-            elif loc_type == "矿山":
-                wall_color = (0.5, 0.5, 0.45)
-                wall_height = 8
-            elif loc_type == "港口":
-                wall_color = (0.25, 0.55, 0.75)
-                wall_height = 10
+            if owner == "player":
+                glColor3f(0.3, 0.6, 0.3)
+            elif owner == "enemy":
+                glColor3f(0.6, 0.3, 0.3)
             else:
-                wall_color = (0.6, 0.5, 0.4)
-                wall_height = 12
+                glColor3f(*color)
             
-            glColor3f(wall_color)
+            glBegin(GL_QUADS)
+            glVertex3f(-base_width/2, 0, -base_depth/2)
+            glVertex3f(base_width/2, 0, -base_depth/2)
+            glVertex3f(base_width/2, base_height, -base_depth/2)
+            glVertex3f(-base_width/2, base_height, -base_depth/2)
+            
+            glVertex3f(base_width/2, 0, -base_depth/2)
+            glVertex3f(base_width/2, 0, base_depth/2)
+            glVertex3f(base_width/2, base_height, base_depth/2)
+            glVertex3f(base_width/2, base_height, -base_depth/2)
+            
+            glVertex3f(base_width/2, 0, base_depth/2)
+            glVertex3f(-base_width/2, 0, base_depth/2)
+            glVertex3f(-base_width/2, base_height, base_depth/2)
+            glVertex3f(base_width/2, base_height, base_depth/2)
+            
+            glVertex3f(-base_width/2, 0, base_depth/2)
+            glVertex3f(-base_width/2, 0, -base_depth/2)
+            glVertex3f(-base_width/2, base_height, -base_depth/2)
+            glVertex3f(-base_width/2, base_height, base_depth/2)
+            glEnd()
+            
+            wall_height = {
+                "关隘": 18,
+                "军营": 15,
+                "村庄": 10,
+                "矿山": 8,
+                "港口": 10,
+                "城池": 22,
+                "驿站": 8,
+                "集市": 9
+            }.get(loc_type, 12)
+            
+            glColor3f(*color)
             
             glBegin(GL_QUADS)
             glVertex3f(-base_width/2, base_height, -base_depth/2)
@@ -667,71 +1135,79 @@ class GameMap3D:
             glVertex3f(-base_width/2, base_height + wall_height, base_depth/2)
             glEnd()
             
-            roof_height = 3
-            glColor3f(*[c * 0.8 for c in wall_color])
-            glBegin(GL_QUADS)
-            glVertex3f(-base_width/2 - 1, base_height + wall_height, -base_depth/2 - 1)
-            glVertex3f(base_width/2 + 1, base_height + wall_height, -base_depth/2 - 1)
-            glVertex3f(base_width/2 + 1, base_height + wall_height, base_depth/2 + 1)
-            glVertex3f(-base_width/2 - 1, base_height + wall_height, base_depth/2 + 1)
-            
-            glVertex3f(-base_width/2 - 1, base_height + wall_height, -base_depth/2 - 1)
-            glVertex3f(-base_width/2 - 1, base_height + wall_height, base_depth/2 + 1)
-            glVertex3f(0, base_height + wall_height + roof_height, 0)
-            
-            glVertex3f(base_width/2 + 1, base_height + wall_height, -base_depth/2 - 1)
-            glVertex3f(base_width/2 + 1, base_height + wall_height, base_depth/2 + 1)
-            glVertex3f(0, base_height + wall_height + roof_height, 0)
-            
-            glVertex3f(base_width/2 + 1, base_height + wall_height, base_depth/2 + 1)
-            glVertex3f(-base_width/2 - 1, base_height + wall_height, base_depth/2 + 1)
-            glVertex3f(0, base_height + wall_height + roof_height, 0)
-            
-            glVertex3f(-base_width/2 - 1, base_height + wall_height, -base_depth/2 - 1)
-            glVertex3f(-base_width/2 - 1, base_height + wall_height, base_depth/2 + 1)
-            glVertex3f(0, base_height + wall_height + roof_height, 0)
-            
-            glVertex3f(-base_width/2 - 1, base_height + wall_height, -base_depth/2 - 1)
-            glVertex3f(base_width/2 + 1, base_height + wall_height, -base_depth/2 - 1)
-            glVertex3f(0, base_height + wall_height + roof_height, 0)
-            glEnd()
-            
-            loc["collision_box"] = {
-                "min_x": x - base_width/2,
-                "max_x": x + base_width/2,
-                "min_y": 0,
-                "max_y": base_height + wall_height + roof_height,
-                "min_z": z - base_depth/2,
-                "max_z": z + base_depth/2
-            }
-            loc["height"] = base_height + wall_height + roof_height
-            loc["enterable"] = True
+            if owner == "player":
+                glColor3f(0.8, 0.8, 0)
+                glBegin(GL_LINE_LOOP)
+                glVertex3f(-base_width/2 - 2, base_height + wall_height + 5, -base_depth/2 - 2)
+                glVertex3f(base_width/2 + 2, base_height + wall_height + 5, -base_depth/2 - 2)
+                glVertex3f(base_width/2 + 2, base_height + wall_height + 5, base_depth/2 + 2)
+                glVertex3f(-base_width/2 - 2, base_height + wall_height + 5, base_depth/2 + 2)
+                glEnd()
             
             glEnable(GL_LIGHTING)
             glPopMatrix()
         except Exception as e:
             print(f"绘制地点错误: {e}")
     
-    def draw_cube(self, width, height, depth):
-        """绘制立方体"""
-        hw, hh, hd = width/2, height/2, depth/2
-        vertices = [
-            (-hw, -hh, -hd), (hw, -hh, -hd), (hw, hh, -hd), (-hw, hh, -hd),
-            (-hw, -hh, hd), (hw, -hh, hd), (hw, hh, hd), (-hw, hh, hd)
-        ]
-        faces = [
-            (0, 1, 2, 3), (1, 5, 6, 2), (5, 4, 7, 6),
-            (4, 0, 3, 7), (3, 2, 6, 7), (4, 5, 1, 0)
-        ]
-        
-        glBegin(GL_QUADS)
-        for face in faces:
-            for i in face:
-                glVertex3f(vertices[i][0], vertices[i][1], vertices[i][2])
-        glEnd()
+    def draw_npc(self, npc):
+        try:
+            glPushMatrix()
+            glTranslatef(npc["x"], npc["y"], npc["z"])
+            
+            glDisable(GL_LIGHTING)
+            
+            bounce = math.sin(npc["animation_offset"]) * 0.2
+            
+            glColor3f(*npc["color"])
+            
+            body_height = 1.8
+            body_width = 0.4
+            body_depth = 0.3
+            
+            glTranslatef(0, body_height/2 + bounce, 0)
+            
+            glBegin(GL_QUADS)
+            glVertex3f(-body_width/2, -body_height/2, -body_depth/2)
+            glVertex3f(body_width/2, -body_height/2, -body_depth/2)
+            glVertex3f(body_width/2, body_height/2, -body_depth/2)
+            glVertex3f(-body_width/2, body_height/2, -body_depth/2)
+            
+            glVertex3f(body_width/2, -body_height/2, -body_depth/2)
+            glVertex3f(body_width/2, -body_height/2, body_depth/2)
+            glVertex3f(body_width/2, body_height/2, body_depth/2)
+            glVertex3f(body_width/2, body_height/2, -body_depth/2)
+            
+            glVertex3f(body_width/2, -body_height/2, body_depth/2)
+            glVertex3f(-body_width/2, -body_height/2, body_depth/2)
+            glVertex3f(-body_width/2, body_height/2, body_depth/2)
+            glVertex3f(body_width/2, body_height/2, body_depth/2)
+            
+            glVertex3f(-body_width/2, -body_height/2, body_depth/2)
+            glVertex3f(-body_width/2, -body_height/2, -body_depth/2)
+            glVertex3f(-body_width/2, body_height/2, -body_depth/2)
+            glVertex3f(-body_width/2, body_height/2, body_depth/2)
+            glEnd()
+            
+            distance_to_player = math.hypot(
+                npc["x"] - self.player_pos[0],
+                npc["z"] - self.player_pos[2]
+            )
+            
+            if distance_to_player <= self.npc_interaction_distance:
+                glColor3f(1.0, 1.0, 0.0)
+                glBegin(GL_LINE_LOOP)
+                for i in range(12):
+                    angle = i * math.pi * 2 / 12
+                    r = 1.2
+                    glVertex3f(r * math.cos(angle), 2.5 + math.sin(time.time() * 3) * 0.2, r * math.sin(angle))
+                glEnd()
+            
+            glEnable(GL_LIGHTING)
+            glPopMatrix()
+        except Exception as e:
+            print(f"绘制NPC错误: {e}")
     
     def draw_player(self):
-        """绘制玩家 - 带手脚版本"""
         try:
             glPushMatrix()
             player_x, player_y, player_z = self.player_pos[0], self.player_pos[1], self.player_pos[2]
@@ -739,268 +1215,28 @@ class GameMap3D:
             
             glDisable(GL_LIGHTING)
             
-            walk_cycle = math.sin(pygame.time.get_ticks() * 0.01) if self.velocity[0] != 0 or self.velocity[2] != 0 else 0
-            arm_swing = walk_cycle * 0.3
-            leg_swing = walk_cycle * 0.4
-            
-            body_width = 0.5
-            body_height = 1.0
-            body_depth = 0.3
-            
             glColor3f(0.2, 0.4, 0.8)
             glBegin(GL_QUADS)
-            glVertex3f(-body_width/2, 0.3, -body_depth/2)
-            glVertex3f(body_width/2, 0.3, -body_depth/2)
-            glVertex3f(body_width/2, 0.3 + body_height, -body_depth/2)
-            glVertex3f(-body_width/2, 0.3 + body_height, -body_depth/2)
+            glVertex3f(-0.25, 0, -0.15)
+            glVertex3f(0.25, 0, -0.15)
+            glVertex3f(0.25, 1.8, -0.15)
+            glVertex3f(-0.25, 1.8, -0.15)
             
-            glVertex3f(body_width/2, 0.3, -body_depth/2)
-            glVertex3f(body_width/2, 0.3, body_depth/2)
-            glVertex3f(body_width/2, 0.3 + body_height, body_depth/2)
-            glVertex3f(body_width/2, 0.3 + body_height, -body_depth/2)
+            glVertex3f(0.25, 0, -0.15)
+            glVertex3f(0.25, 0, 0.15)
+            glVertex3f(0.25, 1.8, 0.15)
+            glVertex3f(0.25, 1.8, -0.15)
             
-            glVertex3f(body_width/2, 0.3, body_depth/2)
-            glVertex3f(-body_width/2, 0.3, body_depth/2)
-            glVertex3f(-body_width/2, 0.3 + body_height, body_depth/2)
-            glVertex3f(body_width/2, 0.3 + body_height, body_depth/2)
+            glVertex3f(0.25, 0, 0.15)
+            glVertex3f(-0.25, 0, 0.15)
+            glVertex3f(-0.25, 1.8, 0.15)
+            glVertex3f(0.25, 1.8, 0.15)
             
-            glVertex3f(-body_width/2, 0.3, body_depth/2)
-            glVertex3f(-body_width/2, 0.3, -body_depth/2)
-            glVertex3f(-body_width/2, 0.3 + body_height, -body_depth/2)
-            glVertex3f(-body_width/2, 0.3 + body_height, body_depth/2)
+            glVertex3f(-0.25, 0, 0.15)
+            glVertex3f(-0.25, 0, -0.15)
+            glVertex3f(-0.25, 1.8, -0.15)
+            glVertex3f(-0.25, 1.8, 0.15)
             glEnd()
-            
-            glColor3f(0.8, 0.6, 0.4)
-            glPushMatrix()
-            glTranslatef(0, 0.85, 0)
-            glBegin(GL_QUADS)
-            glVertex3f(-0.2, 0, -0.2)
-            glVertex3f(0.2, 0, -0.2)
-            glVertex3f(0.2, 0.3, -0.2)
-            glVertex3f(-0.2, 0.3, -0.2)
-            
-            glVertex3f(0.2, 0, -0.2)
-            glVertex3f(0.2, 0, 0.2)
-            glVertex3f(0.2, 0.3, 0.2)
-            glVertex3f(0.2, 0.3, -0.2)
-            
-            glVertex3f(0.2, 0, 0.2)
-            glVertex3f(-0.2, 0, 0.2)
-            glVertex3f(-0.2, 0.3, 0.2)
-            glVertex3f(0.2, 0.3, 0.2)
-            
-            glVertex3f(-0.2, 0, 0.2)
-            glVertex3f(-0.2, 0, -0.2)
-            glVertex3f(-0.2, 0.3, -0.2)
-            glVertex3f(-0.2, 0.3, 0.2)
-            glEnd()
-            glPopMatrix()
-            
-            arm_width = 0.15
-            arm_length = 0.6
-            
-            glColor3f(0.25, 0.45, 0.85)
-            glPushMatrix()
-            glTranslatef(body_width/2 + arm_width/2, 0.4 + arm_swing, 0)
-            glBegin(GL_QUADS)
-            glVertex3f(-arm_width/2, 0, -arm_width/2)
-            glVertex3f(arm_width/2, 0, -arm_width/2)
-            glVertex3f(arm_width/2, arm_length, -arm_width/2)
-            glVertex3f(-arm_width/2, arm_length, -arm_width/2)
-            
-            glVertex3f(arm_width/2, 0, -arm_width/2)
-            glVertex3f(arm_width/2, 0, arm_width/2)
-            glVertex3f(arm_width/2, arm_length, arm_width/2)
-            glVertex3f(arm_width/2, arm_length, -arm_width/2)
-            
-            glVertex3f(arm_width/2, 0, arm_width/2)
-            glVertex3f(-arm_width/2, 0, arm_width/2)
-            glVertex3f(-arm_width/2, arm_length, arm_width/2)
-            glVertex3f(arm_width/2, arm_length, arm_width/2)
-            
-            glVertex3f(-arm_width/2, 0, arm_width/2)
-            glVertex3f(-arm_width/2, 0, -arm_width/2)
-            glVertex3f(-arm_width/2, arm_length, -arm_width/2)
-            glVertex3f(-arm_width/2, arm_length, arm_width/2)
-            glEnd()
-            
-            glColor3f(0.8, 0.6, 0.4)
-            glTranslatef(0, arm_length - 0.1, 0)
-            glBegin(GL_QUADS)
-            glVertex3f(-arm_width/2, 0, -arm_width/2)
-            glVertex3f(arm_width/2, 0, -arm_width/2)
-            glVertex3f(arm_width/2, 0.2, -arm_width/2)
-            glVertex3f(-arm_width/2, 0.2, -arm_width/2)
-            
-            glVertex3f(arm_width/2, 0, -arm_width/2)
-            glVertex3f(arm_width/2, 0, arm_width/2)
-            glVertex3f(arm_width/2, 0.2, arm_width/2)
-            glVertex3f(arm_width/2, 0.2, -arm_width/2)
-            
-            glVertex3f(arm_width/2, 0, arm_width/2)
-            glVertex3f(-arm_width/2, 0, arm_width/2)
-            glVertex3f(-arm_width/2, 0.2, arm_width/2)
-            glVertex3f(arm_width/2, 0.2, arm_width/2)
-            
-            glVertex3f(-arm_width/2, 0, arm_width/2)
-            glVertex3f(-arm_width/2, 0, -arm_width/2)
-            glVertex3f(-arm_width/2, 0.2, -arm_width/2)
-            glVertex3f(-arm_width/2, 0.2, arm_width/2)
-            glEnd()
-            glPopMatrix()
-            
-            glPushMatrix()
-            glTranslatef(-body_width/2 - arm_width/2, 0.4 - arm_swing, 0)
-            glColor3f(0.25, 0.45, 0.85)
-            glBegin(GL_QUADS)
-            glVertex3f(-arm_width/2, 0, -arm_width/2)
-            glVertex3f(arm_width/2, 0, -arm_width/2)
-            glVertex3f(arm_width/2, arm_length, -arm_width/2)
-            glVertex3f(-arm_width/2, arm_length, -arm_width/2)
-            
-            glVertex3f(arm_width/2, 0, -arm_width/2)
-            glVertex3f(arm_width/2, 0, arm_width/2)
-            glVertex3f(arm_width/2, arm_length, arm_width/2)
-            glVertex3f(arm_width/2, arm_length, -arm_width/2)
-            
-            glVertex3f(arm_width/2, 0, arm_width/2)
-            glVertex3f(-arm_width/2, 0, arm_width/2)
-            glVertex3f(-arm_width/2, arm_length, arm_width/2)
-            glVertex3f(arm_width/2, arm_length, arm_width/2)
-            
-            glVertex3f(-arm_width/2, 0, arm_width/2)
-            glVertex3f(-arm_width/2, 0, -arm_width/2)
-            glVertex3f(-arm_width/2, arm_length, -arm_width/2)
-            glVertex3f(-arm_width/2, arm_length, arm_width/2)
-            glEnd()
-            
-            glColor3f(0.8, 0.6, 0.4)
-            glTranslatef(0, arm_length - 0.1, 0)
-            glBegin(GL_QUADS)
-            glVertex3f(-arm_width/2, 0, -arm_width/2)
-            glVertex3f(arm_width/2, 0, -arm_width/2)
-            glVertex3f(arm_width/2, 0.2, -arm_width/2)
-            glVertex3f(-arm_width/2, 0.2, -arm_width/2)
-            
-            glVertex3f(arm_width/2, 0, -arm_width/2)
-            glVertex3f(arm_width/2, 0, arm_width/2)
-            glVertex3f(arm_width/2, 0.2, arm_width/2)
-            glVertex3f(arm_width/2, 0.2, -arm_width/2)
-            
-            glVertex3f(arm_width/2, 0, arm_width/2)
-            glVertex3f(-arm_width/2, 0, arm_width/2)
-            glVertex3f(-arm_width/2, 0.2, arm_width/2)
-            glVertex3f(arm_width/2, 0.2, arm_width/2)
-            
-            glVertex3f(-arm_width/2, 0, arm_width/2)
-            glVertex3f(-arm_width/2, 0, -arm_width/2)
-            glVertex3f(-arm_width/2, 0.2, -arm_width/2)
-            glVertex3f(-arm_width/2, 0.2, arm_width/2)
-            glEnd()
-            glPopMatrix()
-            
-            leg_width = 0.18
-            leg_length = 0.7
-            
-            glColor3f(0.15, 0.35, 0.7)
-            glPushMatrix()
-            glTranslatef(body_width/4, 0.3 - leg_swing, 0)
-            glBegin(GL_QUADS)
-            glVertex3f(-leg_width/2, -leg_length, -leg_width/2)
-            glVertex3f(leg_width/2, -leg_length, -leg_width/2)
-            glVertex3f(leg_width/2, 0, -leg_width/2)
-            glVertex3f(-leg_width/2, 0, -leg_width/2)
-            
-            glVertex3f(leg_width/2, -leg_length, -leg_width/2)
-            glVertex3f(leg_width/2, -leg_length, leg_width/2)
-            glVertex3f(leg_width/2, 0, leg_width/2)
-            glVertex3f(leg_width/2, 0, -leg_width/2)
-            
-            glVertex3f(leg_width/2, -leg_length, leg_width/2)
-            glVertex3f(-leg_width/2, -leg_length, leg_width/2)
-            glVertex3f(-leg_width/2, 0, leg_width/2)
-            glVertex3f(leg_width/2, 0, leg_width/2)
-            
-            glVertex3f(-leg_width/2, -leg_length, leg_width/2)
-            glVertex3f(-leg_width/2, -leg_length, -leg_width/2)
-            glVertex3f(-leg_width/2, 0, -leg_width/2)
-            glVertex3f(-leg_width/2, 0, leg_width/2)
-            glEnd()
-            
-            glColor3f(0.3, 0.3, 0.3)
-            glTranslatef(0, -leg_length + 0.05, 0.05)
-            glBegin(GL_QUADS)
-            glVertex3f(-leg_width/2 - 0.05, -0.15, -leg_width/2 - 0.05)
-            glVertex3f(leg_width/2 + 0.05, -0.15, -leg_width/2 - 0.05)
-            glVertex3f(leg_width/2 + 0.05, 0, -leg_width/2 - 0.05)
-            glVertex3f(-leg_width/2 - 0.05, 0, -leg_width/2 - 0.05)
-            
-            glVertex3f(leg_width/2 + 0.05, -0.15, -leg_width/2 - 0.05)
-            glVertex3f(leg_width/2 + 0.05, -0.15, leg_width/2 + 0.05)
-            glVertex3f(leg_width/2 + 0.05, 0, leg_width/2 + 0.05)
-            glVertex3f(leg_width/2 + 0.05, 0, -leg_width/2 - 0.05)
-            
-            glVertex3f(leg_width/2 + 0.05, -0.15, leg_width/2 + 0.05)
-            glVertex3f(-leg_width/2 - 0.05, -0.15, leg_width/2 + 0.05)
-            glVertex3f(-leg_width/2 - 0.05, 0, leg_width/2 + 0.05)
-            glVertex3f(leg_width/2 + 0.05, 0, leg_width/2 + 0.05)
-            
-            glVertex3f(-leg_width/2 - 0.05, -0.15, leg_width/2 + 0.05)
-            glVertex3f(-leg_width/2 - 0.05, -0.15, -leg_width/2 - 0.05)
-            glVertex3f(-leg_width/2 - 0.05, 0, -leg_width/2 - 0.05)
-            glVertex3f(-leg_width/2 - 0.05, 0, leg_width/2 + 0.05)
-            glEnd()
-            glPopMatrix()
-            
-            glPushMatrix()
-            glTranslatef(-body_width/4, 0.3 + leg_swing, 0)
-            glColor3f(0.15, 0.35, 0.7)
-            glBegin(GL_QUADS)
-            glVertex3f(-leg_width/2, -leg_length, -leg_width/2)
-            glVertex3f(leg_width/2, -leg_length, -leg_width/2)
-            glVertex3f(leg_width/2, 0, -leg_width/2)
-            glVertex3f(-leg_width/2, 0, -leg_width/2)
-            
-            glVertex3f(leg_width/2, -leg_length, -leg_width/2)
-            glVertex3f(leg_width/2, -leg_length, leg_width/2)
-            glVertex3f(leg_width/2, 0, leg_width/2)
-            glVertex3f(leg_width/2, 0, -leg_width/2)
-            
-            glVertex3f(leg_width/2, -leg_length, leg_width/2)
-            glVertex3f(-leg_width/2, -leg_length, leg_width/2)
-            glVertex3f(-leg_width/2, 0, leg_width/2)
-            glVertex3f(leg_width/2, 0, leg_width/2)
-            
-            glVertex3f(-leg_width/2, -leg_length, leg_width/2)
-            glVertex3f(-leg_width/2, -leg_length, -leg_width/2)
-            glVertex3f(-leg_width/2, 0, -leg_width/2)
-            glVertex3f(-leg_width/2, 0, leg_width/2)
-            glEnd()
-            
-            glColor3f(0.3, 0.3, 0.3)
-            glTranslatef(0, -leg_length + 0.05, 0.05)
-            glBegin(GL_QUADS)
-            glVertex3f(-leg_width/2 - 0.05, -0.15, -leg_width/2 - 0.05)
-            glVertex3f(leg_width/2 + 0.05, -0.15, -leg_width/2 - 0.05)
-            glVertex3f(leg_width/2 + 0.05, 0, -leg_width/2 - 0.05)
-            glVertex3f(-leg_width/2 - 0.05, 0, -leg_width/2 - 0.05)
-            
-            glVertex3f(leg_width/2 + 0.05, -0.15, -leg_width/2 - 0.05)
-            glVertex3f(leg_width/2 + 0.05, -0.15, leg_width/2 + 0.05)
-            glVertex3f(leg_width/2 + 0.05, 0, leg_width/2 + 0.05)
-            glVertex3f(leg_width/2 + 0.05, 0, -leg_width/2 - 0.05)
-            
-            glVertex3f(leg_width/2 + 0.05, -0.15, leg_width/2 + 0.05)
-            glVertex3f(-leg_width/2 - 0.05, -0.15, leg_width/2 + 0.05)
-            glVertex3f(-leg_width/2 - 0.05, 0, leg_width/2 + 0.05)
-            glVertex3f(leg_width/2 + 0.05, 0, leg_width/2 + 0.05)
-            
-            glVertex3f(-leg_width/2 - 0.05, -0.15, leg_width/2 + 0.05)
-            glVertex3f(-leg_width/2 - 0.05, -0.15, -leg_width/2 - 0.05)
-            glVertex3f(-leg_width/2 - 0.05, 0, -leg_width/2 - 0.05)
-            glVertex3f(-leg_width/2 - 0.05, 0, leg_width/2 + 0.05)
-            glEnd()
-            glPopMatrix()
             
             glEnable(GL_LIGHTING)
             glPopMatrix()
@@ -1008,33 +1244,42 @@ class GameMap3D:
             print(f"绘制玩家错误: {e}")
     
     def draw_follower(self, follower):
-        """绘制跟随者"""
         try:
             glPushMatrix()
             glTranslatef(follower["x"], follower["y"], follower["z"])
             
-            # 禁用光照以绘制跟随者
             glDisable(GL_LIGHTING)
             
-            # 跟随者头部
             glColor3f(0.6, 0.8, 0.4)
-            self.draw_cube(1.5, 1.5, 1.5)
             
-            # 跟随者身体
-            glColor3f(0.4, 0.6, 0.2)
-            glTranslatef(0, -2, 0)
-            self.draw_cube(2, 3, 1.5)
+            glBegin(GL_QUADS)
+            glVertex3f(-0.75, 0, -0.75)
+            glVertex3f(0.75, 0, -0.75)
+            glVertex3f(0.75, 1.5, -0.75)
+            glVertex3f(-0.75, 1.5, -0.75)
             
-            # 重新启用光照
+            glVertex3f(0.75, 0, -0.75)
+            glVertex3f(0.75, 0, 0.75)
+            glVertex3f(0.75, 1.5, 0.75)
+            glVertex3f(0.75, 1.5, -0.75)
+            
+            glVertex3f(0.75, 0, 0.75)
+            glVertex3f(-0.75, 0, 0.75)
+            glVertex3f(-0.75, 1.5, 0.75)
+            glVertex3f(0.75, 1.5, 0.75)
+            
+            glVertex3f(-0.75, 0, 0.75)
+            glVertex3f(-0.75, 0, -0.75)
+            glVertex3f(-0.75, 1.5, -0.75)
+            glVertex3f(-0.75, 1.5, 0.75)
+            glEnd()
+            
             glEnable(GL_LIGHTING)
-            
             glPopMatrix()
         except Exception as e:
             print(f"绘制跟随者错误: {e}")
     
     def draw_hud(self):
-        """绘制HUD"""
-        # 恢复到2D模式
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
         glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
@@ -1042,18 +1287,28 @@ class GameMap3D:
         glLoadIdentity()
         glDisable(GL_DEPTH_TEST)
         
-        # 绘制位置信息
-        pos_text = f"位置: ({int(self.player_pos[0])}, {int(self.player_pos[2])})"
+        pos_text = f"位置: ({int(self.player_pos[0])}, {int(self.player_pos[1])}, {int(self.player_pos[2])})"
         pos_surf = self.font_small.render(pos_text, True, COLORS["text_white"])
         self.screen.blit(pos_surf, (10, 10))
         
-        # 绘制跟随状态
         if self.follow_target:
             follow_text = f"跟随: {self.follow_target.get('type', '位置')}"
             follow_surf = self.font_small.render(follow_text, True, COLORS["accent_green"])
             self.screen.blit(follow_surf, (10, 40))
         
-        # 绘制消息
+        resources = data.get('resources', {})
+        gold = resources.get('金元宝', 0)
+        time_card = resources.get('时间卡', 0)
+        resource_text = f"金元宝: {gold} | 时间卡: {time_card}"
+        resource_surf = self.font_small.render(resource_text, True, COLORS["accent_gold"])
+        self.screen.blit(resource_surf, (10, 70))
+        
+        owned_count = len([loc for loc in self.locations if loc.get('owner') == 'player'])
+        total_count = len(self.locations)
+        territory_text = f"占领地点: {owned_count}/{total_count}"
+        territory_surf = self.font_small.render(territory_text, True, COLORS["accent_green"])
+        self.screen.blit(territory_surf, (10, 100))
+        
         if self.message and self.message_timer > 0:
             msg_surf = self.font_main.render(self.message, True, COLORS["accent_gold"])
             msg_rect = msg_surf.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT - 50))
@@ -1062,134 +1317,68 @@ class GameMap3D:
             if self.message_timer < 0:
                 self.message = None
         
-        # 绘制十字准心
-        crosshair_center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
-        crosshair_size = 15
-        crosshair_gap = 5
-        crosshair_color = (255, 255, 255, 200)
-        
-        try:
-            crosshair_surf = pygame.Surface((crosshair_size * 2 + 10, crosshair_size * 2 + 10), pygame.SRCALPHA)
-            
-            pygame.draw.line(crosshair_surf, crosshair_color,
-                           (crosshair_size + 5, crosshair_gap),
-                           (crosshair_size + 5, crosshair_size), 2)
-            pygame.draw.line(crosshair_surf, crosshair_color,
-                           (crosshair_size + 5, crosshair_size + crosshair_gap * 2 + 5),
-                           (crosshair_size + 5, crosshair_size * 2 + 5), 2)
-            pygame.draw.line(crosshair_surf, crosshair_color,
-                           (crosshair_gap, crosshair_size + 5),
-                           (crosshair_size, crosshair_size + 5), 2)
-            pygame.draw.line(crosshair_surf, crosshair_color,
-                           (crosshair_size + crosshair_gap * 2 + 5, crosshair_size + 5),
-                           (crosshair_size * 2 + 5, crosshair_size + 5), 2)
-            
-            pygame.draw.circle(crosshair_surf, crosshair_color,
-                             (crosshair_size + 5, crosshair_size + 5), 2, 1)
-            
-            self.screen.blit(crosshair_surf, 
-                           (crosshair_center[0] - crosshair_size - 5, 
-                            crosshair_center[1] - crosshair_size - 5))
-        except Exception:
-            pass
-        
-        # 绘制控制提示
         controls = [
             "WASD: 移动",
             "空格: 跳跃",
-            "Shift: 减速",
+            "E: 进入地点",
+            "R: 收集资源",
             "Tab: 锁定鼠标",
             "F: 跟随模式",
             "F5: 切换视角",
-            "Esc: 退出"
+            "右键: 与NPC交互"
         ]
+        
         for i, control in enumerate(controls):
-            ctrl_surf = self.font_small.render(control, True, COLORS["text_white"])
-            self.screen.blit(ctrl_surf, (SCREEN_WIDTH - 150, 10 + i * 25))
+            control_surf = self.font_small.render(control, True, (200, 200, 200))
+            self.screen.blit(control_surf, (SCREEN_WIDTH - 150, 10 + i * 25))
         
         glEnable(GL_DEPTH_TEST)
     
-    def main(self):
-        """主循环"""
+    def update_physics(self):
+        self.velocity[1] += self.gravity
+        
+        self.velocity[0] *= self.friction
+        self.velocity[2] *= self.friction
+        
+        if abs(self.velocity[0]) < 0.01:
+            self.velocity[0] = 0
+        if abs(self.velocity[2]) < 0.01:
+            self.velocity[2] = 0
+        
+        self.player_pos[0] += self.velocity[0]
+        self.player_pos[1] += self.velocity[1]
+        self.player_pos[2] += self.velocity[2]
+        
+        if self.player_pos[1] < 0:
+            self.player_pos[1] = 0
+            self.velocity[1] = 0
+        
+        self.player_pos[0] = max(-1800, min(1800, self.player_pos[0]))
+        self.player_pos[2] = max(-1800, min(1800, self.player_pos[2]))
+        
+        self.update_camera()
+    
+    def run(self):
         if not self.initialize():
             return
         
         running = True
         while running:
+            self.clock.tick(60)
+            
             running = self.handle_input()
             
-            # 物理更新
-            # 应用重力
-            self.velocity[1] += self.gravity
-            
-            # 更新位置
-            self.player_pos[0] += self.velocity[0]
-            self.player_pos[1] += self.velocity[1]
-            self.player_pos[2] += self.velocity[2]
-            
-            # 地面碰撞检测
-            if self.player_pos[1] < 0:
-                self.player_pos[1] = 0
-                self.velocity[1] = 0
-            
-            # 建筑碰撞检测
-            player_radius = 0.8
-            player_height = 2.0
-            for loc in self.locations:
-                if "collision_box" in loc:
-                    box = loc["collision_box"]
-                    px, py, pz = self.player_pos[0], self.player_pos[1], self.player_pos[2]
-                    
-                    inside_x = box["min_x"] - player_radius < px < box["max_x"] + player_radius
-                    inside_z = box["min_z"] - player_radius < pz < box["max_z"] + player_radius
-                    inside_vertical = 0 < py < box["max_y"]
-                    
-                    if inside_x and inside_z and inside_vertical:
-                        overlap_left = px - (box["min_x"] - player_radius)
-                        overlap_right = (box["max_x"] + player_radius) - px
-                        overlap_front = pz - (box["min_z"] - player_radius)
-                        overlap_back = (box["max_z"] + player_radius) - pz
-                        
-                        min_overlap = min(overlap_left, overlap_right, overlap_front, overlap_back)
-                        
-                        if min_overlap == overlap_left:
-                            self.player_pos[0] = box["min_x"] - player_radius
-                            self.velocity[0] = 0
-                        elif min_overlap == overlap_right:
-                            self.player_pos[0] = box["max_x"] + player_radius
-                            self.velocity[0] = 0
-                        elif min_overlap == overlap_front:
-                            self.player_pos[2] = box["min_z"] - player_radius
-                            self.velocity[2] = 0
-                        elif min_overlap == overlap_back:
-                            self.player_pos[2] = box["max_z"] + player_radius
-                            self.velocity[2] = 0
-            
-            # 摩擦力
-            self.velocity[0] *= 0.9
-            self.velocity[2] *= 0.9
-            
-            # 更新相机
-            self.update_camera()
-            
-            # 更新跟随者
+            self.update_physics()
+            self.update_npcs()
             self.update_followers()
             
-            # 绘制3D场景
             self.draw_3d_scene()
-            
-            # 绘制HUD
             self.draw_hud()
             
-            # 限制帧率
-            self.clock.tick(60)
+            pygame.display.flip()
         
         pygame.quit()
 
 def main():
-    """3D地图主函数"""
-    game_map_3d = GameMap3D()
-    game_map_3d.main()
-
-if __name__ == "__main__":
-    main()
+    game = GameMap3D()
+    game.run()
