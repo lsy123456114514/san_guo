@@ -15,6 +15,16 @@ try:
 except ImportError:
     opengl_available = False
 
+# 尝试导入C++渲染器
+try:
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from renderer_bindings import renderer, TreeData, LocationData, NPCData, EnemyData, GeneralData, PetData, PlayerData, FollowerData, ProjectileData, PickupData, TechBlockData, ParticleData
+    cpp_renderer_available = renderer.is_available
+except Exception as e:
+    print(f"无法加载C++渲染器: {e}")
+    cpp_renderer_available = False
+
 # 颜色定义
 COLORS = {
     "bg_dark": (20, 20, 30),
@@ -63,6 +73,23 @@ class GameMap3D:
         
         # 相机模式
         self.camera["mode"] = "first"  # first 或 third
+        
+        # 暂停菜单
+        self.is_paused = False
+        self.pause_menu_selected = 0
+        self.pause_menu_options = ["继续游戏", "设置", "保存并退出", "返回主菜单"]
+        
+        # 快捷栏（类似MC）
+        self.hotbar = [None] * 9
+        self.hotbar_selected = 0
+        
+        # 十字准星
+        self.show_crosshair = True
+        
+        # 方块系统
+        self.placed_blocks = []
+        self.selected_block_type = 0
+        self.block_types = ["泥土", "石头", "木头", "草地", "沙子", "水", "玻璃", "砖块"]
         
     def initialize(self):
         """初始化3D地图"""
@@ -288,12 +315,15 @@ class GameMap3D:
                 return False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    if self.is_mouse_locked:
+                    self.is_paused = not self.is_paused
+                    if self.is_paused:
                         self.is_mouse_locked = False
                         pygame.mouse.set_visible(True)
                         pygame.event.set_grab(False)
                     else:
-                        return False
+                        self.is_mouse_locked = True
+                        pygame.mouse.set_visible(False)
+                        pygame.event.set_grab(True)
                 elif event.key == pygame.K_TAB:
                     self.is_mouse_locked = not self.is_mouse_locked
                     pygame.mouse.set_visible(not self.is_mouse_locked)
@@ -313,22 +343,33 @@ class GameMap3D:
                             self.message = "没有可跟随的地点"
                     self.message_timer = 2000
                 elif event.key == pygame.K_F5:
-                    # 切换视角模式
                     self.camera["mode"] = "third" if self.camera["mode"] == "first" else "first"
                     self.message = f"切换到{'第三人称' if self.camera['mode'] == 'third' else '第一人称'}视角"
+                    self.message_timer = 2000
+                elif event.key in [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9]:
+                    slot = event.key - pygame.K_1
+                    self.hotbar_selected = slot
+                    if slot < len(self.block_types):
+                        self.hotbar[slot] = self.block_types[slot]
+                        self.message = f"选择: {self.block_types[slot]}"
+                        self.message_timer = 1000
+                elif event.key == pygame.K_e:
+                    self.show_inventory = not self.show_inventory
+                    self.message = "物品栏功能开发中..."
                     self.message_timer = 2000
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     if not self.is_mouse_locked:
-                        # 左键点击自动锁定鼠标
                         self.is_mouse_locked = True
                         pygame.mouse.set_visible(False)
                         pygame.event.set_grab(True)
                         self.message = "鼠标已锁定，按Tab键解锁"
                         self.message_timer = 3000
                     else:
-                        # 左键点击地面移动
-                        self.move_to_mouse()
+                        self.place_block()
+                elif event.button == 3:
+                    if self.is_mouse_locked:
+                        self.break_block()
             elif event.type == pygame.MOUSEMOTION:
                 # 鼠标控制
                 if self.is_mouse_locked:
@@ -411,25 +452,28 @@ class GameMap3D:
     
     def draw_3d_scene(self):
         """绘制3D场景"""
+        if cpp_renderer_available:
+            self.draw_3d_scene_cpp()
+        else:
+            self.draw_3d_scene_python()
+    
+    def draw_3d_scene_cpp(self):
+        """使用C++渲染器绘制3D场景"""
         try:
-            # 清除屏幕
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
             
-            # 设置相机
             glMatrixMode(GL_PROJECTION)
             glLoadIdentity()
             gluPerspective(60, SCREEN_WIDTH / SCREEN_HEIGHT, 0.1, 1000.0)
             
             glMatrixMode(GL_MODELVIEW)
             glLoadIdentity()
-            # 计算相机看向的方向
             yaw_rad = math.radians(self.camera["yaw"])
             pitch_rad = math.radians(self.camera["pitch"])
             
-            # 计算看向点（玩家前方）
             look_distance = 10
             look_x = self.player_pos[0] + math.cos(yaw_rad) * math.cos(pitch_rad) * look_distance
-            look_y = self.player_pos[1] + 1.5 + math.sin(pitch_rad) * look_distance  # 眼睛高度
+            look_y = self.player_pos[1] + 1.5 + math.sin(pitch_rad) * look_distance
             look_z = self.player_pos[2] + math.sin(yaw_rad) * math.cos(pitch_rad) * look_distance
             
             gluLookAt(
@@ -438,30 +482,86 @@ class GameMap3D:
                 0, 1, 0
             )
             
-            # 绘制地形
+            renderer.render_terrain(
+                self.player_pos[0], self.player_pos[1], self.player_pos[2],
+                50, 4, -1
+            )
+            
+            if hasattr(self, 'trees'):
+                tree_data = []
+                for tree_x, tree_z in self.trees:
+                    tree_data.append(TreeData(x=tree_x, z=tree_z, base_height=3, height=4, width=2))
+                renderer.render_trees(tree_data)
+            
+            loc_data = []
+            for loc in self.locations:
+                r, g, b = 1.0, 0.8, 0.2
+                loc_data.append(LocationData(x=loc["x"], z=loc["y"], r=r, g=g, b=b, type=0))
+            renderer.render_locations(loc_data)
+            
+            if self.camera["mode"] == "third":
+                player = PlayerData(
+                    x=self.player_pos[0], y=self.player_pos[1], z=self.player_pos[2],
+                    r=0.3, g=0.5, b=0.8, rotation=self.camera["yaw"]
+                )
+                renderer.render_player(player)
+            
+            follower_data = []
+            for follower in self.followers:
+                follower_data.append(FollowerData(
+                    x=follower["x"], y=follower["y"], z=follower["z"],
+                    r=0.4, g=0.6, b=0.3, type=0
+                ))
+            renderer.render_followers(follower_data)
+            
+            pygame.display.flip()
+        except Exception as e:
+            print(f"C++渲染错误: {e}")
+            self.draw_3d_scene_python()
+    
+    def draw_3d_scene_python(self):
+        """使用Python绘制3D场景"""
+        try:
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+            
+            glMatrixMode(GL_PROJECTION)
+            glLoadIdentity()
+            gluPerspective(60, SCREEN_WIDTH / SCREEN_HEIGHT, 0.1, 1000.0)
+            
+            glMatrixMode(GL_MODELVIEW)
+            glLoadIdentity()
+            yaw_rad = math.radians(self.camera["yaw"])
+            pitch_rad = math.radians(self.camera["pitch"])
+            
+            look_distance = 10
+            look_x = self.player_pos[0] + math.cos(yaw_rad) * math.cos(pitch_rad) * look_distance
+            look_y = self.player_pos[1] + 1.5 + math.sin(pitch_rad) * look_distance
+            look_z = self.player_pos[2] + math.sin(yaw_rad) * math.cos(pitch_rad) * look_distance
+            
+            gluLookAt(
+                self.camera["x"], self.camera["y"], self.camera["z"],
+                look_x, look_y, look_z,
+                0, 1, 0
+            )
+            
             self.draw_terrain()
             
-            # 绘制树木
             if hasattr(self, 'trees'):
                 for tree_x, tree_z in self.trees:
                     self.draw_tree(tree_x, tree_z)
             
-            # 绘制地点
             for loc in self.locations:
                 self.draw_location(loc)
             
-            # 绘制玩家（只在第三人称视角下绘制）
             if self.camera["mode"] == "third":
                 self.draw_player()
             
-            # 绘制跟随者
             for follower in self.followers:
                 self.draw_follower(follower)
             
-            # 交换缓冲区
             pygame.display.flip()
         except Exception as e:
-            print(f"渲染错误: {e}")
+            print(f"Python渲染错误: {e}")
     
     def draw_terrain(self):
         """绘制像素化地形 - 类似我的世界风格"""
@@ -1101,13 +1201,192 @@ class GameMap3D:
             "Tab: 锁定鼠标",
             "F: 跟随模式",
             "F5: 切换视角",
-            "Esc: 退出"
+            "1-9: 选择方块",
+            "左键: 放置方块",
+            "右键: 破坏方块",
+            "Esc: 暂停菜单"
         ]
         for i, control in enumerate(controls):
             ctrl_surf = self.font_small.render(control, True, COLORS["text_white"])
             self.screen.blit(ctrl_surf, (SCREEN_WIDTH - 150, 10 + i * 25))
         
+        self.draw_hotbar()
+        
         glEnable(GL_DEPTH_TEST)
+    
+    def draw_pause_menu(self):
+        """绘制暂停菜单（类似MC风格）"""
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+        glDisable(GL_DEPTH_TEST)
+        
+        menu_width = 300
+        menu_height = 250
+        menu_x = SCREEN_WIDTH // 2 - menu_width // 2
+        menu_y = SCREEN_HEIGHT // 2 - menu_height // 2
+        
+        bg_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        bg_surf.fill((0, 0, 0, 180))
+        self.screen.blit(bg_surf, (0, 0))
+        
+        menu_surf = pygame.Surface((menu_width, menu_height), pygame.SRCALPHA)
+        menu_surf.fill((60, 60, 80, 240))
+        pygame.draw.rect(menu_surf, (100, 100, 120), (0, 0, menu_width, menu_height), 3, border_radius=10)
+        self.screen.blit(menu_surf, (menu_x, menu_y))
+        
+        title_surf = self.font_main.render("游戏暂停", True, COLORS["accent_gold"])
+        title_rect = title_surf.get_rect(center=(SCREEN_WIDTH // 2, menu_y + 30))
+        self.screen.blit(title_surf, title_rect)
+        
+        button_height = 40
+        button_spacing = 10
+        button_start_y = menu_y + 70
+        
+        for i, option in enumerate(self.pause_menu_options):
+            button_y = button_start_y + i * (button_height + button_spacing)
+            button_width = menu_width - 40
+            button_x = menu_x + 20
+            
+            is_selected = (i == self.pause_menu_selected)
+            
+            btn_surf = pygame.Surface((button_width, button_height), pygame.SRCALPHA)
+            if is_selected:
+                btn_surf.fill((80, 120, 80, 255))
+                pygame.draw.rect(btn_surf, COLORS["accent_green"], (0, 0, button_width, button_height), 2, border_radius=5)
+            else:
+                btn_surf.fill((50, 50, 70, 255))
+                pygame.draw.rect(btn_surf, (80, 80, 100), (0, 0, button_width, button_height), 2, border_radius=5)
+            
+            self.screen.blit(btn_surf, (button_x, button_y))
+            
+            text_surf = self.font_small.render(option, True, COLORS["text_white"])
+            text_rect = text_surf.get_rect(center=(button_x + button_width // 2, button_y + button_height // 2))
+            self.screen.blit(text_surf, text_rect)
+        
+        hint_surf = self.font_small.render("↑↓选择  Enter确认  Esc返回", True, (150, 150, 150))
+        hint_rect = hint_surf.get_rect(center=(SCREEN_WIDTH // 2, menu_y + menu_height - 20))
+        self.screen.blit(hint_surf, hint_rect)
+        
+        glEnable(GL_DEPTH_TEST)
+    
+    def handle_pause_input(self):
+        """处理暂停菜单输入"""
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return "quit"
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self.is_paused = False
+                    self.is_mouse_locked = True
+                    pygame.mouse.set_visible(False)
+                    pygame.event.set_grab(True)
+                elif event.key == pygame.K_UP:
+                    self.pause_menu_selected = (self.pause_menu_selected - 1) % len(self.pause_menu_options)
+                elif event.key == pygame.K_DOWN:
+                    self.pause_menu_selected = (self.pause_menu_selected + 1) % len(self.pause_menu_options)
+                elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                    option = self.pause_menu_options[self.pause_menu_selected]
+                    if option == "继续游戏":
+                        self.is_paused = False
+                        self.is_mouse_locked = True
+                        pygame.mouse.set_visible(False)
+                        pygame.event.set_grab(True)
+                    elif option == "设置":
+                        self.message = "设置功能开发中..."
+                        self.message_timer = 2000
+                    elif option == "保存并退出":
+                        return "quit"
+                    elif option == "返回主菜单":
+                        return "main_menu"
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+                    menu_width = 300
+                    menu_height = 250
+                    menu_x = SCREEN_WIDTH // 2 - menu_width // 2
+                    menu_y = SCREEN_HEIGHT // 2 - menu_height // 2
+                    button_height = 40
+                    button_spacing = 10
+                    button_start_y = menu_y + 70
+                    
+                    mx, my = event.pos
+                    for i in range(len(self.pause_menu_options)):
+                        button_y = button_start_y + i * (button_height + button_spacing)
+                        button_width = menu_width - 40
+                        button_x = menu_x + 20
+                        
+                        if button_x <= mx <= button_x + button_width and button_y <= my <= button_y + button_height:
+                            self.pause_menu_selected = i
+                            option = self.pause_menu_options[i]
+                            if option == "继续游戏":
+                                self.is_paused = False
+                                self.is_mouse_locked = True
+                                pygame.mouse.set_visible(False)
+                                pygame.event.set_grab(True)
+                            elif option == "设置":
+                                self.message = "设置功能开发中..."
+                                self.message_timer = 2000
+                            elif option == "保存并退出":
+                                return "quit"
+                            elif option == "返回主菜单":
+                                return "main_menu"
+        return "continue"
+    
+    def draw_hotbar(self):
+        """绘制快捷栏（类似MC）"""
+        hotbar_width = 9 * 50 + 10
+        hotbar_height = 50
+        hotbar_x = SCREEN_WIDTH // 2 - hotbar_width // 2
+        hotbar_y = SCREEN_HEIGHT - 60
+        
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+        glDisable(GL_DEPTH_TEST)
+        
+        hotbar_surf = pygame.Surface((hotbar_width, hotbar_height), pygame.SRCALPHA)
+        hotbar_surf.fill((30, 30, 30, 200))
+        
+        for i in range(9):
+            slot_x = 5 + i * 50
+            slot_surf = pygame.Surface((45, 45), pygame.SRCALPHA)
+            
+            if i == self.hotbar_selected:
+                slot_surf.fill((80, 80, 80, 255))
+                pygame.draw.rect(slot_surf, COLORS["accent_gold"], (0, 0, 45, 45), 2)
+            else:
+                slot_surf.fill((50, 50, 50, 255))
+                pygame.draw.rect(slot_surf, (70, 70, 70), (0, 0, 45, 45), 1)
+            
+            hotbar_surf.blit(slot_surf, (slot_x, 2))
+            
+            if self.hotbar[i]:
+                block_color = self.get_block_color(self.hotbar[i])
+                block_surf = pygame.Surface((35, 35), pygame.SRCALPHA)
+                block_surf.fill(block_color)
+                hotbar_surf.blit(block_surf, (slot_x + 5, 7))
+        
+        self.screen.blit(hotbar_surf, (hotbar_x, hotbar_y))
+        
+        glEnable(GL_DEPTH_TEST)
+    
+    def get_block_color(self, block_type):
+        """获取方块颜色"""
+        colors = {
+            "泥土": (139, 90, 43),
+            "石头": (128, 128, 128),
+            "木头": (160, 82, 45),
+            "草地": (34, 139, 34),
+            "沙子": (238, 214, 175),
+            "水": (65, 105, 225),
+            "玻璃": (200, 200, 200),
+            "砖块": (178, 34, 34)
+        }
+        return colors.get(block_type, (128, 128, 128))
     
     def main(self):
         """主循环"""
@@ -1116,6 +1395,19 @@ class GameMap3D:
         
         running = True
         while running:
+            if self.is_paused:
+                result = self.handle_pause_input()
+                if result == "quit":
+                    running = False
+                elif result == "main_menu":
+                    return "main_menu"
+                
+                self.draw_3d_scene()
+                self.draw_pause_menu()
+                pygame.display.flip()
+                self.clock.tick(60)
+                continue
+            
             running = self.handle_input()
             
             # 物理更新
