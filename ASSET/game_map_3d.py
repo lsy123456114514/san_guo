@@ -411,6 +411,55 @@ class GameMap3D:
         self.player_pos[2] -= math.cos(yaw_rad) * self.camera["speed"]
         self.update_camera()
     
+    def place_block(self):
+        """放置方块（类似MC左键）"""
+        yaw_rad = math.radians(self.camera["yaw"])
+        pitch_rad = math.radians(self.camera["pitch"])
+        
+        distance = 5.0
+        target_x = self.player_pos[0] + math.cos(yaw_rad) * math.cos(pitch_rad) * distance
+        target_y = self.player_pos[1] + 1.5 + math.sin(pitch_rad) * distance
+        target_z = self.player_pos[2] + math.sin(yaw_rad) * math.cos(pitch_rad) * distance
+        
+        block_x = int(target_x)
+        block_y = int(target_y)
+        block_z = int(target_z)
+        
+        selected_block = self.hotbar[self.hotbar_selected]
+        if selected_block:
+            self.placed_blocks.append({
+                "x": block_x,
+                "y": block_y,
+                "z": block_z,
+                "type": selected_block
+            })
+            self.message = f"放置 {selected_block} 在 ({block_x}, {block_y}, {block_z})"
+            self.message_timer = 1000
+    
+    def break_block(self):
+        """破坏方块（类似MC右键）"""
+        yaw_rad = math.radians(self.camera["yaw"])
+        pitch_rad = math.radians(self.camera["pitch"])
+        
+        distance = 5.0
+        target_x = self.player_pos[0] + math.cos(yaw_rad) * math.cos(pitch_rad) * distance
+        target_y = self.player_pos[1] + 1.5 + math.sin(pitch_rad) * distance
+        target_z = self.player_pos[2] + math.sin(yaw_rad) * math.cos(pitch_rad) * distance
+        
+        block_x = int(target_x)
+        block_y = int(target_y)
+        block_z = int(target_z)
+        
+        for i, block in enumerate(self.placed_blocks):
+            if block["x"] == block_x and block["y"] == block_y and block["z"] == block_z:
+                removed_block = self.placed_blocks.pop(i)
+                self.message = f"破坏 {removed_block['type']}"
+                self.message_timer = 1000
+                return
+        
+        self.message = "没有可破坏的方块"
+        self.message_timer = 1000
+    
     def update_camera(self):
         """更新相机位置"""
         yaw_rad = math.radians(self.camera["yaw"])
