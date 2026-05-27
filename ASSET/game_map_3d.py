@@ -29,6 +29,585 @@ MAP_SIZE = (2000, 2000)
 MAX_LOCATIONS = 50
 SCREEN_WIDTH = 1024
 SCREEN_HEIGHT = 768
+MINIMAP_SIZE = 200
+INVENTORY_SLOTS = 36
+MAX_PICKUP_DISTANCE = 5
+
+MC_BLOCKS = {
+    "air": {"color": (0, 0, 0, 0), "solid": False, "transparent": True},
+    "stone": {"color": (128, 128, 128), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "dirt": {"color": (139, 90, 43), "solid": True, "transparent": False, "hardness": 0.5, "tool": "shovel"},
+    "grass": {"color": (34, 139, 34), "solid": True, "transparent": False, "hardness": 0.6, "tool": "shovel"},
+    "cobblestone": {"color": (96, 96, 96), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "oak_log": {"color": (101, 67, 33), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
+    "oak_planks": {"color": (188, 152, 98), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
+    "oak_leaves": {"color": (50, 150, 50), "solid": False, "transparent": True, "hardness": 0.2, "tool": "shears"},
+    "sand": {"color": (230, 220, 170), "solid": True, "transparent": False, "hardness": 0.5, "tool": "shovel"},
+    "gravel": {"color": (150, 140, 130), "solid": True, "transparent": False, "hardness": 0.6, "tool": "shovel"},
+    "water": {"color": (30, 60, 200, 150), "solid": False, "transparent": True, "hardness": 100, "source": True},
+    "lava": {"color": (255, 80, 0), "solid": False, "transparent": True, "hardness": 100, "emissive": True},
+    "glass": {"color": (200, 220, 255, 100), "solid": True, "transparent": True, "hardness": 0.3, "tool": "none"},
+    "brick": {"color": (180, 80, 60), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "coal_ore": {"color": (100, 100, 100), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
+    "iron_ore": {"color": (170, 140, 120), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
+    "gold_ore": {"color": (230, 200, 100), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
+    "diamond_ore": {"color": (60, 220, 220), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
+    "oak_sapling": {"color": (50, 180, 50), "solid": False, "transparent": True, "hardness": 0.0},
+    "bedrock": {"color": (50, 50, 50), "solid": True, "transparent": False, "hardness": -1},
+    "snow": {"color": (255, 255, 255), "solid": True, "transparent": False, "hardness": 0.2, "tool": "shovel"},
+    "ice": {"color": (150, 180, 255, 200), "solid": True, "transparent": True, "hardness": 0.5},
+    "clay": {"color": (170, 170, 180), "solid": True, "transparent": False, "hardness": 0.6, "tool": "shovel"},
+    "oak_wood": {"color": (120, 80, 40), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
+    "oak_slab": {"color": (180, 140, 90), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
+    "oak_stairs": {"color": (175, 145, 95), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
+    "oak_door": {"color": (140, 100, 60), "solid": True, "transparent": False, "hardness": 3.0, "tool": "axe"},
+    "oak_fence": {"color": (160, 120, 80), "solid": False, "transparent": True, "hardness": 2.0, "tool": "axe"},
+    "oak_trapdoor": {"color": (130, 90, 50), "solid": True, "transparent": False, "hardness": 3.0, "tool": "axe"},
+    "oak_button": {"color": (160, 130, 90), "solid": False, "transparent": True, "hardness": 0.5},
+    "oak_pressure_plate": {"color": (180, 150, 100), "solid": False, "transparent": True, "hardness": 0.5},
+    "wall_torch": {"color": (255, 200, 50), "solid": False, "transparent": True, "hardness": 0.0, "emissive": True},
+    "floor_torch": {"color": (255, 180, 50), "solid": False, "transparent": True, "hardness": 0.0, "emissive": True},
+    "redstone_lamp": {"color": (150, 50, 50), "solid": True, "transparent": False, "hardness": 0.3, "tool": "pickaxe"},
+    "glowstone": {"color": (255, 200, 100), "solid": True, "transparent": False, "hardness": 0.3, "emissive": True},
+    "sea_lantern": {"color": (180, 220, 220), "solid": True, "transparent": True, "hardness": 0.3, "emissive": True},
+    "obsidian": {"color": (20, 10, 30), "solid": True, "transparent": False, "hardness": 50, "tool": "diamond_pickaxe"},
+    "netherrack": {"color": (110, 50, 50), "solid": True, "transparent": False, "hardness": 0.4, "tool": "pickaxe"},
+    "soul_sand": {"color": (80, 65, 50), "solid": True, "transparent": False, "hardness": 0.5, "tool": "shovel"},
+    "nether_bricks": {"color": (45, 25, 35), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "quartz_block": {"color": (230, 225, 215), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
+    "end_stone": {"color": (220, 220, 180), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
+    "purpur_block": {"color": (170, 120, 170), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "prismarine": {"color": (80, 150, 130), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "prismarine_bricks": {"color": (90, 160, 140), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "dark_prismarine": {"color": (50, 90, 80), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "sea_pickle": {"color": (100, 180, 100), "solid": False, "transparent": True, "hardness": 0.0},
+    "kelp": {"color": (50, 130, 50), "solid": False, "transparent": True, "hardness": 0.0},
+    "seagrass": {"color": (40, 130, 60), "solid": False, "transparent": True, "hardness": 0.0},
+    "coral_block": {"color": (200, 100, 120), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "coral": {"color": (180, 80, 100), "solid": False, "transparent": True, "hardness": 0.0},
+    "coral_fan": {"color": (160, 70, 90), "solid": False, "transparent": True, "hardness": 0.0},
+    "sandstone": {"color": (220, 200, 140), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
+    "red_sandstone": {"color": (180, 90, 40), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
+    "smooth_stone": {"color": (140, 140, 145), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "andesite": {"color": (130, 130, 135), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "diorite": {"color": (180, 180, 185), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "granite": {"color": (150, 100, 85), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "polished_andesite": {"color": (140, 140, 145), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "polished_diorite": {"color": (190, 190, 195), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "polished_granite": {"color": (160, 110, 95), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "cobblestone_slab": {"color": (105, 105, 110), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "cobblestone_stairs": {"color": (100, 100, 105), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "cobblestone_wall": {"color": (100, 100, 105), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "mossy_cobblestone": {"color": (80, 100, 80), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "stone_bricks": {"color": (120, 120, 125), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "chiseled_stone_bricks": {"color": (115, 115, 120), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "cracked_stone_bricks": {"color": (125, 125, 130), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "mossy_stone_bricks": {"color": (90, 110, 90), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "iron_block": {"color": (220, 220, 220), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
+    "gold_block": {"color": (255, 215, 0), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
+    "diamond_block": {"color": (60, 220, 220), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
+    "emerald_block": {"color": (50, 220, 100), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
+    "lapis_block": {"color": (40, 60, 180), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
+    "redstone_block": {"color": (180, 20, 20), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
+    "coal_block": {"color": (40, 40, 40), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
+    "netherite_block": {"color": (50, 40, 50), "solid": True, "transparent": False, "hardness": 50, "tool": "diamond_pickaxe"},
+    "hay_block": {"color": (200, 180, 80), "solid": True, "transparent": False, "hardness": 1.0, "tool": "sickle"},
+    "melon": {"color": (80, 140, 40), "solid": True, "transparent": False, "hardness": 1.0, "tool": "axe"},
+    "pumpkin": {"color": (200, 130, 30), "solid": True, "transparent": False, "hardness": 1.0, "tool": "axe"},
+    "carved_pumpkin": {"color": (210, 140, 40), "solid": True, "transparent": False, "hardness": 1.0, "tool": "axe"},
+    "jack_o_lantern": {"color": (220, 150, 50), "solid": True, "transparent": False, "hardness": 1.0, "emissive": True, "tool": "axe"},
+    "terracotta": {"color": (155, 95, 70), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
+    "white_terracotta": {"color": (210, 180, 160), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
+    "orange_terracotta": {"color": (165, 85, 45), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
+    "magenta_terracotta": {"color": (150, 90, 110), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
+    "light_blue_terracotta": {"color": (115, 110, 140), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
+    "yellow_terracotta": {"color": (190, 135, 45), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
+    "lime_terracotta": {"color": (105, 120, 60), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
+    "pink_terracotta": {"color": (160, 80, 75), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
+    "gray_terracotta": {"color": (60, 40, 35), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
+    "light_gray_terracotta": {"color": (135, 105, 95), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
+    "cyan_terracotta": {"color": (85, 90, 90), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
+    "purple_terracotta": {"color": (120, 70, 85), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
+    "blue_terracotta": {"color": (75, 60, 90), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
+    "brown_terracotta": {"color": (80, 55, 40), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
+    "green_terracotta": {"color": (80, 85, 50), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
+    "red_terracotta": {"color": (145, 65, 55), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
+    "black_terracotta": {"color": (40, 30, 25), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
+    "concrete": {"color": (160, 160, 170), "solid": True, "transparent": False, "hardness": 2.0},
+    "white_concrete": {"color": (210, 215, 220), "solid": True, "transparent": False, "hardness": 2.0},
+    "orange_concrete": {"color": (225, 100, 15), "solid": True, "transparent": False, "hardness": 2.0},
+    "magenta_concrete": {"color": (170, 50, 150), "solid": True, "transparent": False, "hardness": 2.0},
+    "light_blue_concrete": {"color": (40, 130, 220), "solid": True, "transparent": False, "hardness": 2.0},
+    "yellow_concrete": {"color": (250, 210, 30), "solid": True, "transparent": False, "hardness": 2.0},
+    "lime_concrete": {"color": (95, 170, 25), "solid": True, "transparent": False, "hardness": 2.0},
+    "pink_concrete": {"color": (215, 130, 150), "solid": True, "transparent": False, "hardness": 2.0},
+    "gray_concrete": {"color": (55, 60, 65), "solid": True, "transparent": False, "hardness": 2.0},
+    "light_gray_concrete": {"color": (130, 130, 135), "solid": True, "transparent": False, "hardness": 2.0},
+    "cyan_concrete": {"color": (25, 120, 150), "solid": True, "transparent": False, "hardness": 2.0},
+    "purple_concrete": {"color": (100, 35, 140), "solid": True, "transparent": False, "hardness": 2.0},
+    "blue_concrete": {"color": (45, 60, 150), "solid": True, "transparent": False, "hardness": 2.0},
+    "brown_concrete": {"color": (115, 75, 45), "solid": True, "transparent": False, "hardness": 2.0},
+    "green_concrete": {"color": (75, 95, 30), "solid": True, "transparent": False, "hardness": 2.0},
+    "red_concrete": {"color": (150, 30, 25), "solid": True, "transparent": False, "hardness": 2.0},
+    "black_concrete": {"color": (10, 12, 16), "solid": True, "transparent": False, "hardness": 2.0},
+    "concrete_powder": {"color": (165, 165, 175), "solid": True, "transparent": False, "hardness": 0.5, "gravity": True},
+    "white_concrete_powder": {"color": (215, 220, 225), "solid": True, "transparent": False, "hardness": 0.5, "gravity": True},
+    "wool": {"color": (220, 220, 220), "solid": True, "transparent": False, "hardness": 0.8, "tool": "shears"},
+    "carpet": {"color": (180, 180, 180), "solid": False, "transparent": True, "hardness": 0.1, "tool": "shears"},
+    "cake": {"color": (230, 200, 180), "solid": False, "transparent": False, "hardness": 0.5},
+    "white_bed": {"color": (230, 230, 230), "solid": False, "transparent": False, "hardness": 0.2},
+    "black_bed": {"color": (30, 30, 35), "solid": False, "transparent": False, "hardness": 0.2},
+    "brown_bed": {"color": (100, 70, 50), "solid": False, "transparent": False, "hardness": 0.2},
+    "bookshelf": {"color": (160, 120, 80), "solid": True, "transparent": False, "hardness": 1.5, "tool": "axe"},
+    "chest": {"color": (160, 120, 80), "solid": True, "transparent": False, "hardness": 2.5},
+    "ender_chest": {"color": (20, 40, 40), "solid": True, "transparent": False, "hardness": 22.5},
+    "furnace": {"color": (120, 120, 120), "solid": True, "transparent": False, "hardness": 3.5, "tool": "pickaxe"},
+    "blast_furnace": {"color": (120, 120, 130), "solid": True, "transparent": False, "hardness": 3.5, "tool": "pickaxe"},
+    "smoker": {"color": (140, 100, 80), "solid": True, "transparent": False, "hardness": 3.5, "tool": "axe"},
+    "cartography_table": {"color": (140, 120, 90), "solid": True, "transparent": False, "hardness": 2.5, "tool": "axe"},
+    "crafting_table": {"color": (150, 110, 70), "solid": True, "transparent": False, "hardness": 2.5, "tool": "axe"},
+    "enchanting_table": {"color": (150, 100, 200), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
+    "anvil": {"color": (120, 120, 130), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
+    "grindstone": {"color": (130, 130, 135), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "stonecutter": {"color": (140, 140, 145), "solid": True, "transparent": False, "hardness": 3.5, "tool": "pickaxe"},
+    "loom": {"color": (140, 110, 90), "solid": True, "transparent": False, "hardness": 2.5, "tool": "axe"},
+    "lectern": {"color": (160, 130, 100), "solid": True, "transparent": False, "hardness": 2.5, "tool": "axe"},
+    "smithing_table": {"color": (130, 110, 90), "solid": True, "transparent": False, "hardness": 2.5, "tool": "axe"},
+    "composter": {"color": (140, 110, 80), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
+    "barrel": {"color": (150, 110, 80), "solid": True, "transparent": False, "hardness": 2.5, "tool": "axe"},
+    "smithing_table": {"color": (130, 110, 90), "solid": True, "transparent": False, "hardness": 2.5, "tool": "axe"},
+    "bell": {"color": (180, 160, 90), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
+    "campfire": {"color": (140, 100, 60), "solid": False, "transparent": True, "hardness": 1.0, "emissive": True},
+    "soul_campfire": {"color": (80, 60, 40), "solid": False, "transparent": True, "hardness": 1.0, "emissive": True},
+    "lantern": {"color": (255, 200, 100), "solid": False, "transparent": True, "hardness": 1.0, "emissive": True},
+    "soul_lantern": {"color": (150, 180, 200), "solid": False, "transparent": True, "hardness": 1.0, "emissive": True},
+    "candle": {"color": (240, 240, 220), "solid": False, "transparent": True, "hardness": 0.1},
+    "end_rod": {"color": (220, 220, 220), "solid": False, "transparent": True, "hardness": 0.0, "emissive": True},
+    "chain": {"color": (100, 100, 110), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
+    "iron_bars": {"color": (150, 150, 160), "solid": False, "transparent": True, "hardness": 5.0, "tool": "pickaxe"},
+    "glass_pane": {"color": (200, 220, 255, 150), "solid": False, "transparent": True, "hardness": 0.3},
+    "iron_door": {"color": (180, 180, 190), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
+    "iron_trapdoor": {"color": (180, 180, 190), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
+    "oak_sign": {"color": (160, 130, 90), "solid": False, "transparent": True, "hardness": 1.0},
+    "spruce_sign": {"color": (130, 100, 60), "solid": False, "transparent": True, "hardness": 1.0},
+    "birch_sign": {"color": (200, 190, 160), "solid": False, "transparent": True, "hardness": 1.0},
+    "jungle_sign": {"color": (170, 130, 90), "solid": False, "transparent": True, "hardness": 1.0},
+    "acacia_sign": {"color": (170, 100, 60), "solid": False, "transparent": True, "hardness": 1.0},
+    "dark_oak_sign": {"color": (60, 40, 25), "solid": False, "transparent": True, "hardness": 1.0},
+    "oak_hanging_sign": {"color": (140, 110, 70), "solid": False, "transparent": True, "hardness": 1.0},
+    "item_frame": {"color": (160, 130, 80), "solid": False, "transparent": True, "hardness": 1.0},
+    "glow_item_frame": {"color": (170, 140, 90), "solid": False, "transparent": True, "hardness": 1.0, "emissive": True},
+    "painting": {"color": (180, 140, 100), "solid": False, "transparent": True, "hardness": 1.0},
+    "flower_pot": {"color": (180, 100, 60), "solid": False, "transparent": True, "hardness": 0.0},
+    "armor_stand": {"color": (120, 120, 130), "solid": False, "transparent": False, "hardness": 2.5},
+    "player_head": {"color": (200, 160, 120), "solid": False, "transparent": False, "hardness": 1.0},
+    "zombie_head": {"color": (80, 130, 80), "solid": False, "transparent": False, "hardness": 1.0},
+    "skeleton_skull": {"color": (210, 210, 200), "solid": False, "transparent": False, "hardness": 1.0},
+    "wither_skeleton_skull": {"color": (50, 50, 60), "solid": False, "transparent": False, "hardness": 1.0},
+    "dragon_head": {"color": (120, 80, 140), "solid": False, "transparent": False, "hardness": 1.0},
+    "beehive": {"color": (180, 140, 80), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
+    "bee_nest": {"color": (170, 150, 80), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
+    "honey_block": {"color": (230, 180, 60), "solid": True, "transparent": False, "hardness": 0.0},
+    "honeycomb_block": {"color": (240, 190, 70), "solid": True, "transparent": False, "hardness": 0.0},
+    "lodestone": {"color": (100, 100, 110), "solid": True, "transparent": False, "hardness": 3.5, "tool": "pickaxe"},
+    "sculk_sensor": {"color": (20, 30, 40), "solid": False, "transparent": True, "hardness": 1.5, "tool": "pickaxe"},
+    "sculk_catalyst": {"color": (25, 35, 45), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "sculk_shrieker": {"color": (30, 40, 50), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "sculk_vein": {"color": (15, 25, 35), "solid": False, "transparent": True, "hardness": 0.0},
+    "moss_block": {"color": (80, 120, 60), "solid": True, "transparent": False, "hardness": 0.1, "tool": "shovel"},
+    "moss_carpet": {"color": (70, 110, 50), "solid": False, "transparent": True, "hardness": 0.1, "tool": "shears"},
+    "sponge": {"color": (200, 200, 80), "solid": True, "transparent": False, "hardness": 0.6, "tool": "shovel"},
+    "wet_sponge": {"color": (180, 190, 100), "solid": True, "transparent": False, "hardness": 0.6, "tool": "shovel"},
+    "turtle_egg": {"color": (220, 220, 200), "solid": False, "transparent": False, "hardness": 0.1},
+    "dragon_egg": {"color": (40, 30, 50), "solid": False, "transparent": False, "hardness": 3.0},
+    " warden_spawn": {"color": (50, 55, 60), "solid": False, "transparent": False, "hardness": 0.0},
+    "respawn_anchor": {"color": (50, 50, 80), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
+    "crying_obsidian": {"color": (30, 20, 40), "solid": True, "transparent": False, "hardness": 50, "tool": "diamond_pickaxe"},
+    "shulker_box": {"color": (150, 100, 160), "solid": True, "transparent": False, "hardness": 2.5},
+    "undyed_shulker_box": {"color": (170, 150, 170), "solid": True, "transparent": False, "hardness": 2.5},
+    "loom": {"color": (140, 110, 90), "solid": True, "transparent": False, "hardness": 2.5, "tool": "axe"},
+    "fletching_table": {"color": (180, 150, 100), "solid": True, "transparent": False, "hardness": 2.5, "tool": "axe"},
+    "brewing_stand": {"color": (120, 120, 130), "solid": False, "transparent": True, "hardness": 0.5, "tool": "pickaxe"},
+    "cauldron": {"color": (120, 120, 130), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "water_cauldron": {"color": (40, 80, 200, 180), "solid": True, "transparent": True, "hardness": 2.0, "tool": "pickaxe"},
+    "lavacauldron": {"color": (220, 60, 0, 180), "solid": True, "transparent": True, "hardness": 2.0, "tool": "pickaxe"},
+    "flower_pot": {"color": (180, 100, 60), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_oak_sapling": {"color": (50, 180, 50), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_spruce_sapling": {"color": (40, 170, 40), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_birch_sapling": {"color": (60, 190, 60), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_jungle_sapling": {"color": (55, 175, 55), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_acacia_sapling": {"color": (45, 165, 45), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_dark_oak_sapling": {"color": (35, 155, 35), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_fern": {"color": (60, 150, 60), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_dandelion": {"color": (240, 220, 50), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_poppy": {"color": (220, 50, 50), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_blue_orchid": {"color": (50, 50, 200), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_allium": {"color": (180, 100, 180), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_azure_bluet": {"color": (240, 240, 240), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_red_tulip": {"color": (200, 40, 40), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_orange_tulip": {"color": (220, 100, 30), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_white_tulip": {"color": (240, 240, 230), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_pink_tulip": {"color": (240, 150, 170), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_oxeye_daisy": {"color": (230, 230, 200), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_cornflower": {"color": (80, 120, 220), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_lily_of_the_valley": {"color": (230, 235, 220), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_wither_rose": {"color": (40, 40, 50), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_red_mushroom": {"color": (220, 80, 80), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_brown_mushroom": {"color": (160, 120, 80), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_dead_bush": {"color": (120, 90, 60), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_azalea_bush": {"color": (60, 180, 80), "solid": False, "transparent": True, "hardness": 0.0},
+    "potted_flowering_azalea_bush": {"color": (70, 190, 90), "solid": False, "transparent": True, "hardness": 0.0},
+    "chain_command_block": {"color": (140, 150, 130), "solid": True, "transparent": False, "hardness": 0.0},
+    "repeating_command_block": {"color": (140, 100, 130), "solid": True, "transparent": False, "hardness": 0.0},
+    "command_block": {"color": (140, 80, 100), "solid": True, "transparent": False, "hardness": 0.0},
+    "chain": {"color": (100, 100, 110), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
+    "lightning_rod": {"color": (210, 170, 120), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
+    "daylight_detector": {"color": (160, 150, 130), "solid": True, "transparent": False, "hardness": 0.0},
+    "daylight_detector_inverted": {"color": (140, 130, 110), "solid": True, "transparent": False, "hardness": 0.0},
+    "target": {"color": (200, 200, 200), "solid": True, "transparent": False, "hardness": 0.0},
+    "scaffolding": {"color": (160, 130, 100), "solid": False, "transparent": True, "hardness": 0.0},
+    "brick_stairs": {"color": (170, 80, 60), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "oak_stairs": {"color": (175, 145, 95), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
+    "spruce_stairs": {"color": (110, 80, 45), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
+    "birch_stairs": {"color": (195, 180, 140), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
+    "jungle_stairs": {"color": (155, 115, 75), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
+    "acacia_stairs": {"color": (160, 90, 55), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
+    "dark_oak_stairs": {"color": (65, 45, 25), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
+    "cobblestone_stairs": {"color": (100, 100, 105), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "sandstone_stairs": {"color": (210, 190, 130), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
+    "red_sandstone_stairs": {"color": (170, 85, 35), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
+    "prismarine_stairs": {"color": (80, 150, 130), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "prismarine_brick_stairs": {"color": (90, 160, 140), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "dark_prismarine_stairs": {"color": (50, 90, 80), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "quartz_stairs": {"color": (220, 215, 205), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
+    "purpur_stairs": {"color": (160, 110, 160), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "nether_brick_stairs": {"color": (50, 30, 40), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "red_nether_brick_stairs": {"color": (60, 20, 20), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "stone_stairs": {"color": (140, 140, 145), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "smooth_quartz_stairs": {"color": (225, 220, 210), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
+    "smooth_red_sandstone_stairs": {"color": (175, 90, 40), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
+    "granite_stairs": {"color": (150, 100, 85), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "andesite_stairs": {"color": (130, 130, 135), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "diorite_stairs": {"color": (180, 180, 185), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "polished_granite_stairs": {"color": (160, 110, 95), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "polished_diorite_stairs": {"color": (190, 190, 195), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "polished_andesite_stairs": {"color": (140, 140, 145), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "mossy_cobblestone_stairs": {"color": (80, 100, 80), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "mossy_stone_brick_stairs": {"color": (90, 110, 90), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "end_stone_brick_stairs": {"color": (215, 215, 175), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
+    "stone_brick_stairs": {"color": (120, 120, 125), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "oak_slab": {"color": (180, 140, 90), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
+    "spruce_slab": {"color": (115, 85, 50), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
+    "birch_slab": {"color": (195, 180, 140), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
+    "jungle_slab": {"color": (160, 120, 80), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
+    "acacia_slab": {"color": (165, 95, 60), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
+    "dark_oak_slab": {"color": (70, 50, 30), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
+    "cobblestone_slab": {"color": (105, 105, 110), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "sandstone_slab": {"color": (210, 190, 130), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
+    "red_sandstone_slab": {"color": (170, 85, 35), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
+    "quartz_slab": {"color": (220, 215, 205), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
+    "prismarine_slab": {"color": (80, 150, 130), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "prismarine_brick_slab": {"color": (90, 160, 140), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "dark_prismarine_slab": {"color": (50, 90, 80), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "purpur_slab": {"color": (160, 110, 160), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "smooth_stone_slab": {"color": (145, 145, 150), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "smooth_quartz_slab": {"color": (225, 220, 210), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
+    "smooth_red_sandstone_slab": {"color": (175, 90, 40), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
+    "cobblestone_wall": {"color": (100, 100, 105), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "mossy_cobblestone_wall": {"color": (80, 100, 80), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "granite_wall": {"color": (150, 100, 85), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "diorite_wall": {"color": (180, 180, 185), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "andesite_wall": {"color": (130, 130, 135), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "sandstone_wall": {"color": (210, 190, 130), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
+    "red_sandstone_wall": {"color": (170, 85, 35), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
+    "brick_wall": {"color": (170, 80, 60), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "stone_brick_wall": {"color": (120, 120, 125), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "mossy_stone_brick_wall": {"color": (90, 110, 90), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "nether_brick_wall": {"color": (50, 30, 40), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
+    "end_stone_brick_wall": {"color": (215, 215, 175), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
+    "prismarine_wall": {"color": (80, 150, 130), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "redstone_torch": {"color": (180, 30, 30), "solid": False, "transparent": True, "hardness": 0.0, "emissive": True},
+    "redstone_wire": {"color": (180, 30, 30), "solid": False, "transparent": True, "hardness": 0.0},
+    "repeater": {"color": (160, 60, 60), "solid": False, "transparent": True, "hardness": 0.0},
+    "comparator": {"color": (160, 60, 60), "solid": False, "transparent": True, "hardness": 0.0},
+    "piston": {"color": (150, 150, 155), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "sticky_piston": {"color": (150, 150, 155), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "observer": {"color": (130, 130, 135), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "hopper": {"color": (120, 120, 130), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
+    "dropper": {"color": (120, 120, 125), "solid": True, "transparent": False, "hardness": 3.5, "tool": "pickaxe"},
+    "dispenser": {"color": (120, 120, 125), "solid": True, "transparent": False, "hardness": 3.5, "tool": "pickaxe"},
+    "lever": {"color": (120, 100, 80), "solid": False, "transparent": True, "hardness": 1.0},
+    "stone_button": {"color": (140, 140, 145), "solid": False, "transparent": True, "hardness": 0.5},
+    "oak_button": {"color": (160, 130, 90), "solid": False, "transparent": True, "hardness": 0.5},
+    "tripwire_hook": {"color": (160, 140, 100), "solid": False, "transparent": True, "hardness": 0.0},
+    "trapped_chest": {"color": (160, 120, 80), "solid": True, "transparent": False, "hardness": 2.5},
+    "tnt": {"color": (200, 80, 60), "solid": True, "transparent": False, "hardness": 0.0},
+    "note_block": {"color": (160, 130, 80), "solid": True, "transparent": False, "hardness": 0.8, "tool": "axe"},
+    "jukebox": {"color": (150, 110, 70), "solid": True, "transparent": False, "hardness": 2.5, "tool": "axe"},
+    "record_13": {"color": (200, 200, 50), "solid": False, "transparent": False, "hardness": 0.1},
+    "record_cat": {"color": (50, 200, 50), "solid": False, "transparent": False, "hardness": 0.1},
+    "record_blocks": {"color": (200, 50, 50), "solid": False, "transparent": False, "hardness": 0.1},
+    "record_chirp": {"color": (50, 200, 200), "solid": False, "transparent": False, "hardness": 0.1},
+    "record_far": {"color": (50, 50, 200), "solid": False, "transparent": False, "hardness": 0.1},
+    "record_mall": {"color": (200, 50, 200), "solid": False, "transparent": False, "hardness": 0.1},
+    "record_mellohi": {"color": (200, 100, 50), "solid": False, "transparent": False, "hardness": 0.1},
+    "record_stal": {"color": (100, 50, 200), "solid": False, "transparent": False, "hardness": 0.1},
+    "record_strad": {"color": (200, 200, 200), "solid": False, "transparent": False, "hardness": 0.1},
+    "record_ward": {"color": (50, 100, 200), "solid": False, "transparent": False, "hardness": 0.1},
+    "record_11": {"color": (50, 200, 100), "solid": False, "transparent": False, "hardness": 0.1},
+    "record_wait": {"color": (200, 200, 100), "solid": False, "transparent": False, "hardness": 0.1},
+    "gold_ingot": {"color": (255, 215, 0), "solid": False, "transparent": False, "hardness": 0.1},
+    "iron_ingot": {"color": (220, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
+    "diamond": {"color": (60, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
+    "emerald": {"color": (50, 220, 100), "solid": False, "transparent": False, "hardness": 0.1},
+    "lapis_lazuli": {"color": (40, 60, 180), "solid": False, "transparent": False, "hardness": 0.1},
+    "coal": {"color": (40, 40, 40), "solid": False, "transparent": False, "hardness": 0.1},
+    "charcoal": {"color": (60, 50, 40), "solid": False, "transparent": False, "hardness": 0.1},
+    "netherite_ingot": {"color": (60, 50, 60), "solid": False, "transparent": False, "hardness": 0.1},
+    "wooden_pickaxe": {"color": (180, 140, 80), "solid": False, "transparent": False, "hardness": 0.1},
+    "stone_pickaxe": {"color": (140, 140, 145), "solid": False, "transparent": False, "hardness": 0.1},
+    "iron_pickaxe": {"color": (220, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
+    "diamond_pickaxe": {"color": (60, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
+    "netherite_pickaxe": {"color": (60, 50, 60), "solid": False, "transparent": False, "hardness": 0.1},
+    "wooden_axe": {"color": (180, 140, 80), "solid": False, "transparent": False, "hardness": 0.1},
+    "stone_axe": {"color": (140, 140, 145), "solid": False, "transparent": False, "hardness": 0.1},
+    "iron_axe": {"color": (220, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
+    "diamond_axe": {"color": (60, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
+    "netherite_axe": {"color": (60, 50, 60), "solid": False, "transparent": False, "hardness": 0.1},
+    "wooden_shovel": {"color": (180, 140, 80), "solid": False, "transparent": False, "hardness": 0.1},
+    "stone_shovel": {"color": (140, 140, 145), "solid": False, "transparent": False, "hardness": 0.1},
+    "iron_shovel": {"color": (220, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
+    "diamond_shovel": {"color": (60, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
+    "netherite_shovel": {"color": (60, 50, 60), "solid": False, "transparent": False, "hardness": 0.1},
+    "wooden_hoe": {"color": (180, 140, 80), "solid": False, "transparent": False, "hardness": 0.1},
+    "stone_hoe": {"color": (140, 140, 145), "solid": False, "transparent": False, "hardness": 0.1},
+    "iron_hoe": {"color": (220, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
+    "diamond_hoe": {"color": (60, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
+    "netherite_hoe": {"color": (60, 50, 60), "solid": False, "transparent": False, "hardness": 0.1},
+    "wooden_sword": {"color": (180, 140, 80), "solid": False, "transparent": False, "hardness": 0.1},
+    "stone_sword": {"color": (140, 140, 145), "solid": False, "transparent": False, "hardness": 0.1},
+    "iron_sword": {"color": (220, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
+    "diamond_sword": {"color": (60, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
+    "netherite_sword": {"color": (60, 50, 60), "solid": False, "transparent": False, "hardness": 0.1},
+    "bow": {"color": (150, 110, 70), "solid": False, "transparent": False, "hardness": 0.1},
+    "crossbow": {"color": (150, 110, 70), "solid": False, "transparent": False, "hardness": 0.1},
+    "arrow": {"color": (180, 150, 100), "solid": False, "transparent": False, "hardness": 0.1},
+    "shield": {"color": (140, 110, 70), "solid": False, "transparent": False, "hardness": 0.1},
+    "trident": {"color": (60, 200, 200), "solid": False, "transparent": False, "hardness": 0.1},
+    "fishing_rod": {"color": (150, 110, 70), "solid": False, "transparent": False, "hardness": 0.1},
+    "carrot_on_a_stick": {"color": (230, 150, 50), "solid": False, "transparent": False, "hardness": 0.1},
+    "warped_fungus_on_a_stick": {"color": (40, 180, 140), "solid": False, "transparent": False, "hardness": 0.1},
+    "oak_boat": {"color": (160, 120, 70), "solid": False, "transparent": False, "hardness": 0.1},
+    "spruce_boat": {"color": (100, 70, 40), "solid": False, "transparent": False, "hardness": 0.1},
+    "birch_boat": {"color": (190, 175, 140), "solid": False, "transparent": False, "hardness": 0.1},
+    "jungle_boat": {"color": (150, 110, 70), "solid": False, "transparent": False, "hardness": 0.1},
+    "acacia_boat": {"color": (160, 90, 50), "solid": False, "transparent": False, "hardness": 0.1},
+    "dark_oak_boat": {"color": (60, 40, 25), "solid": False, "transparent": False, "hardness": 0.1},
+    "saddle": {"color": (120, 80, 50), "solid": False, "transparent": False, "hardness": 0.1},
+    "horse_armor_leather": {"color": (140, 100, 70), "solid": False, "transparent": False, "hardness": 0.1},
+    "horse_armor_iron": {"color": (200, 200, 210), "solid": False, "transparent": False, "hardness": 0.1},
+    "horse_armor_gold": {"color": (250, 210, 0), "solid": False, "transparent": False, "hardness": 0.1},
+    "horse_armor_diamond": {"color": (60, 210, 210), "solid": False, "transparent": False, "hardness": 0.1},
+    "leather_helmet": {"color": (140, 100, 70), "solid": False, "transparent": False, "hardness": 0.1},
+    "leather_chestplate": {"color": (140, 100, 70), "solid": False, "transparent": False, "hardness": 0.1},
+    "leather_leggings": {"color": (140, 100, 70), "solid": False, "transparent": False, "hardness": 0.1},
+    "leather_boots": {"color": (140, 100, 70), "solid": False, "transparent": False, "hardness": 0.1},
+    "chainmail_helmet": {"color": (120, 120, 130), "solid": False, "transparent": False, "hardness": 0.1},
+    "chainmail_chestplate": {"color": (120, 120, 130), "solid": False, "transparent": False, "hardness": 0.1},
+    "chainmail_leggings": {"color": (120, 120, 130), "solid": False, "transparent": False, "hardness": 0.1},
+    "chainmail_boots": {"color": (120, 120, 130), "solid": False, "transparent": False, "hardness": 0.1},
+    "iron_helmet": {"color": (210, 210, 220), "solid": False, "transparent": False, "hardness": 0.1},
+    "iron_chestplate": {"color": (210, 210, 220), "solid": False, "transparent": False, "hardness": 0.1},
+    "iron_leggings": {"color": (210, 210, 220), "solid": False, "transparent": False, "hardness": 0.1},
+    "iron_boots": {"color": (210, 210, 220), "solid": False, "transparent": False, "hardness": 0.1},
+    "diamond_helmet": {"color": (60, 210, 210), "solid": False, "transparent": False, "hardness": 0.1},
+    "diamond_chestplate": {"color": (60, 210, 210), "solid": False, "transparent": False, "hardness": 0.1},
+    "diamond_leggings": {"color": (60, 210, 210), "solid": False, "transparent": False, "hardness": 0.1},
+    "diamond_boots": {"color": (60, 210, 210), "solid": False, "transparent": False, "hardness": 0.1},
+    "netherite_helmet": {"color": (60, 50, 60), "solid": False, "transparent": False, "hardness": 0.1},
+    "netherite_chestplate": {"color": (60, 50, 60), "solid": False, "transparent": False, "hardness": 0.1},
+    "netherite_leggings": {"color": (60, 50, 60), "solid": False, "transparent": False, "hardness": 0.1},
+    "netherite_boots": {"color": (60, 50, 60), "solid": False, "transparent": False, "hardness": 0.1},
+    "turtle_helmet": {"color": (140, 190, 180), "solid": False, "transparent": False, "hardness": 0.1},
+    "elytra": {"color": (180, 180, 160), "solid": False, "transparent": False, "hardness": 0.1},
+    "totem_of_undying": {"color": (255, 215, 0), "solid": False, "transparent": False, "hardness": 0.1},
+    "enchanted_golden_apple": {"color": (255, 220, 100), "solid": False, "transparent": False, "hardness": 0.1},
+    "golden_apple": {"color": (255, 200, 50), "solid": False, "transparent": False, "hardness": 0.1},
+    "apple": {"color": (200, 150, 100), "solid": False, "transparent": False, "hardness": 0.1},
+    "bread": {"color": (220, 190, 140), "solid": False, "transparent": False, "hardness": 0.1},
+    "cooked_beef": {"color": (110, 60, 40), "solid": False, "transparent": False, "hardness": 0.1},
+    "raw_beef": {"color": (180, 60, 60), "solid": False, "transparent": False, "hardness": 0.1},
+    "cooked_chicken": {"color": (200, 160, 120), "solid": False, "transparent": False, "hardness": 0.1},
+    "raw_chicken": {"color": (200, 180, 180), "solid": False, "transparent": False, "hardness": 0.1},
+    "cooked_mutton": {"color": (190, 150, 120), "solid": False, "transparent": False, "hardness": 0.1},
+    "raw_mutton": {"color": (200, 180, 180), "solid": False, "transparent": False, "hardness": 0.1},
+    "cooked_porkchop": {"color": (170, 120, 100), "solid": False, "transparent": False, "hardness": 0.1},
+    "raw_porkchop": {"color": (200, 150, 160), "solid": False, "transparent": False, "hardness": 0.1},
+    "cooked_rabbit": {"color": (180, 140, 110), "solid": False, "transparent": False, "hardness": 0.1},
+    "raw_rabbit": {"color": (200, 180, 180), "solid": False, "transparent": False, "hardness": 0.1},
+    "cooked_cod": {"color": (200, 180, 140), "solid": False, "transparent": False, "hardness": 0.1},
+    "raw_cod": {"color": (200, 200, 180), "solid": False, "transparent": False, "hardness": 0.1},
+    "cooked_salmon": {"color": (200, 140, 120), "solid": False, "transparent": False, "hardness": 0.1},
+    "raw_salmon": {"color": (220, 140, 120), "solid": False, "transparent": False, "hardness": 0.1},
+    "tropical_fish": {"color": (220, 180, 140), "solid": False, "transparent": False, "hardness": 0.1},
+    "pufferfish": {"color": (200, 200, 120), "solid": False, "transparent": False, "hardness": 0.1},
+    "rotten_flesh": {"color": (120, 100, 80), "solid": False, "transparent": False, "hardness": 0.1},
+    "spider_eye": {"color": (180, 60, 60), "solid": False, "transparent": False, "hardness": 0.1},
+    "cooked_spider_eye": {"color": (140, 80, 80), "solid": False, "transparent": False, "hardness": 0.1},
+    "rabbit_stew": {"color": (180, 140, 100), "solid": False, "transparent": False, "hardness": 0.1},
+    "mushroom_stew": {"color": (180, 140, 100), "solid": False, "transparent": False, "hardness": 0.1},
+    "beetroot_soup": {"color": (140, 60, 60), "solid": False, "transparent": False, "hardness": 0.1},
+    "suspicious_stew": {"color": (180, 150, 100), "solid": False, "transparent": False, "hardness": 0.1},
+    "pumpkin_pie": {"color": (220, 180, 120), "solid": False, "transparent": False, "hardness": 0.1},
+    "cake": {"color": (230, 200, 180), "solid": False, "transparent": False, "hardness": 0.1},
+    "cookie": {"color": (200, 170, 130), "solid": False, "transparent": False, "hardness": 0.1},
+    "melon_slice": {"color": (140, 190, 80), "solid": False, "transparent": False, "hardness": 0.1},
+    "dried_kelp": {"color": (80, 140, 80), "solid": False, "transparent": False, "hardness": 0.1},
+    "carrot": {"color": (230, 130, 30), "solid": False, "transparent": False, "hardness": 0.1},
+    "golden_carrot": {"color": (255, 200, 50), "solid": False, "transparent": False, "hardness": 0.1},
+    "potato": {"color": (210, 180, 140), "solid": False, "transparent": False, "hardness": 0.1},
+    "baked_potato": {"color": (220, 170, 120), "solid": False, "transparent": False, "hardness": 0.1},
+    "poisonous_potato": {"color": (180, 160, 120), "solid": False, "transparent": False, "hardness": 0.1},
+    "beetroot": {"color": (150, 40, 40), "solid": False, "transparent": False, "hardness": 0.1},
+    "sweet_berries": {"color": (60, 140, 200), "solid": False, "transparent": False, "hardness": 0.1},
+    "glow_berries": {"color": (220, 200, 100), "solid": False, "transparent": False, "hardness": 0.1},
+    "chorus_fruit": {"color": (180, 120, 200), "solid": False, "transparent": False, "hardness": 0.1},
+    "popped_chorus_fruit": {"color": (200, 160, 200), "solid": False, "transparent": False, "hardness": 0.1},
+    "wheat": {"color": (220, 200, 100), "solid": False, "transparent": False, "hardness": 0.1},
+    "wheat_seeds": {"color": (220, 210, 120), "solid": False, "transparent": False, "hardness": 0.1},
+    "pumpkin_seeds": {"color": (200, 160, 100), "solid": False, "transparent": False, "hardness": 0.1},
+    "melon_seeds": {"color": (160, 190, 100), "solid": False, "transparent": False, "hardness": 0.1},
+    "beetroot_seeds": {"color": (170, 60, 60), "solid": False, "transparent": False, "hardness": 0.1},
+    "oak_sapling": {"color": (50, 180, 50), "solid": False, "transparent": False, "hardness": 0.1},
+    "spruce_sapling": {"color": (40, 170, 40), "solid": False, "transparent": False, "hardness": 0.1},
+    "birch_sapling": {"color": (60, 190, 60), "solid": False, "transparent": False, "hardness": 0.1},
+    "jungle_sapling": {"color": (55, 175, 55), "solid": False, "transparent": False, "hardness": 0.1},
+    "acacia_sapling": {"color": (45, 165, 45), "solid": False, "transparent": False, "hardness": 0.1},
+    "dark_oak_sapling": {"color": (35, 155, 35), "solid": False, "transparent": False, "hardness": 0.1},
+    "azalea": {"color": (60, 180, 80), "solid": False, "transparent": False, "hardness": 0.1},
+    "flowering_azalea": {"color": (70, 190, 90), "solid": False, "transparent": False, "hardness": 0.1},
+    "oak_leaves": {"color": (50, 150, 50), "solid": False, "transparent": True, "hardness": 0.2},
+    "spruce_leaves": {"color": (40, 120, 40), "solid": False, "transparent": True, "hardness": 0.2},
+    "birch_leaves": {"color": (60, 160, 60), "solid": False, "transparent": True, "hardness": 0.2},
+    "jungle_leaves": {"color": (50, 140, 50), "solid": False, "transparent": True, "hardness": 0.2},
+    "acacia_leaves": {"color": (55, 155, 55), "solid": False, "transparent": True, "hardness": 0.2},
+    "dark_oak_leaves": {"color": (40, 130, 40), "solid": False, "transparent": True, "hardness": 0.2},
+    "vine": {"color": (50, 130, 50), "solid": False, "transparent": True, "hardness": 0.1},
+    "lily_pad": {"color": (40, 140, 50), "solid": False, "transparent": True, "hardness": 0.0},
+    "spore_blossom": {"color": (200, 180, 220), "solid": False, "transparent": True, "hardness": 0.0},
+    "hanging_roots": {"color": (100, 80, 60), "solid": False, "transparent": True, "hardness": 0.0},
+    "small_dripleaf": {"color": (50, 140, 50), "solid": False, "transparent": True, "hardness": 0.0},
+    "big_dripleaf": {"color": (50, 140, 50), "solid": False, "transparent": True, "hardness": 0.1},
+    "moss_carpet": {"color": (70, 110, 50), "solid": False, "transparent": True, "hardness": 0.1},
+    "rooted_dirt": {"color": (130, 85, 40), "solid": True, "transparent": False, "hardness": 0.5, "tool": "shovel"},
+    "grass_block": {"color": (90, 160, 60), "solid": True, "transparent": False, "hardness": 0.6, "tool": "shovel"},
+    "podzol": {"color": (90, 60, 30), "solid": True, "transparent": False, "hardness": 0.5, "tool": "shovel"},
+    "mycelium": {"color": (140, 100, 130), "solid": True, "transparent": False, "hardness": 0.6, "tool": "shovel"},
+    "dirt_path": {"color": (120, 85, 50), "solid": True, "transparent": False, "hardness": 0.5, "tool": "shovel"},
+    "farmland": {"color": (120, 80, 50), "solid": True, "transparent": False, "hardness": 0.6, "tool": "shovel"},
+    "grass": {"color": (80, 160, 50), "solid": False, "transparent": True, "hardness": 0.0},
+    "tall_grass": {"color": (70, 150, 45), "solid": False, "transparent": True, "hardness": 0.0},
+    "fern": {"color": (70, 140, 50), "solid": False, "transparent": True, "hardness": 0.0},
+    "large_fern": {"color": (70, 140, 50), "solid": False, "transparent": True, "hardness": 0.0},
+    "dead_bush": {"color": (120, 90, 60), "solid": False, "transparent": True, "hardness": 0.0},
+    "seagrass": {"color": (40, 130, 60), "solid": False, "transparent": True, "hardness": 0.0},
+    "kelp": {"color": (50, 130, 50), "solid": False, "transparent": True, "hardness": 0.0},
+    "sea_pickle": {"color": (100, 180, 100), "solid": False, "transparent": True, "hardness": 0.0},
+    "bamboo": {"color": (140, 180, 80), "solid": False, "transparent": True, "hardness": 0.0},
+    "sugar_cane": {"color": (140, 200, 100), "solid": False, "transparent": True, "hardness": 0.0},
+    "cactus": {"color": (20, 140, 60), "solid": True, "transparent": False, "hardness": 0.4},
+    "sweet_berry_bush": {"color": (60, 140, 200), "solid": False, "transparent": True, "hardness": 0.0},
+    "cave_vines": {"color": (50, 130, 50), "solid": False, "transparent": True, "hardness": 0.0},
+    "cave_vines_plant": {"color": (50, 130, 50), "solid": False, "transparent": True, "hardness": 0.0},
+    "glow_lichen": {"color": (150, 200, 100), "solid": False, "transparent": True, "hardness": 0.0, "emissive": True},
+    "lily_of_the_valley": {"color": (230, 235, 220), "solid": False, "transparent": False, "hardness": 0.0},
+    "wither_rose": {"color": (40, 40, 50), "solid": False, "transparent": False, "hardness": 0.0},
+    "cornflower": {"color": (80, 120, 220), "solid": False, "transparent": False, "hardness": 0.0},
+    "lily_of_the_valley": {"color": (230, 235, 220), "solid": False, "transparent": False, "hardness": 0.0},
+    "wither_rose": {"color": (40, 40, 50), "solid": False, "transparent": False, "hardness": 0.0},
+    "sunflower": {"color": (240, 220, 60), "solid": False, "transparent": False, "hardness": 0.0},
+    "lilac": {"color": (180, 120, 180), "solid": False, "transparent": False, "hardness": 0.0},
+    "rose_bush": {"color": (200, 50, 50), "solid": False, "transparent": False, "hardness": 0.0},
+    "peony": {"color": (200, 160, 180), "solid": False, "transparent": False, "hardness": 0.0},
+    "tall_grass": {"color": (70, 150, 45), "solid": False, "transparent": True, "hardness": 0.0},
+    "large_fern": {"color": (70, 140, 50), "solid": False, "transparent": True, "hardness": 0.0},
+    "dandelion": {"color": (240, 220, 50), "solid": False, "transparent": False, "hardness": 0.0},
+    "poppy": {"color": (220, 50, 50), "solid": False, "transparent": False, "hardness": 0.0},
+    "blue_orchid": {"color": (50, 50, 200), "solid": False, "transparent": False, "hardness": 0.0},
+    "allium": {"color": (180, 100, 180), "solid": False, "transparent": False, "hardness": 0.0},
+    "azure_bluet": {"color": (240, 240, 240), "solid": False, "transparent": False, "hardness": 0.0},
+    "red_tulip": {"color": (200, 40, 40), "solid": False, "transparent": False, "hardness": 0.0},
+    "orange_tulip": {"color": (220, 100, 30), "solid": False, "transparent": False, "hardness": 0.0},
+    "white_tulip": {"color": (240, 240, 230), "solid": False, "transparent": False, "hardness": 0.0},
+    "pink_tulip": {"color": (240, 150, 170), "solid": False, "transparent": False, "hardness": 0.0},
+    "oxeye_daisy": {"color": (230, 230, 200), "solid": False, "transparent": False, "hardness": 0.0},
+    "cornflower": {"color": (80, 120, 220), "solid": False, "transparent": False, "hardness": 0.0},
+    "lily_pad": {"color": (40, 140, 50), "solid": False, "transparent": True, "hardness": 0.0},
+    "brain_coral_block": {"color": (200, 100, 120), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "bubble_coral_block": {"color": (140, 80, 180), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "fire_coral_block": {"color": (180, 60, 60), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "horn_coral_block": {"color": (220, 200, 80), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "tube_coral_block": {"color": (60, 100, 200), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "dead_brain_coral_block": {"color": (130, 125, 115), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "dead_bubble_coral_block": {"color": (130, 125, 115), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "dead_fire_coral_block": {"color": (130, 125, 115), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "dead_horn_coral_block": {"color": (130, 125, 115), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "dead_tube_coral_block": {"color": (130, 125, 115), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
+    "brain_coral": {"color": (200, 100, 120), "solid": False, "transparent": True, "hardness": 0.0},
+    "bubble_coral": {"color": (140, 80, 180), "solid": False, "transparent": True, "hardness": 0.0},
+    "fire_coral": {"color": (180, 60, 60), "solid": False, "transparent": True, "hardness": 0.0},
+    "horn_coral": {"color": (220, 200, 80), "solid": False, "transparent": True, "hardness": 0.0},
+    "tube_coral": {"color": (60, 100, 200), "solid": False, "transparent": True, "hardness": 0.0},
+    "dead_brain_coral": {"color": (130, 125, 115), "solid": False, "transparent": True, "hardness": 0.0},
+    "dead_bubble_coral": {"color": (130, 125, 115), "solid": False, "transparent": True, "hardness": 0.0},
+    "dead_fire_coral": {"color": (130, 125, 115), "solid": False, "transparent": True, "hardness": 0.0},
+    "dead_horn_coral": {"color": (130, 125, 115), "solid": False, "transparent": True, "hardness": 0.0},
+    "dead_tube_coral": {"color": (130, 125, 115), "solid": False, "transparent": True, "hardness": 0.0},
+    "brain_coral_fan": {"color": (190, 95, 115), "solid": False, "transparent": True, "hardness": 0.0},
+    "bubble_coral_fan": {"color": (135, 75, 175), "solid": False, "transparent": True, "hardness": 0.0},
+    "fire_coral_fan": {"color": (170, 55, 55), "solid": False, "transparent": True, "hardness": 0.0},
+    "horn_coral_fan": {"color": (210, 195, 75), "solid": False, "transparent": True, "hardness": 0.0},
+    "tube_coral_fan": {"color": (55, 95, 195), "solid": False, "transparent": True, "hardness": 0.0},
+    "dead_brain_coral_fan": {"color": (120, 115, 105), "solid": False, "transparent": True, "hardness": 0.0},
+    "dead_bubble_coral_fan": {"color": (120, 115, 105), "solid": False, "transparent": True, "hardness": 0.0},
+    "dead_fire_coral_fan": {"color": (120, 115, 105), "solid": False, "transparent": True, "hardness": 0.0},
+    "dead_horn_coral_fan": {"color": (120, 115, 105), "solid": False, "transparent": True, "hardness": 0.0},
+    "dead_tube_coral_fan": {"color": (120, 115, 105), "solid": False, "transparent": True, "hardness": 0.0},
+    "brain_coral_wall_fan": {"color": (190, 95, 115), "solid": False, "transparent": True, "hardness": 0.0},
+    "bubble_coral_wall_fan": {"color": (135, 75, 175), "solid": False, "transparent": True, "hardness": 0.0},
+    "fire_coral_wall_fan": {"color": (170, 55, 55), "solid": False, "transparent": True, "hardness": 0.0},
+    "horn_coral_wall_fan": {"color": (210, 195, 75), "solid": False, "transparent": True, "hardness": 0.0},
+    "tube_coral_wall_fan": {"color": (55, 95, 195), "solid": False, "transparent": True, "hardness": 0.0},
+    "dead_brain_coral_wall_fan": {"color": (120, 115, 105), "solid": False, "transparent": True, "hardness": 0.0},
+    "dead_bubble_coral_wall_fan": {"color": (120, 115, 105), "solid": False, "transparent": True, "hardness": 0.0},
+    "dead_fire_coral_wall_fan": {"color": (120, 115, 105), "solid": False, "transparent": True, "hardness": 0.0},
+    "dead_horn_coral_wall_fan": {"color": (120, 115, 105), "solid": False, "transparent": True, "hardness": 0.0},
+    "dead_tube_coral_wall_fan": {"color": (120, 115, 105), "solid": False, "transparent": True, "hardness": 0.0},
+    
+    "tech_machine_frame": {"color": (100, 110, 120), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe", "tech": True},
+    "tech_energy_core": {"color": (0, 150, 255), "solid": True, "transparent": True, "hardness": 4.0, "tool": "pickaxe", "emissive": True, "tech": True},
+    "tech_generator": {"color": (50, 70, 90), "solid": True, "transparent": False, "hardness": 3.5, "tool": "pickaxe", "tech": True},
+    "tech_matter_transporter": {"color": (100, 50, 150), "solid": True, "transparent": True, "hardness": 4.0, "tool": "pickaxe", "emissive": True, "tech": True},
+    "tech_laser_node": {"color": (255, 0, 50), "solid": True, "transparent": True, "hardness": 3.0, "tool": "pickaxe", "emissive": True, "tech": True},
+    "tech_solar_panel": {"color": (20, 40, 60), "solid": True, "transparent": False, "hardness": 2.5, "tool": "pickaxe", "tech": True},
+    "tech_quantum_storage": {"color": (80, 200, 200), "solid": True, "transparent": True, "hardness": 4.0, "tool": "pickaxe", "emissive": True, "tech": True},
+    "tech_nano_assembler": {"color": (200, 200, 220), "solid": True, "transparent": False, "hardness": 3.5, "tool": "pickaxe", "tech": True},
+    "tech_hologram_projector": {"color": (150, 100, 200), "solid": False, "transparent": True, "hardness": 3.0, "tool": "pickaxe", "emissive": True, "tech": True},
+    "tech_force_field": {"color": (100, 180, 255, 100), "solid": True, "transparent": True, "hardness": -1, "tech": True},
+    "tech_anti_gravity": {"color": (50, 255, 200), "solid": True, "transparent": True, "hardness": 4.0, "tool": "pickaxe", "emissive": True, "tech": True},
+    "tech_teleporter": {"color": (200, 50, 200), "solid": False, "transparent": True, "hardness": 4.5, "tool": "pickaxe", "emissive": True, "tech": True},
+    "tech_fabricator": {"color": (120, 100, 80), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe", "tech": True},
+    "tech_reactor": {"color": (30, 30, 50), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe", "emissive": True, "tech": True},
+    "tech_fusion_core": {"color": (255, 200, 100), "solid": True, "transparent": True, "hardness": 4.5, "tool": "pickaxe", "emissive": True, "tech": True},
+    "tech_circuit_board": {"color": (50, 80, 50), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe", "tech": True},
+    "tech_advanced_chip": {"color": (100, 150, 200), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe", "tech": True},
+    "tech_plasma_conduit": {"color": (200, 100, 50), "solid": True, "transparent": True, "hardness": 3.5, "tool": "pickaxe", "tech": True},
+    "tech_gravity_plate": {"color": (100, 80, 120), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe", "tech": True},
+    "tech_security_door": {"color": (80, 100, 120), "solid": True, "transparent": False, "hardness": 4.0, "tool": "pickaxe", "tech": True},
+    "tech_cooling_unit": {"color": (70, 130, 160), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe", "tech": True},
+    "tech_autominer": {"color": (150, 70, 50), "solid": True, "transparent": False, "hardness": 3.5, "tool": "pickaxe", "tech": True},
+    "tech_energy_cable": {"color": (60, 60, 70), "solid": False, "transparent": True, "hardness": 1.0, "tool": "none", "tech": True}
+}
 
 class GameMap3D:
     def __init__(self):
@@ -65,6 +644,17 @@ class GameMap3D:
         self.selected_location = None
         self.owned_territories = []
         self.trees = []
+        self.inventory = [None] * INVENTORY_SLOTS
+        self.selected_slot = 0
+        self.pickups = []
+        self.block_world = {}
+        self.minimap_enabled = True
+        self.inventory_open = False
+        self.tech_blocks = []
+        self.energy_level = 100
+        self.tech_mode = False
+        self.teleporter_targets = []
+        self.last_tech_interact = 0
 
     def initialize(self):
         if not opengl_available:
@@ -108,6 +698,7 @@ class GameMap3D:
                 self.update_camera()
             
             self.generate_trees()
+            self.generate_tech_blocks()
             self.generate_large_structures()
             self.generate_npcs()
             self.cache_terrain()
@@ -151,10 +742,58 @@ class GameMap3D:
                 
                 if map_data.get("username") != username:
                     print("错误: 地图数据与当前用户不匹配")
+                    self.locations = self.generate_locations(MAX_LOCATIONS)
+                    self.save_map_data(self.locations)
                     return
                 
-                self.locations = map_data.get("locations", [])
-                print(f"成功加载地图数据，包含 {len(self.locations)} 个地点")
+                version = map_data.get("version", "0.0")
+                if version == "1.0":
+                    blocks = map_data.get("blocks", [])
+                    self.locations = []
+                    for block in blocks:
+                        loc = {
+                            "x": block["x"],
+                            "y": block["y"],
+                            "type": block["type"],
+                            "level": block.get("level", 1),
+                            "power": block.get("power", 0),
+                            "owner": block.get("owner", "neutral"),
+                            "color": block.get("color", (0.5, 0.5, 0.5)),
+                            "height": block.get("height", 8),
+                            "rotation_id": block.get("rotation_id", 0),
+                            "facing_id": block.get("facing_id", 0)
+                        }
+                        self.locations.append(loc)
+                    
+                    self.trees = []
+                    for tree_data in map_data.get("trees", []):
+                        self.trees.append((
+                            tree_data["x"],
+                            tree_data["y"],
+                            tree_data.get("scale", 1.0)
+                        ))
+                    
+                    self.large_structures = []
+                    for struct_data in map_data.get("structures", []):
+                        self.large_structures.append({
+                            "x": struct_data["x"],
+                            "z": struct_data["y"],
+                            "name": struct_data["type"],
+                            "size": struct_data.get("size", 20),
+                            "height": struct_data.get("height", 15),
+                            "color": (0.6, 0.5, 0.4)
+                        })
+                    
+                    if map_data.get("player_pos"):
+                        self.player_pos = map_data.get("player_pos", self.player_pos)
+                    
+                    if map_data.get("player_inventory"):
+                        data["resources"] = map_data.get("player_inventory", {})
+                    
+                    print(f"成功加载地图数据v{version}，包含 {len(self.locations)} 个地点")
+                else:
+                    self.locations = map_data.get("locations", [])
+                    print(f"成功加载地图数据v{version}，包含 {len(self.locations)} 个地点")
         except Exception as e:
             print(f"加载地图数据失败: {e}")
             self.locations = self.generate_locations(MAX_LOCATIONS)
@@ -179,10 +818,62 @@ class GameMap3D:
             if not username:
                 return False
             
+            blocks = []
+            for loc in locations:
+                block = {
+                    "id": len(blocks) + 1,
+                    "type": loc["type"],
+                    "x": loc["x"],
+                    "y": loc["y"],
+                    "z": 0,
+                    "level": loc.get("level", 1),
+                    "power": loc.get("power", 0),
+                    "owner": loc.get("owner", "neutral"),
+                    "rotation_id": random.randint(0, 3),
+                    "facing_id": self.calculate_facing_id(loc),
+                    "color": loc.get("color", (0.5, 0.5, 0.5)),
+                    "height": loc.get("height", 8)
+                }
+                blocks.append(block)
+            
+            trees = []
+            for tree in self.trees:
+                tree_block = {
+                    "id": len(trees) + 1000,
+                    "type": "tree",
+                    "x": tree[0],
+                    "y": tree[1],
+                    "z": 0,
+                    "scale": tree[2],
+                    "rotation_id": random.randint(0, 3),
+                    "facing_id": 0
+                }
+                trees.append(tree_block)
+            
+            structures = []
+            for struct in self.large_structures:
+                struct_block = {
+                    "id": len(structures) + 2000,
+                    "type": struct["name"],
+                    "x": struct["x"],
+                    "y": struct["z"],
+                    "z": 0,
+                    "size": struct["size"],
+                    "height": struct["height"],
+                    "rotation_id": random.randint(0, 3),
+                    "facing_id": 0
+                }
+                structures.append(struct_block)
+            
             map_data = {
+                "version": "1.0",
                 "username": username,
-                "locations": locations,
-                "timestamp": time.time()
+                "timestamp": time.time(),
+                "blocks": blocks,
+                "trees": trees,
+                "structures": structures,
+                "player_pos": self.player_pos,
+                "player_inventory": data.get("resources", {})
             }
             
             map_path = self.get_map_data_path()
@@ -194,17 +885,30 @@ class GameMap3D:
             print(f"保存地图数据失败: {e}")
             return False
     
+    def calculate_facing_id(self, loc):
+        angle = math.atan2(
+            loc["y"] - self.player_pos[2],
+            loc["x"] - self.player_pos[0]
+        )
+        angle_deg = math.degrees(angle)
+        
+        if -45 <= angle_deg < 45:
+            return 0
+        elif 45 <= angle_deg < 135:
+            return 1
+        elif -135 <= angle_deg < -45:
+            return 2
+        else:
+            return 3
+    
     def generate_locations(self, count):
         locations = []
         LOCATION_TYPES = {
-            "关隘": {"icon": "🏯", "power": 100, "color": (0.6, 0.55, 0.5)},
-            "军营": {"icon": "⚔️", "power": 150, "color": (0.7, 0.2, 0.2)},
-            "村庄": {"icon": "🏠", "power": 50, "color": (0.85, 0.75, 0.55)},
-            "矿山": {"icon": "⛏️", "power": 80, "color": (0.5, 0.5, 0.45)},
-            "港口": {"icon": "🚢", "power": 90, "color": (0.25, 0.55, 0.75)},
-            "城池": {"icon": "🏰", "power": 200, "color": (0.65, 0.45, 0.35)},
-            "驿站": {"icon": "🏇", "power": 60, "color": (0.6, 0.5, 0.4)},
-            "集市": {"icon": "🏪", "power": 70, "color": (0.75, 0.6, 0.4)}
+            "矿产": {"power": 80, "color": (0.7, 0.7, 0.75), "height": 8},
+            "农田": {"power": 50, "color": (0.4, 0.8, 0.4), "height": 5},
+            "煤矿": {"power": 70, "color": (0.3, 0.3, 0.35), "height": 6},
+            "水井": {"power": 40, "color": (0.3, 0.6, 0.9), "height": 4},
+            "敌对单位": {"power": 120, "color": (0.9, 0.3, 0.3), "height": 10}
         }
         
         for i in range(count):
@@ -225,17 +929,17 @@ class GameMap3D:
             level = random.randint(1, 10)
             power = int(LOCATION_TYPES[loc_type]["power"] * (0.5 + level * 0.1))
             
-            is_owned = loc_type in self.owned_territories or random.random() < 0.2
+            is_owned = loc_type != "敌对单位" and random.random() < 0.2
             
             locations.append({
                 "x": x,
                 "y": y,
                 "type": loc_type,
                 "level": level,
-                "desc": LOCATION_TYPES[loc_type]["icon"],
                 "power": power,
-                "owner": "player" if is_owned else ("enemy" if loc_type == "军营" else "neutral"),
-                "color": LOCATION_TYPES[loc_type]["color"]
+                "owner": "player" if is_owned else "enemy" if loc_type == "敌对单位" else "neutral",
+                "color": LOCATION_TYPES[loc_type]["color"],
+                "height": LOCATION_TYPES[loc_type]["height"]
             })
         
         return locations
@@ -260,6 +964,43 @@ class GameMap3D:
             
             if not too_close:
                 self.trees.append((x, z, random.uniform(0.8, 1.5)))
+    
+    def generate_tech_blocks(self):
+        self.tech_blocks = []
+        tech_block_names = [
+            "tech_machine_frame", "tech_energy_core", "tech_generator",
+            "tech_solar_panel", "tech_quantum_storage", "tech_nano_assembler",
+            "tech_circuit_board", "tech_fusion_core", "tech_autominer",
+            "tech_fabricator", "tech_energy_cable", "tech_laser_node"
+        ]
+        
+        for _ in range(40):
+            while True:
+                x = random.randint(-1200, 1200)
+                z = random.randint(-1200, 1200)
+                
+                too_close = False
+                for loc in self.locations:
+                    if math.hypot(x - loc["x"], z - loc["y"]) < 60:
+                        too_close = True
+                        break
+                for tb in self.tech_blocks:
+                    if math.hypot(x - tb["x"], z - tb["z"]) < 30:
+                        too_close = True
+                        break
+                
+                if not too_close:
+                    break
+            
+            tech_type = random.choice(tech_block_names)
+            self.tech_blocks.append({
+                "x": x,
+                "z": z,
+                "type": tech_type,
+                "rotation": random.randint(0, 3),
+                "active": random.random() < 0.7,
+                "energy": random.randint(50, 200)
+            })
     
     def generate_large_structures(self):
         self.large_structures = []
@@ -419,26 +1160,63 @@ class GameMap3D:
                     self.camera["mode"] = "third" if self.camera["mode"] == "first" else "first"
                     self.message = f"切换到{'第三人称' if self.camera['mode'] == 'third' else '第一人称'}视角"
                     self.message_timer = 2000
-                elif event.key == pygame.K_g:
-                    self.gravity = -0.35 if self.gravity != -0.35 else -0.2
-                    self.message = f"引力: {'正常' if self.gravity == -0.35 else '减弱'}"
+                elif event.key == pygame.K_m:
+                    self.minimap_enabled = not self.minimap_enabled
+                    self.message = f"小地图: {'开启' if self.minimap_enabled else '关闭'}"
                     self.message_timer = 2000
+                elif event.key == pygame.K_i:
+                    self.inventory_open = not self.inventory_open
+                    if self.inventory_open:
+                        self.is_mouse_locked = False
+                        pygame.mouse.set_visible(True)
+                        pygame.event.set_grab(False)
+                    elif not self.inventory_open:
+                        self.is_mouse_locked = True
+                        pygame.mouse.set_visible(False)
+                        pygame.event.set_grab(True)
+                elif self.inventory_open:
+                    if event.key == pygame.K_1:
+                        self.selected_slot = 0
+                    elif event.key == pygame.K_2:
+                        self.selected_slot = 1
+                    elif event.key == pygame.K_3:
+                        self.selected_slot = 2
+                    elif event.key == pygame.K_4:
+                        self.selected_slot = 3
+                    elif event.key == pygame.K_5:
+                        self.selected_slot = 4
+                    elif event.key == pygame.K_6:
+                        self.selected_slot = 5
+                    elif event.key == pygame.K_7:
+                        self.selected_slot = 6
+                    elif event.key == pygame.K_8:
+                        self.selected_slot = 7
+                    elif event.key == pygame.K_9:
+                        self.selected_slot = 8
                 elif event.key == pygame.K_e:
                     self.check_location_interaction()
                 elif event.key == pygame.K_r:
                     self.collect_nearby_resources()
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
-                    if not self.is_mouse_locked:
+                    if self.inventory_open:
+                        mouse_pos = pygame.mouse.get_pos()
+                        self.handle_inventory_click(mouse_pos)
+                    elif not self.is_mouse_locked:
                         self.is_mouse_locked = True
                         pygame.mouse.set_visible(False)
                         pygame.event.set_grab(True)
                         self.message = "鼠标已锁定，按Tab键解锁"
                         self.message_timer = 3000
                     else:
-                        self.move_to_mouse()
+                        self.try_pickup_item()
                 elif event.button == 3:
-                    self.check_npc_interaction()
+                    if not self.check_tech_interaction():
+                        self.check_npc_interaction()
+                elif event.button == 4:
+                    self.selected_slot = (self.selected_slot - 1) % 9
+                elif event.button == 5:
+                    self.selected_slot = (self.selected_slot + 1) % 9
             elif event.type == pygame.MOUSEMOTION:
                 if self.is_mouse_locked:
                     rel_x, rel_y = event.rel
@@ -447,6 +1225,344 @@ class GameMap3D:
                     self.camera["pitch"] = max(-89, min(89, self.camera["pitch"]))
         
         return True
+    
+    def check_tech_interaction(self):
+        current_time = time.time()
+        if current_time - self.last_tech_interact < 0.5:
+            return False
+        
+        for tech_block in self.tech_blocks:
+            distance = math.hypot(
+                tech_block["x"] - self.player_pos[0],
+                tech_block["z"] - self.player_pos[2]
+            )
+            if distance < 5:
+                self.last_tech_interact = current_time
+                tech_type = tech_block["type"]
+                tech_block["active"] = not tech_block.get("active", True)
+                
+                messages = {
+                    "tech_energy_core": "⚡ 能量核心已" + ("激活" if tech_block["active"] else "关闭"),
+                    "tech_generator": "🔋 发电机已" + ("启动" if tech_block["active"] else "停止"),
+                    "tech_matter_transporter": "🌀 物质传输器已" + ("激活" if tech_block["active"] else "关闭"),
+                    "tech_laser_node": "💥 激光节点已" + ("激活" if tech_block["active"] else "关闭"),
+                    "tech_quantum_storage": "💎 量子存储已" + ("激活" if tech_block["active"] else "关闭"),
+                    "tech_fusion_core": "☀️ 聚变核心已" + ("激活" if tech_block["active"] else "关闭"),
+                    "tech_teleporter": "🌟 传送门已" + ("激活" if tech_block["active"] else "关闭"),
+                    "tech_hologram_projector": "🎭 全息投影仪已" + ("激活" if tech_block["active"] else "关闭"),
+                }
+                
+                self.message = messages.get(tech_type, "✨ 科技方块已" + ("激活" if tech_block["active"] else "关闭"))
+                self.message_timer = 2000
+                
+                if tech_block["active"] and random.random() < 0.4:
+                    drop_items = ["gold_ingot", "iron_ingot", "diamond", "tech_advanced_chip", "tech_circuit_board"]
+                    drop_item = random.choice(drop_items)
+                    self.spawn_pickup(drop_item, tech_block["x"], tech_block["z"], 1)
+                
+                if tech_type == "tech_teleporter" and tech_block["active"]:
+                    if self.teleporter_targets:
+                        target = random.choice(self.teleporter_targets)
+                        self.player_pos = [target["x"], 2, target["z"]]
+                        self.message = "✨ 传送完成！"
+                    else:
+                        self.teleporter_targets.append({
+                            "x": tech_block["x"],
+                            "z": tech_block["z"]
+                        })
+                        self.message = "🎯 传送目标已设置！"
+                
+                return True
+        return False
+    
+    def try_pickup_item(self):
+        for pickup in self.pickups[:]:
+            distance = math.hypot(
+                pickup["x"] - self.player_pos[0],
+                pickup["y"] - self.player_pos[2]
+            )
+            if distance <= MAX_PICKUP_DISTANCE:
+                self.pickup_item(pickup)
+                self.pickups.remove(pickup)
+                return
+        self.message = "附近没有可拾取的物品"
+        self.message_timer = 2000
+    
+    def pickup_item(self, pickup):
+        item = pickup["item"]
+        stack_size = pickup.get("count", 1)
+        
+        for i in range(INVENTORY_SLOTS):
+            if self.inventory[i] and self.inventory[i]["item"] == item:
+                self.inventory[i]["count"] += stack_size
+                self.message = f"拾取: {item} x{stack_size}"
+                self.message_timer = 2000
+                save()
+                return
+        
+        for i in range(INVENTORY_SLOTS):
+            if self.inventory[i] is None:
+                self.inventory[i] = {"item": item, "count": stack_size}
+                self.message = f"拾取: {item} x{stack_size}"
+                self.message_timer = 2000
+                save()
+                return
+        
+        self.message = "背包已满！"
+        self.message_timer = 2000
+    
+    def handle_inventory_click(self, mouse_pos):
+        slot_size = 50
+        slot_spacing = 5
+        start_x = SCREEN_WIDTH // 2 - (9 * slot_size + 8 * slot_spacing) // 2
+        start_y = SCREEN_HEIGHT // 2 - 2 * (slot_size + slot_spacing)
+        
+        for i in range(INVENTORY_SLOTS):
+            slot_x = start_x + (i % 9) * (slot_size + slot_spacing)
+            slot_y = start_y + (i // 9) * (slot_size + slot_spacing)
+            slot_rect = pygame.Rect(slot_x, slot_y, slot_size, slot_size)
+            
+            if slot_rect.collidepoint(mouse_pos):
+                if i == self.selected_slot:
+                    pass
+                elif self.inventory[i]:
+                    temp = self.inventory[i]
+                    self.inventory[i] = self.inventory[self.selected_slot]
+                    self.inventory[self.selected_slot] = temp
+                elif self.inventory[self.selected_slot]:
+                    self.inventory[i] = self.inventory[self.selected_slot]
+                    self.inventory[self.selected_slot] = None
+    
+    def spawn_pickup(self, item, x, y, count=1):
+        pickup = {
+            "item": item,
+            "x": x,
+            "y": y,
+            "count": count,
+            "lifetime": 300
+        }
+        self.pickups.append(pickup)
+    
+    def update_pickups(self):
+        if random.random() < 0.005 and len(self.pickups) < 30:
+            common_drops = ["dirt", "grass", "stone", "iron_ingot", "coal"]
+            rare_drops = ["gold_ingot", "diamond", "emerald", "tech_advanced_chip"]
+            
+            if random.random() < 0.15:
+                item = random.choice(rare_drops)
+            else:
+                item = random.choice(common_drops)
+            
+            x = self.player_pos[0] + random.randint(-30, 30)
+            z = self.player_pos[2] + random.randint(-30, 30)
+            self.spawn_pickup(item, x, z, random.randint(1, 3))
+        
+        for pickup in self.pickups[:]:
+            pickup["lifetime"] -= 1
+            
+            if "bob_offset" not in pickup:
+                pickup["bob_offset"] = random.uniform(0, math.pi * 2)
+            if "rotation" not in pickup:
+                pickup["rotation"] = 0
+            if "target_x" not in pickup:
+                pickup["target_x"] = None
+                pickup["target_z"] = None
+            if "speed" not in pickup:
+                pickup["speed"] = 0
+            
+            pickup["rotation"] += 0.05
+            pickup["bob_offset"] += 0.1
+            
+            distance = math.hypot(
+                pickup["x"] - self.player_pos[0],
+                pickup["y"] - self.player_pos[2]
+            )
+            
+            if distance <= MAX_PICKUP_DISTANCE and not self.inventory_open:
+                dx = self.player_pos[0] - pickup["x"]
+                dz = self.player_pos[2] - pickup["y"]
+                pickup["speed"] = min(pickup["speed"] + 0.3, 1.5)
+                pickup["x"] += dx / distance * pickup["speed"]
+                pickup["y"] += dz / distance * pickup["speed"]
+                
+                if distance < 1.0:
+                    self.pickup_item(pickup)
+                    self.pickups.remove(pickup)
+                    continue
+            
+            if pickup["lifetime"] <= 0:
+                self.pickups.remove(pickup)
+    
+    def draw_minimap(self):
+        if not self.minimap_enabled:
+            return
+        
+        minimap_size = MINIMAP_SIZE
+        minimap_surface = pygame.Surface((minimap_size, minimap_size), pygame.SRCALPHA)
+        
+        pygame.draw.rect(minimap_surface, (20, 20, 40, 180), (0, 0, minimap_size, minimap_size), border_radius=10)
+        pygame.draw.rect(minimap_surface, COLORS["accent_gold"], (0, 0, minimap_size, minimap_size), 2, border_radius=10)
+        
+        scale = minimap_size / 400
+        center_x = minimap_size // 2
+        center_y = minimap_size // 2
+        
+        for loc in self.locations:
+            rel_x = (loc["x"] - self.player_pos[0]) * scale
+            rel_y = (loc["y"] - self.player_pos[2]) * scale
+            
+            if -minimap_size//2 <= rel_x <= minimap_size//2 and -minimap_size//2 <= rel_y <= minimap_size//2:
+                map_x = int(center_x + rel_x)
+                map_y = int(center_y + rel_y)
+                
+                if loc.get("owner") == "player":
+                    color = (50, 205, 50)
+                elif loc.get("owner") == "enemy":
+                    color = (255, 69, 0)
+                else:
+                    color = (150, 150, 150)
+                
+                pygame.draw.circle(minimap_surface, color, (map_x, map_y), 3)
+        
+        for pickup in self.pickups:
+            rel_x = (pickup["x"] - self.player_pos[0]) * scale
+            rel_y = (pickup["y"] - self.player_pos[2]) * scale
+            
+            if -minimap_size//2 <= rel_x <= minimap_size//2 and -minimap_size//2 <= rel_y <= minimap_size//2:
+                map_x = int(center_x + rel_x)
+                map_y = int(center_y + rel_y)
+                pygame.draw.circle(minimap_surface, (255, 255, 100), (map_x, map_y), 2)
+        
+        player_arrow_x = center_x
+        player_arrow_y = center_y
+        
+        yaw_rad = math.radians(self.camera["yaw"])
+        arrow_length = 8
+        arrow_end_x = int(player_arrow_x + math.sin(yaw_rad) * arrow_length)
+        arrow_end_y = int(player_arrow_y - math.cos(yaw_rad) * arrow_length)
+        
+        pygame.draw.circle(minimap_surface, (255, 255, 255), (player_arrow_x, player_arrow_y), 3)
+        pygame.draw.line(minimap_surface, (255, 255, 255), (player_arrow_x, player_arrow_y), (arrow_end_x, arrow_end_y), 2)
+        
+        self.screen.blit(minimap_surface, (10, 10))
+        
+        label_surf = self.font_small.render("小地图 M", True, (200, 200, 200))
+        self.screen.blit(label_surf, (10, MINIMAP_SIZE + 15))
+    
+    def draw_inventory(self):
+        if not self.inventory_open:
+            return
+        
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 100))
+        self.screen.blit(overlay, (0, 0))
+        
+        slot_size = 50
+        slot_spacing = 5
+        inventory_width = 9 * slot_size + 8 * slot_spacing + 40
+        inventory_height = 4 * (slot_size + slot_spacing) + 80
+        
+        inventory_x = SCREEN_WIDTH // 2 - inventory_width // 2
+        inventory_y = SCREEN_HEIGHT // 2 - inventory_height // 2
+        
+        inventory_surf = pygame.Surface((inventory_width, inventory_height), pygame.SRCALPHA)
+        pygame.draw.rect(inventory_surf, (40, 40, 60, 230), (0, 0, inventory_width, inventory_height), border_radius=15)
+        pygame.draw.rect(inventory_surf, COLORS["accent_gold"], (0, 0, inventory_width, inventory_height), 3, border_radius=15)
+        
+        title_surf = self.font_main.render("背包 I", True, COLORS["accent_gold"])
+        inventory_surf.blit(title_surf, (20, 15))
+        
+        start_x = 20
+        start_y = 50
+        
+        hotbar_labels = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+        
+        for i in range(INVENTORY_SLOTS):
+            slot_x = start_x + (i % 9) * (slot_size + slot_spacing)
+            slot_y = start_y + (i // 9) * (slot_size + slot_spacing)
+            
+            if i == self.selected_slot:
+                pygame.draw.rect(inventory_surf, (100, 100, 150), (slot_x - 3, slot_y - 3, slot_size + 6, slot_size + 6), border_radius=8)
+                pygame.draw.rect(inventory_surf, COLORS["accent_blue"], (slot_x - 3, slot_y - 3, slot_size + 6, slot_size + 6), 3, border_radius=8)
+            else:
+                pygame.draw.rect(inventory_surf, (60, 60, 80), (slot_x, slot_y, slot_size, slot_size), border_radius=6)
+                pygame.draw.rect(inventory_surf, (100, 100, 120), (slot_x, slot_y, slot_size, slot_size), 2, border_radius=6)
+            
+            if i < 9:
+                label_surf = self.font_small.render(hotbar_labels[i], True, (150, 150, 150))
+                inventory_surf.blit(label_surf, (slot_x + 3, slot_y + 3))
+            
+            if self.inventory[i]:
+                item = self.inventory[i]
+                item_name = item["item"]
+                item_count = item["count"]
+                
+                block_data = MC_BLOCKS.get(item_name, MC_BLOCKS.get("stone", {}))
+                color = block_data.get("color", (128, 128, 128))
+                if len(color) == 4:
+                    item_surf = pygame.Surface((slot_size - 10, slot_size - 10), pygame.SRCALPHA)
+                    pygame.draw.rect(item_surf, color, (0, 0, slot_size - 10, slot_size - 10), border_radius=4)
+                else:
+                    item_surf = pygame.Surface((slot_size - 10, slot_size - 10))
+                    pygame.draw.rect(item_surf, color, (0, 0, slot_size - 10, slot_size - 10), border_radius=4)
+                
+                inventory_surf.blit(item_surf, (slot_x + 5, slot_y + 5))
+                
+                if item_count > 1:
+                    count_surf = self.font_small.render(str(item_count), True, (255, 255, 255))
+                    inventory_surf.blit(count_surf, (slot_x + slot_size - 25, slot_y + slot_size - 20))
+        
+        hint_surf = self.font_small.render("点击交换物品 | 数字键选择快捷栏 | I键关闭", True, (150, 150, 150))
+        inventory_surf.blit(hint_surf, (20, inventory_height - 30))
+        
+        self.screen.blit(inventory_surf, (inventory_x, inventory_y))
+    
+    def draw_hotbar(self):
+        if self.inventory_open:
+            return
+        
+        slot_size = 40
+        slot_spacing = 3
+        hotbar_width = 9 * slot_size + 8 * slot_spacing + 20
+        hotbar_height = slot_size + 15
+        hotbar_x = SCREEN_WIDTH // 2 - hotbar_width // 2
+        hotbar_y = SCREEN_HEIGHT - hotbar_height - 10
+        
+        hotbar_surf = pygame.Surface((hotbar_width, hotbar_height), pygame.SRCALPHA)
+        pygame.draw.rect(hotbar_surf, (30, 30, 50, 200), (0, 0, hotbar_width, hotbar_height), border_radius=10)
+        pygame.draw.rect(hotbar_surf, (80, 80, 100), (0, 0, hotbar_width, hotbar_height), 2, border_radius=10)
+        
+        start_x = 10
+        start_y = 8
+        
+        for i in range(9):
+            slot_x = start_x + i * (slot_size + slot_spacing)
+            
+            if i == self.selected_slot:
+                pygame.draw.rect(hotbar_surf, (80, 80, 120), (slot_x - 2, start_y - 2, slot_size + 4, slot_size + 4), border_radius=6)
+                pygame.draw.rect(hotbar_surf, COLORS["accent_blue"], (slot_x - 2, start_y - 2, slot_size + 4, slot_size + 4), 2, border_radius=6)
+            else:
+                pygame.draw.rect(hotbar_surf, (50, 50, 70), (slot_x, start_y, slot_size, slot_size), border_radius=4)
+            
+            if self.inventory[i]:
+                item = self.inventory[i]
+                block_data = MC_BLOCKS.get(item["item"], MC_BLOCKS.get("stone", {}))
+                color = block_data.get("color", (128, 128, 128))
+                
+                item_surf = pygame.Surface((slot_size - 6, slot_size - 6))
+                if len(color) == 4:
+                    item_surf.fill((0, 0, 0, 0))
+                    pygame.draw.rect(item_surf, color[:3], (0, 0, slot_size - 6, slot_size - 6), border_radius=3)
+                else:
+                    pygame.draw.rect(item_surf, color, (0, 0, slot_size - 6, slot_size - 6), border_radius=3)
+                
+                hotbar_surf.blit(item_surf, (slot_x + 3, start_y + 3))
+                
+                if item["count"] > 1:
+                    count_surf = self.font_small.render(str(item["count"]), True, (255, 255, 255))
+                    hotbar_surf.blit(count_surf, (slot_x + slot_size - 18, start_y + slot_size - 16))
+        
+        self.screen.blit(hotbar_surf, (hotbar_x, hotbar_y))
     
     def check_npc_interaction(self):
         for npc in self.npcs:
@@ -758,7 +1874,7 @@ class GameMap3D:
     
     def collect_nearby_resources(self):
         collect_distance = 30
-        collected = {"金元宝": 0, "时间卡": 0}
+        collected = {"金元宝": 0, "煤炭": 0, "食物": 0, "水": 0}
         
         for loc in self.locations:
             if loc.get("owner") == "player":
@@ -768,21 +1884,43 @@ class GameMap3D:
                 )
                 if distance <= collect_distance:
                     loc_type = loc.get("type", "")
-                    if loc_type in ["矿山", "集市", "港口"]:
-                        gold_bonus = loc.get("level", 1) * 10
+                    level = loc.get("level", 1)
+                    
+                    if loc_type == "矿产":
+                        gold_bonus = level * 5
                         collected["金元宝"] += gold_bonus
-                    elif loc_type in ["驿站", "城池"]:
-                        time_bonus = loc.get("level", 1)
-                        collected["时间卡"] += time_bonus
+                    elif loc_type == "煤矿":
+                        coal_bonus = level * 10
+                        collected["煤炭"] += coal_bonus
+                    elif loc_type == "农田":
+                        food_bonus = level * 15
+                        water_bonus = level * 5
+                        collected["食物"] += food_bonus
+                        collected["水"] += water_bonus
+                    elif loc_type == "水井":
+                        water_bonus = level * 12
+                        collected["水"] += water_bonus
         
-        if collected["金元宝"] > 0 or collected["时间卡"] > 0:
+        total_collected = sum(collected.values())
+        if total_collected > 0:
             resources = data.get('resources', {})
-            resources['金元宝'] = resources.get('金元宝', 0) + collected["金元宝"]
-            resources['时间卡'] = resources.get('时间卡', 0) + collected["时间卡"]
+            for resource, amount in collected.items():
+                if amount > 0:
+                    resources[resource] = resources.get(resource, 0) + amount
             data['resources'] = resources
             save()
             
-            self.message = f"收集: 金元宝+{collected['金元宝']} 时间卡+{collected['时间卡']}"
+            msg_parts = []
+            if collected["金元宝"] > 0:
+                msg_parts.append(f"金元宝+{collected['金元宝']}")
+            if collected["煤炭"] > 0:
+                msg_parts.append(f"煤炭+{collected['煤炭']}")
+            if collected["食物"] > 0:
+                msg_parts.append(f"食物+{collected['食物']}")
+            if collected["水"] > 0:
+                msg_parts.append(f"水+{collected['水']}")
+            
+            self.message = "收集: " + " ".join(msg_parts)
             self.message_timer = 3000
         else:
             self.message = "附近没有可收集的资源"
@@ -901,6 +2039,11 @@ class GameMap3D:
             for follower in self.followers:
                 self.draw_follower(follower)
             
+            for tech_block in self.tech_blocks:
+                self.draw_tech_block(tech_block)
+            
+            self.draw_pickups()
+            
             pygame.display.flip()
         except Exception as e:
             print(f"渲染错误: {e}")
@@ -943,6 +2086,148 @@ class GameMap3D:
             glEnable(GL_LIGHTING)
         except Exception as e:
             print(f"绘制地形错误: {e}")
+    
+    def draw_pickups(self):
+        try:
+            glDisable(GL_LIGHTING)
+            
+            for pickup in self.pickups:
+                x = pickup["x"]
+                z = pickup["y"]
+                bob_y = math.sin(pickup.get("bob_offset", 0)) * 0.15 + 0.3
+                rotation = pickup.get("rotation", 0)
+                
+                item_name = pickup["item"]
+                block_data = MC_BLOCKS.get(item_name, MC_BLOCKS.get("stone", {}))
+                color = block_data.get("color", (128, 128, 128))
+                
+                if len(color) == 4:
+                    r, g, b, a = color
+                else:
+                    r, g, b = color
+                    a = 1.0
+                
+                glColor4f(r/255, g/255, b/255, a)
+                
+                glPushMatrix()
+                glTranslatef(x, bob_y, z)
+                glRotatef(math.degrees(rotation), 0, 1, 0)
+                
+                size = 0.35
+                glBegin(GL_QUADS)
+                
+                glVertex3f(-size, -size, -size)
+                glVertex3f(size, -size, -size)
+                glVertex3f(size, size, -size)
+                glVertex3f(-size, size, -size)
+                
+                glVertex3f(size, -size, -size)
+                glVertex3f(size, -size, size)
+                glVertex3f(size, size, size)
+                glVertex3f(size, size, -size)
+                
+                glVertex3f(size, -size, size)
+                glVertex3f(-size, -size, size)
+                glVertex3f(-size, size, size)
+                glVertex3f(size, size, size)
+                
+                glVertex3f(-size, -size, size)
+                glVertex3f(-size, -size, -size)
+                glVertex3f(-size, size, -size)
+                glVertex3f(-size, size, size)
+                
+                glVertex3f(-size, size, -size)
+                glVertex3f(size, size, -size)
+                glVertex3f(size, size, size)
+                glVertex3f(-size, size, size)
+                
+                glVertex3f(-size, -size, size)
+                glVertex3f(size, -size, size)
+                glVertex3f(size, -size, -size)
+                glVertex3f(-size, -size, -size)
+                
+                glEnd()
+                
+                glPopMatrix()
+            
+            glEnable(GL_LIGHTING)
+        except Exception as e:
+            print(f"绘制掉落物错误: {e}")
+    
+    def draw_tech_block(self, tech_block):
+        try:
+            glDisable(GL_LIGHTING)
+            
+            x, z = tech_block["x"], tech_block["z"]
+            tech_type = tech_block["type"]
+            active = tech_block.get("active", False)
+            rotation = tech_block.get("rotation", 0)
+            
+            block_data = MC_BLOCKS.get(tech_type, MC_BLOCKS.get("stone", {}))
+            color = block_data.get("color", (100, 100, 110))
+            
+            if len(color) == 4:
+                r, g, b, a = color
+                glColor4f(r/255, g/255, b/255, a)
+            else:
+                r, g, b = color
+                glColor3f(r/255, g/255, b/255)
+            
+            glPushMatrix()
+            glTranslatef(x, 0.5, z)
+            glRotatef(rotation * 90, 0, 1, 0)
+            
+            block_size = 1.5
+            
+            glBegin(GL_QUADS)
+            
+            glVertex3f(-block_size/2, 0, -block_size/2)
+            glVertex3f(block_size/2, 0, -block_size/2)
+            glVertex3f(block_size/2, block_size, -block_size/2)
+            glVertex3f(-block_size/2, block_size, -block_size/2)
+            
+            glVertex3f(block_size/2, 0, -block_size/2)
+            glVertex3f(block_size/2, 0, block_size/2)
+            glVertex3f(block_size/2, block_size, block_size/2)
+            glVertex3f(block_size/2, block_size, -block_size/2)
+            
+            glVertex3f(block_size/2, 0, block_size/2)
+            glVertex3f(-block_size/2, 0, block_size/2)
+            glVertex3f(-block_size/2, block_size, block_size/2)
+            glVertex3f(block_size/2, block_size, block_size/2)
+            
+            glVertex3f(-block_size/2, 0, block_size/2)
+            glVertex3f(-block_size/2, 0, -block_size/2)
+            glVertex3f(-block_size/2, block_size, -block_size/2)
+            glVertex3f(-block_size/2, block_size, block_size/2)
+            
+            glVertex3f(-block_size/2, block_size, -block_size/2)
+            glVertex3f(block_size/2, block_size, -block_size/2)
+            glVertex3f(block_size/2, block_size, block_size/2)
+            glVertex3f(-block_size/2, block_size, block_size/2)
+            
+            glVertex3f(-block_size/2, 0, block_size/2)
+            glVertex3f(block_size/2, 0, block_size/2)
+            glVertex3f(block_size/2, 0, -block_size/2)
+            glVertex3f(-block_size/2, 0, -block_size/2)
+            
+            glEnd()
+            
+            if block_data.get("emissive", False) and active:
+                pulse = math.sin(time.time() * 3) * 0.2 + 0.8
+                glColor4f(r/255*pulse*1.5, g/255*pulse*1.5, b/255*pulse*1.5, 0.5)
+                glBegin(GL_QUADS)
+                offset = 0.1
+                glVertex3f(-block_size/2 - offset, -offset, -block_size/2 - offset)
+                glVertex3f(block_size/2 + offset, -offset, -block_size/2 - offset)
+                glVertex3f(block_size/2 + offset, block_size + offset, -block_size/2 - offset)
+                glVertex3f(-block_size/2 - offset, block_size + offset, -block_size/2 - offset)
+                glEnd()
+            
+            glPopMatrix()
+            glEnable(GL_LIGHTING)
+        except Exception as e:
+            print(f"绘制科技方块错误: {e}")
     
     def draw_tree(self, x, z, scale=1.0):
         try:
@@ -1058,12 +2343,17 @@ class GameMap3D:
     def draw_location(self, loc):
         try:
             x, z = loc["x"], loc["y"]
-            loc_type = loc.get("type", "村庄")
+            loc_type = loc.get("type", "矿产")
             color = loc.get("color", (0.6, 0.5, 0.4))
             owner = loc.get("owner", "neutral")
+            height = loc.get("height", 8)
+            rotation_id = loc.get("rotation_id", 0)
+            facing_id = loc.get("facing_id", 0)
             
             glPushMatrix()
             glTranslatef(x, 0, z)
+            
+            glRotatef(rotation_id * 90, 0, 1, 0)
             
             glDisable(GL_LIGHTING)
             
@@ -1100,18 +2390,15 @@ class GameMap3D:
             glVertex3f(-base_width/2, base_height, base_depth/2)
             glEnd()
             
-            wall_height = {
-                "关隘": 18,
-                "军营": 15,
-                "村庄": 10,
-                "矿山": 8,
-                "港口": 10,
-                "城池": 22,
-                "驿站": 8,
-                "集市": 9
-            }.get(loc_type, 12)
-            
-            glColor3f(*color)
+            wall_height = height
+            facing_colors = {
+                0: (color[0] * 1.2, color[1] * 1.2, color[2] * 1.2),
+                1: (color[0] * 0.9, color[1] * 0.9, color[2] * 0.9),
+                2: (color[0] * 0.8, color[1] * 0.8, color[2] * 0.8),
+                3: (color[0] * 0.7, color[1] * 0.7, color[2] * 0.7)
+            }
+            facing_color = facing_colors.get(facing_id, color)
+            glColor3f(*facing_color)
             
             glBegin(GL_QUADS)
             glVertex3f(-base_width/2, base_height, -base_depth/2)
@@ -1298,8 +2585,10 @@ class GameMap3D:
         
         resources = data.get('resources', {})
         gold = resources.get('金元宝', 0)
-        time_card = resources.get('时间卡', 0)
-        resource_text = f"金元宝: {gold} | 时间卡: {time_card}"
+        coal = resources.get('煤炭', 0)
+        food = resources.get('食物', 0)
+        water = resources.get('水', 0)
+        resource_text = f"金元宝:{gold} 煤炭:{coal} 食物:{food} 水:{water}"
         resource_surf = self.font_small.render(resource_text, True, COLORS["accent_gold"])
         self.screen.blit(resource_surf, (10, 70))
         
@@ -1322,10 +2611,12 @@ class GameMap3D:
             "空格: 跳跃",
             "E: 进入地点",
             "R: 收集资源",
+            "I: 背包",
+            "M: 小地图",
             "Tab: 锁定鼠标",
             "F: 跟随模式",
             "F5: 切换视角",
-            "右键: 与NPC交互"
+            "右键: NPC/科技方块交互"
         ]
         
         for i, control in enumerate(controls):
@@ -1371,9 +2662,16 @@ class GameMap3D:
             self.update_physics()
             self.update_npcs()
             self.update_followers()
+            self.update_pickups()
             
             self.draw_3d_scene()
-            self.draw_hud()
+            
+            if not self.inventory_open:
+                self.draw_hud()
+                self.draw_minimap()
+                self.draw_hotbar()
+            else:
+                self.draw_inventory()
             
             pygame.display.flip()
         

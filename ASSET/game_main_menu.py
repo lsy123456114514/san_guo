@@ -1194,9 +1194,6 @@ def run_module(module_file):
             elif module_file == "pet_arena.py":
                 from ASSET.pet_arena import main as arena_main
                 arena_main()
-            elif module_file == "ai_system.py":
-                from ASSET.ai_system import main as ai_main
-                ai_main()
         else:
             if module_file == "pvp_p2p.py":
                 from ASSET.pvp_p2p import main as pvp_main
@@ -1303,9 +1300,6 @@ def run_module(module_file):
             elif module_file == "pet_arena.py":
                 from ASSET.pet_arena import main as arena_main
                 arena_main()
-            elif module_file == "ai_system.py":
-                from ASSET.ai_system import main as ai_main
-                ai_main()
 
         pygame.event.clear()
 

@@ -1,28 +1,34 @@
 # -*- mode: python ; coding: utf-8 -*-
+# 打包工具 - PyInstaller 配置文件
 
+block_cipher = None
 
 a = Analysis(
-    ['main.py'],
+    ['打包工具.py'],
     pathex=[],
     binaries=[],
-    datas=[('ASSET', 'ASSET'), ('data', 'data')],
-    hiddenimports=['pkg_resources', 'pkg_resources.py2_warn', 'jaraco', 'jaraco.functools'],
+    datas=[],
+    hiddenimports=['tkinter'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter', 'PyQt5', 'wx', 'scipy', 'numpy', 'matplotlib', 'pandas', 'tensorflow', 'torch', 'sklearn'],
+    excludes=[],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
     noarchive=False,
-    optimize=0,
 )
-pyz = PYZ(a.pure)
+
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
+    a.zipfiles,
     a.datas,
     [],
-    name='SangoHeroes',
+    name='GamePacker',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -35,5 +41,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['data\\icon.png'],
+    icon=None,
 )
