@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 GitHub 分支标签管理工具 - Plus Pro Max 版
-支持：GitHub账户绑定、密钥管理、仓库克隆、自定义目录等高级功能
+支持：分支管理、标签管理、仓库克隆、自定义目录
 """
 
 import os
@@ -18,14 +18,12 @@ class GitHubBranchTool:
     def __init__(self, master):
         self.master = master
         self.master.title("GitHub 分支标签管理工具 - Plus Pro Max")
-        self.master.geometry("900x750")
+        self.master.geometry("900x700")
         self.master.configure(bg="#1a1a2e")
         self.master.resizable(True, True)
 
-        # 配置文件路径
         self.config_file = os.path.join(os.path.expanduser("~"), ".github_tool_config.json")
         
-        # 状态变量
         self.custom_branch = tk.StringVar(value="main")
         self.custom_tag = tk.StringVar()
         self.tag_message = tk.StringVar()
@@ -38,36 +36,26 @@ class GitHubBranchTool:
         self.repo_url = tk.StringVar()
         self.local_path = tk.StringVar(value=os.getcwd())
 
-        # 数据列表
         self.branch_list = []
         self.tag_list = []
         self.push_history = []
-        self.repo_list = []
 
-        # 加载配置
         self.load_config()
-
-        # 创建界面
         self.create_widgets()
         self.refresh_all()
 
     def load_config(self):
-        """加载配置文件"""
         try:
             if os.path.exists(self.config_file):
                 with open(self.config_file, 'r', encoding='utf-8') as f:
                     config = json.load(f)
-                    if 'github_token' in config:
-                        self.github_token.set(config['github_token'])
-                    if 'github_user' in config:
-                        self.github_user.set(config['github_user'])
-                    if 'repo_url' in config:
-                        self.repo_url.set(config['repo_url'])
+                    self.github_token.set(config.get('github_token', ''))
+                    self.github_user.set(config.get('github_user', ''))
+                    self.repo_url.set(config.get('repo_url', ''))
         except:
             pass
 
     def save_config(self):
-        """保存配置文件"""
         config = {
             'github_token': self.github_token.get(),
             'github_user': self.github_user.get(),
@@ -76,12 +64,11 @@ class GitHubBranchTool:
         try:
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2)
+            messagebox.showinfo("成功", "配置已保存!")
         except Exception as e:
             messagebox.showerror("错误", f"保存配置失败: {str(e)}")
 
     def create_widgets(self):
-        """创建界面组件"""
-        # 顶部状态栏
         status_bar = tk.Frame(self.master, bg="#16213e", height=30)
         status_bar.pack(fill="x")
         status_bar.pack_propagate(False)
@@ -96,35 +83,22 @@ class GitHubBranchTool:
                                           bg="#16213e", fg="#f39c12")
         self.git_status_label.pack(side="right", padx=20)
 
-        # 主容器 - 使用 Notebook 分页
         self.notebook = ttk.Notebook(self.master)
         self.notebook.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # ========== 推送代码页面 ==========
         self.create_push_page()
-
-        # ========== 分支管理页面 ==========
         self.create_branch_page()
-
-        # ========== 标签管理页面 ==========
         self.create_tag_page()
-
-        # ========== 仓库管理页面 ==========
         self.create_repo_page()
-
-        # ========== 设置页面 ==========
         self.create_settings_page()
 
     def create_push_page(self):
-        """创建推送代码页面"""
         push_frame = tk.Frame(self.notebook, bg="#1a1a2e")
         self.notebook.add(push_frame, text="🚀 推送代码")
 
-        # 左侧配置区
         left_frame = tk.Frame(push_frame, bg="#1a1a2e")
         left_frame.pack(side="left", fill="both", expand=True, padx=10, pady=10)
 
-        # 分支设置
         branch_frame = tk.LabelFrame(left_frame, text="📁 分支设置",
                                      font=("Microsoft YaHei", 11, "bold"),
                                      bg="#16213e", fg="#f39c12", padx=10, pady=10)
@@ -133,15 +107,11 @@ class GitHubBranchTool:
         tk.Label(branch_frame, text="目标分支:", font=("Microsoft YaHei", 10),
                  bg="#16213e", fg="#ffffff").pack(anchor="w")
 
-        branch_entry_frame = tk.Frame(branch_frame, bg="#16213e")
-        branch_entry_frame.pack(fill="x", pady=5)
-
-        self.branch_entry = tk.Entry(branch_entry_frame, textvariable=self.custom_branch,
+        self.branch_entry = tk.Entry(branch_frame, textvariable=self.custom_branch,
                                      font=("Microsoft YaHei", 12), width=25,
                                      bg="#0f3460", fg="#ffffff", insertbackground="white")
-        self.branch_entry.pack(side="left", fill="x", expand=True)
+        self.branch_entry.pack(fill="x", pady=5)
 
-        # 快速选择常用分支
         quick_frame = tk.Frame(branch_frame, bg="#16213e")
         quick_frame.pack(fill="x", pady=5)
         for branch in ["main", "master", "develop", "feature", "cpp-python", "python-only"]:
@@ -149,7 +119,6 @@ class GitHubBranchTool:
                       command=lambda b=branch: self.custom_branch.set(b),
                       bg="#3498db", fg="white", width=8, font=("Microsoft YaHei", 9)).pack(side="left", padx=2)
 
-        # 标签设置
         tag_frame = tk.LabelFrame(left_frame, text="🏷️ 标签设置",
                                    font=("Microsoft YaHei", 11, "bold"),
                                    bg="#16213e", fg="#f39c12", padx=10, pady=10)
@@ -167,15 +136,14 @@ class GitHubBranchTool:
         self.tag_entry.pack(side="left", fill="x", expand=True)
 
         tk.Button(tag_entry_frame, text="清除", command=lambda: self.custom_tag.set(""),
-                  bg="#95a5a6", fg="white", width=6).pack(side="left", padx=(5, 0))
+                  bg="#95a5a6", fg="white", width=8).pack(side="left", padx=(5, 0))
 
         tk.Label(tag_frame, text="标签说明:", font=("Microsoft YaHei", 10),
                  bg="#16213e", fg="#ffffff").pack(anchor="w")
         tk.Entry(tag_frame, textvariable=self.tag_message,
-                 font=("Microsoft YaHei", 11), width=35,
+                 font=("Microsoft YaHei", 11), width=40,
                  bg="#0f3460", fg="#ffffff", insertbackground="white").pack(fill="x", pady=3)
 
-        # 预设标签
         preset_frame = tk.Frame(tag_frame, bg="#16213e")
         preset_frame.pack(fill="x", pady=5)
         for preset in ["v1.0", "v1.1", "v2.0", "release", "beta", "alpha"]:
@@ -183,7 +151,6 @@ class GitHubBranchTool:
                       command=lambda p=preset: self.custom_tag.set(p),
                       bg="#27ae60", fg="white", width=6).pack(side="left", padx=2)
 
-        # 提交设置
         commit_frame = tk.LabelFrame(left_frame, text="📝 提交设置",
                                       font=("Microsoft YaHei", 11, "bold"),
                                       bg="#16213e", fg="#f39c12", padx=10, pady=10)
@@ -192,10 +159,9 @@ class GitHubBranchTool:
         tk.Label(commit_frame, text="提交信息:", font=("Microsoft YaHei", 10),
                  bg="#16213e", fg="#ffffff").pack(anchor="w")
         tk.Entry(commit_frame, textvariable=self.commit_message,
-                 font=("Microsoft YaHei", 11), width=35,
+                 font=("Microsoft YaHei", 11), width=40,
                  bg="#0f3460", fg="#ffffff", insertbackground="white").pack(fill="x", pady=3)
 
-        # 推送选项
         options_frame = tk.LabelFrame(left_frame, text="⚙️ 推送选项",
                                        font=("Microsoft YaHei", 11, "bold"),
                                        bg="#16213e", fg="#f39c12", padx=10, pady=10)
@@ -214,7 +180,6 @@ class GitHubBranchTool:
                       font=("Microsoft YaHei", 10), bg="#16213e", fg="#e74c3c",
                       selectcolor="#0f3460").pack(anchor="w")
 
-        # 进度条
         progress_frame = tk.LabelFrame(left_frame, text="📊 推送进度",
                                         font=("Microsoft YaHei", 11, "bold"),
                                         bg="#16213e", fg="#f39c12", padx=10, pady=10)
@@ -229,7 +194,6 @@ class GitHubBranchTool:
                                        bg="#16213e", fg="#27ae60")
         self.progress_label.pack(anchor="w")
 
-        # 操作按钮
         btn_frame = tk.Frame(left_frame, bg="#1a1a2e")
         btn_frame.pack(fill="x", pady=10)
 
@@ -240,11 +204,9 @@ class GitHubBranchTool:
                                    height=2, cursor="hand2")
         self.push_btn.pack(fill="x", pady=2)
 
-        # 右侧信息区
         right_frame = tk.Frame(push_frame, bg="#1a1a2e")
         right_frame.pack(side="right", fill="both", expand=True, padx=10, pady=10)
 
-        # 当前状态
         status_frame = tk.LabelFrame(right_frame, text="📈 当前状态",
                                       font=("Microsoft YaHei", 11, "bold"),
                                       bg="#16213e", fg="#f39c12", padx=10, pady=10)
@@ -255,7 +217,6 @@ class GitHubBranchTool:
                                                      bg="#0f3460", fg="#00ff00")
         self.status_text.pack(fill="both", expand=True)
 
-        # 推送历史
         history_frame = tk.LabelFrame(right_frame, text="📜 推送历史",
                                        font=("Microsoft YaHei", 11, "bold"),
                                        bg="#16213e", fg="#f39c12", padx=10, pady=10)
@@ -266,11 +227,9 @@ class GitHubBranchTool:
         self.history_listbox.pack(fill="both", expand=True)
 
     def create_branch_page(self):
-        """创建分支管理页面"""
         branch_frame = tk.Frame(self.notebook, bg="#1a1a2e")
         self.notebook.add(branch_frame, text="🌿 分支管理")
 
-        # 分支列表
         list_frame = tk.Frame(branch_frame, bg="#1a1a2e")
         list_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
@@ -278,7 +237,6 @@ class GitHubBranchTool:
                                           bg="#0f3460", fg="#ffffff", width=70)
         self.branch_listbox.pack(side="left", fill="both", expand=True, padx=(0, 10))
 
-        # 操作按钮
         btn_frame = tk.Frame(list_frame, bg="#1a1a2e")
         btn_frame.pack(side="right", fill="y")
 
@@ -294,11 +252,9 @@ class GitHubBranchTool:
                   bg="#7f8c8d", fg="white", width=14, font=("Microsoft YaHei", 10)).pack(fill="x", pady=5)
 
     def create_tag_page(self):
-        """创建标签管理页面"""
         tag_frame = tk.Frame(self.notebook, bg="#1a1a2e")
         self.notebook.add(tag_frame, text="🏷️ 标签管理")
 
-        # 标签列表
         list_frame = tk.Frame(tag_frame, bg="#1a1a2e")
         list_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
@@ -306,7 +262,6 @@ class GitHubBranchTool:
                                        bg="#0f3460", fg="#ffffff", width=70)
         self.tag_listbox.pack(side="left", fill="both", expand=True, padx=(0, 10))
 
-        # 操作按钮
         btn_frame = tk.Frame(list_frame, bg="#1a1a2e")
         btn_frame.pack(side="right", fill="y")
 
@@ -320,11 +275,9 @@ class GitHubBranchTool:
                   bg="#7f8c8d", fg="white", width=14, font=("Microsoft YaHei", 10)).pack(fill="x", pady=5)
 
     def create_repo_page(self):
-        """创建仓库管理页面"""
         repo_frame = tk.Frame(self.notebook, bg="#1a1a2e")
         self.notebook.add(repo_frame, text="📦 仓库管理")
 
-        # 远程仓库URL
         url_frame = tk.LabelFrame(repo_frame, text="🌐 远程仓库",
                                    font=("Microsoft YaHei", 11, "bold"),
                                    bg="#16213e", fg="#f39c12", padx=10, pady=10)
@@ -336,7 +289,6 @@ class GitHubBranchTool:
                  font=("Microsoft YaHei", 11), width=60,
                  bg="#0f3460", fg="#ffffff", insertbackground="white").pack(fill="x", pady=3)
 
-        # 本地路径选择
         path_frame = tk.LabelFrame(repo_frame, text="📂 本地路径",
                                     font=("Microsoft YaHei", 11, "bold"),
                                     bg="#16213e", fg="#f39c12", padx=10, pady=10)
@@ -354,7 +306,6 @@ class GitHubBranchTool:
         tk.Button(path_entry_frame, text="浏览", command=self.browse_path,
                   bg="#3498db", fg="white", width=8).pack(side="left", padx=(5, 0))
 
-        # 文件夹名称
         name_frame = tk.LabelFrame(repo_frame, text="📁 新建文件夹",
                                     font=("Microsoft YaHei", 11, "bold"),
                                     bg="#16213e", fg="#f39c12", padx=10, pady=10)
@@ -367,7 +318,6 @@ class GitHubBranchTool:
         self.folder_name_entry.pack(fill="x", pady=3)
         self.folder_name_entry.insert(0, "my_project")
 
-        # 操作按钮
         btn_frame = tk.Frame(repo_frame, bg="#1a1a2e")
         btn_frame.pack(fill="x", padx=10, pady=10)
 
@@ -381,7 +331,6 @@ class GitHubBranchTool:
                   bg="#f39c12", fg="white", font=("Microsoft YaHei", 11, "bold"),
                   height=2).pack(side="left", fill="x", expand=True, padx=5)
 
-        # 克隆历史
         history_frame = tk.LabelFrame(repo_frame, text="📜 操作日志",
                                        font=("Microsoft YaHei", 11, "bold"),
                                        bg="#16213e", fg="#f39c12", padx=10, pady=10)
@@ -392,11 +341,9 @@ class GitHubBranchTool:
         self.repo_log.pack(fill="both", expand=True)
 
     def create_settings_page(self):
-        """创建设置页面"""
         settings_frame = tk.Frame(self.notebook, bg="#1a1a2e")
         self.notebook.add(settings_frame, text="⚙️ 设置")
 
-        # GitHub账户设置
         account_frame = tk.LabelFrame(settings_frame, text="👤 GitHub 账户设置",
                                        font=("Microsoft YaHei", 11, "bold"),
                                        bg="#16213e", fg="#f39c12", padx=10, pady=15)
@@ -408,41 +355,37 @@ class GitHubBranchTool:
                  font=("Microsoft YaHei", 11), width=40,
                  bg="#0f3460", fg="#ffffff", insertbackground="white").pack(fill="x", pady=3)
 
-        tk.Label(account_frame, text="访问令牌 (Token):", font=("Microsoft YaHei", 10),
+        tk.Label(account_frame, text="访问令牌 (Personal Access Token):", font=("Microsoft YaHei", 10, "bold"),
                  bg="#16213e", fg="#ffffff").pack(anchor="w")
         token_frame = tk.Frame(account_frame, bg="#16213e")
         token_frame.pack(fill="x", pady=3)
-        tk.Entry(token_frame, textvariable=self.github_token,
+        self.token_entry = tk.Entry(token_frame, textvariable=self.github_token,
                  font=("Microsoft YaHei", 11), width=40, show="*",
-                 bg="#0f3460", fg="#ffffff", insertbackground="white").pack(side="left", fill="x", expand=True)
-        tk.Button(token_frame, text="查看", command=self.toggle_token_visibility,
-                  bg="#95a5a6", fg="white", width=8).pack(side="left", padx=(5, 0))
+                 bg="#0f3460", fg="#ffffff", insertbackground="white")
+        self.token_entry.pack(side="left", fill="x", expand=True)
+        tk.Button(token_frame, text="显示/隐藏", command=self.toggle_token,
+                  bg="#95a5a6", fg="white", width=10).pack(side="left", padx=(5, 0))
 
-        # 提示信息
-        hint_frame = tk.LabelFrame(settings_frame, text="💡 使用提示",
+        hint_frame = tk.LabelFrame(settings_frame, text="💡 如何获取访问令牌",
                                     font=("Microsoft YaHei", 11, "bold"),
                                     bg="#16213e", fg="#f39c12", padx=10, pady=10)
         hint_frame.pack(fill="x", padx=10, pady=10)
 
         hints = [
-            "🔑 访问令牌获取方式:",
-            "  1. 登录 GitHub → Settings → Developer settings",
-            "  2. 选择 Personal access tokens",
-            "  3. 点击 Generate new token",
-            "  4. 勾选 repo, workflow 权限",
-            "  5. 复制生成的令牌",
-            "",
-            "⚠️ 重要提示:",
-            "  - 令牌只显示一次，请妥善保存",
-            "  - 令牌具有仓库读写权限，请不要泄露",
-            "  - 令牌存储在本地配置文件中",
+            "1. 打开 GitHub → Settings → Developer settings",
+            "2. 点击 Personal access tokens → Fine-grained tokens",
+            "3. 点击 Generate new token",
+            "4. 填写名称，选择过期时间",
+            "5. 权限选择：repo (仓库操作)、workflow (GitHub Actions)",
+            "6. 点击 Generate token",
+            "7. 复制生成的令牌（只显示一次！）",
+            "8. 粘贴到上面的输入框，点击保存"
         ]
 
         for hint in hints:
             tk.Label(hint_frame, text=hint, font=("Microsoft YaHei", 10),
-                     bg="#16213e", fg="#ffffff", justify="left").pack(anchor="w")
+                     bg="#16213e", fg="#ffffff", justify="left").pack(anchor="w", pady=2)
 
-        # 操作按钮
         btn_frame = tk.Frame(settings_frame, bg="#1a1a2e")
         btn_frame.pack(fill="x", padx=10, pady=20)
 
@@ -453,18 +396,18 @@ class GitHubBranchTool:
                   bg="#3498db", fg="white", font=("Microsoft YaHei", 11, "bold"),
                   height=2).pack(side="left", fill="x", expand=True, padx=5)
 
-    def toggle_token_visibility(self):
-        """切换令牌可见性"""
-        pass  # 简化实现
+    def toggle_token(self):
+        if self.token_entry.cget("show") == "*":
+            self.token_entry.config(show="")
+        else:
+            self.token_entry.config(show="*")
 
     def browse_path(self):
-        """浏览选择路径"""
         path = filedialog.askdirectory()
         if path:
             self.local_path.set(path)
 
     def run_git_command(self, *args, capture=True, check=True, timeout=60):
-        """执行git命令"""
         try:
             if capture:
                 result = subprocess.run(
@@ -491,7 +434,6 @@ class GitHubBranchTool:
             raise Exception("Git未安装或不在PATH中")
 
     def update_status(self):
-        """更新状态信息"""
         self.status_text.delete(1.0, tk.END)
         try:
             current_branch = self.run_git_command("rev-parse", "--abbrev-ref", "HEAD")[0]
@@ -514,13 +456,11 @@ class GitHubBranchTool:
             self.git_status_label.config(text="未检测到Git仓库")
 
     def refresh_all(self):
-        """刷新所有信息"""
         self.refresh_branches()
         self.refresh_tags()
         self.update_status()
 
     def refresh_branches(self):
-        """刷新分支列表"""
         self.branch_listbox.delete(0, tk.END)
         try:
             output, _, _ = self.run_git_command("branch", "-a")
@@ -555,7 +495,6 @@ class GitHubBranchTool:
             self.branch_listbox.insert(tk.END, f"错误: {str(e)}")
 
     def refresh_tags(self):
-        """刷新标签列表"""
         self.tag_listbox.delete(0, tk.END)
         try:
             output, _, _ = self.run_git_command("tag", "-l")
@@ -569,7 +508,6 @@ class GitHubBranchTool:
             self.tag_listbox.insert(tk.END, f"错误: {str(e)}")
 
     def push_to_github(self):
-        """推送到GitHub"""
         branch = self.custom_branch.get().strip()
         tag = self.custom_tag.get().strip()
         tag_msg = self.tag_message.get().strip() or f"Release {tag}"
@@ -687,7 +625,6 @@ class GitHubBranchTool:
         threading.Thread(target=worker, daemon=True).start()
 
     def create_branch(self):
-        """创建分支"""
         dialog = tk.Toplevel(self.master)
         dialog.title("创建分支")
         dialog.geometry("450x300")
@@ -703,25 +640,11 @@ class GitHubBranchTool:
         branch_entry.pack(pady=5)
         branch_entry.focus()
 
-        # 本地路径选择
-        tk.Label(dialog, text="📂 本地目录 (可选):", font=("Microsoft YaHei", 11),
-                 bg="#1a1a2e", fg="#ffffff").pack(pady=(10, 0))
-        
-        path_frame = tk.Frame(dialog, bg="#1a1a2e")
-        path_frame.pack(fill="x", padx=20, pady=5)
-        
-        path_var = tk.StringVar(value=os.getcwd())
-        tk.Entry(path_frame, textvariable=path_var,
-                 font=("Microsoft YaHei", 11), width=35,
-                 bg="#0f3460", fg="#ffffff", insertbackground="white").pack(side="left", fill="x", expand=True)
-        tk.Button(path_frame, text="浏览", command=lambda: path_var.set(filedialog.askdirectory()),
-                  bg="#3498db", fg="white", width=8).pack(side="left", padx=(5, 0))
-
         push_to_remote = tk.BooleanVar(value=True)
         tk.Checkbutton(dialog, text="☑️ 同时推送到远程",
                       variable=push_to_remote,
                       font=("Microsoft YaHei", 10), bg="#1a1a2e", fg="#ffffff",
-                      selectcolor="#0f3460").pack(pady=5)
+                      selectcolor="#0f3460").pack(pady=10)
 
         def do_create():
             name = branch_entry.get().strip()
@@ -756,7 +679,6 @@ class GitHubBranchTool:
         dialog.bind("<Return>", lambda e: do_create())
 
     def checkout_branch(self):
-        """切换分支"""
         selection = self.branch_listbox.curselection()
         if not selection:
             messagebox.showwarning("提示", "请先选择一个分支")
@@ -771,15 +693,12 @@ class GitHubBranchTool:
         try:
             self.run_git_command("checkout", branch)
             messagebox.showinfo("成功", f"已切换到分支: {branch}")
-            
             self.custom_branch.set(branch)
-            
             self.refresh_all()
         except Exception as e:
             messagebox.showerror("错误", str(e))
 
     def delete_branch(self):
-        """删除分支"""
         selection = self.branch_listbox.curselection()
         if not selection:
             messagebox.showwarning("提示", "请先选择一个分支")
@@ -800,7 +719,6 @@ class GitHubBranchTool:
                 messagebox.showerror("错误", str(e))
 
     def pull_branch(self):
-        """拉取分支更新"""
         try:
             self.status_label.config(text="正在拉取更新...")
             self.master.update()
@@ -819,7 +737,6 @@ class GitHubBranchTool:
             messagebox.showerror("错误", str(e))
 
     def create_tag(self):
-        """创建标签"""
         dialog = tk.Toplevel(self.master)
         dialog.title("创建标签")
         dialog.geometry("400x220")
@@ -874,7 +791,6 @@ class GitHubBranchTool:
                   bg="#95a5a6", fg="white", width=12, font=("Microsoft YaHei", 10)).pack(side="left", padx=5)
 
     def push_tag(self):
-        """推送标签"""
         selection = self.tag_listbox.curselection()
         if not selection:
             messagebox.showwarning("提示", "请先选择一个标签")
@@ -892,7 +808,6 @@ class GitHubBranchTool:
             messagebox.showerror("错误", str(e))
 
     def delete_tag(self):
-        """删除标签"""
         selection = self.tag_listbox.curselection()
         if not selection:
             messagebox.showwarning("提示", "请先选择一个标签")
@@ -909,7 +824,6 @@ class GitHubBranchTool:
                 messagebox.showerror("错误", str(e))
 
     def clone_repo(self):
-        """克隆仓库"""
         url = self.repo_url.get().strip()
         local_path = self.local_path.get().strip()
         folder_name = self.folder_name_entry.get().strip()
@@ -939,7 +853,6 @@ class GitHubBranchTool:
                 self.repo_log.insert(tk.END, f"目标路径: {full_path}\n")
                 self.master.update()
 
-                # 使用token构建认证URL
                 token = self.github_token.get()
                 if token and url.startswith("https://"):
                     auth_url = url.replace("https://", f"https://{token}@")
@@ -959,7 +872,6 @@ class GitHubBranchTool:
         threading.Thread(target=worker, daemon=True).start()
 
     def init_repo(self):
-        """初始化仓库"""
         local_path = self.local_path.get().strip()
         folder_name = self.folder_name_entry.get().strip()
 
@@ -1005,7 +917,6 @@ class GitHubBranchTool:
         threading.Thread(target=worker, daemon=True).start()
 
     def add_remote(self):
-        """添加远程仓库"""
         url = self.repo_url.get().strip()
         
         if not url:
@@ -1021,9 +932,7 @@ class GitHubBranchTool:
             messagebox.showerror("错误", str(e))
 
     def test_connection(self):
-        """测试GitHub连接"""
         token = self.github_token.get()
-        user = self.github_user.get()
 
         if not token:
             messagebox.showwarning("提示", "请先输入访问令牌")
@@ -1033,27 +942,28 @@ class GitHubBranchTool:
         self.master.update()
 
         try:
-            # 简单测试token是否有效
-            result = subprocess.run(
-                ["git", "ls-remote", "--heads", "https://github.com"],
-                capture_output=True,
-                text=True,
-                timeout=15
+            import urllib.request
+            req = urllib.request.Request(
+                "https://api.github.com/user",
+                headers={
+                    "Authorization": f"token {token}",
+                    "Accept": "application/vnd.github.v3+json",
+                    "User-Agent": "GitHub-Tool"
+                }
             )
+            response = urllib.request.urlopen(req, timeout=15)
+            user_info = json.loads(response.read().decode())
+            username = user_info.get("login", "")
             
-            if result.returncode == 0:
-                messagebox.showinfo("成功", "✅ GitHub连接测试成功!\n\n令牌有效，网络正常")
-                self.status_label.config(text="连接测试成功")
-            else:
-                messagebox.showwarning("警告", "⚠️ 连接可能有问题，请检查网络")
-                self.status_label.config(text="连接测试完成")
+            self.github_user.set(username)
+            messagebox.showinfo("成功", f"✅ GitHub连接测试成功!\n\n用户: {username}\n令牌有效，网络正常")
+            self.status_label.config(text="连接测试成功")
         except Exception as e:
             messagebox.showerror("错误", f"测试失败: {str(e)}")
             self.status_label.config(text="连接测试失败")
 
 
 def main():
-    """主函数"""
     root = tk.Tk()
     app = GitHubBranchTool(root)
     root.mainloop()

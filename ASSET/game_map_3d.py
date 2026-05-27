@@ -14,6 +14,13 @@ try:
 except ImportError:
     opengl_available = False
 
+try:
+    from renderer_bindings import renderer
+    c_renderer_available = renderer.is_available
+except ImportError:
+    c_renderer_available = False
+    renderer = None
+
 COLORS = {
     "bg_dark": (20, 20, 30),
     "bg_light": (30, 30, 50),
@@ -606,7 +613,41 @@ MC_BLOCKS = {
     "tech_security_door": {"color": (80, 100, 120), "solid": True, "transparent": False, "hardness": 4.0, "tool": "pickaxe", "tech": True},
     "tech_cooling_unit": {"color": (70, 130, 160), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe", "tech": True},
     "tech_autominer": {"color": (150, 70, 50), "solid": True, "transparent": False, "hardness": 3.5, "tool": "pickaxe", "tech": True},
-    "tech_energy_cable": {"color": (60, 60, 70), "solid": False, "transparent": True, "hardness": 1.0, "tool": "none", "tech": True}
+    "tech_energy_cable": {"color": (60, 60, 70), "solid": False, "transparent": True, "hardness": 1.0, "tool": "none", "tech": True},
+    
+    "gun_ak47": {"color": (80, 60, 40), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "damage": 25, "fire_rate": 0.15, "ammo_type": "ammo_762"},
+    "gun_m4a1": {"color": (60, 60, 60), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "damage": 20, "fire_rate": 0.12, "ammo_type": "ammo_556"},
+    "gun_awp": {"color": (50, 50, 50), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "damage": 100, "fire_rate": 1.5, "ammo_type": "ammo_762"},
+    "gun_mp5": {"color": (70, 70, 70), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "damage": 15, "fire_rate": 0.08, "ammo_type": "ammo_9mm"},
+    "gun_m1911": {"color": (50, 50, 50), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "damage": 18, "fire_rate": 0.2, "ammo_type": "ammo_45acp"},
+    "gun_glock": {"color": (40, 40, 40), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "damage": 12, "fire_rate": 0.15, "ammo_type": "ammo_9mm"},
+    "gun_scarh": {"color": (55, 55, 55), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "damage": 30, "fire_rate": 0.1, "ammo_type": "ammo_762"},
+    "gun_p90": {"color": (65, 65, 65), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "damage": 18, "fire_rate": 0.06, "ammo_type": "ammo_57mm"},
+    "gun_uzi": {"color": (45, 45, 45), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "damage": 10, "fire_rate": 0.05, "ammo_type": "ammo_9mm"},
+    "gun_deserteagle": {"color": (60, 50, 40), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "damage": 35, "fire_rate": 0.3, "ammo_type": "ammo_50ae"},
+    "gun_barrett": {"color": (40, 40, 40), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "damage": 150, "fire_rate": 2.0, "ammo_type": "ammo_50bmg"},
+    "gun_rpg": {"color": (70, 50, 40), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "damage": 200, "fire_rate": 3.0, "ammo_type": "ammo_rpg"},
+    
+    "ammo_762": {"color": (180, 140, 100), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": "7.62mm"},
+    "ammo_556": {"color": (160, 130, 90), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": "5.56mm"},
+    "ammo_9mm": {"color": (200, 180, 140), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": "9mm"},
+    "ammo_45acp": {"color": (190, 170, 130), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": ".45 ACP"},
+    "ammo_50ae": {"color": (220, 200, 160), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": ".50 AE"},
+    "ammo_50bmg": {"color": (210, 190, 150), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": ".50 BMG"},
+    "ammo_57mm": {"color": (170, 150, 110), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": "5.7mm"},
+    "ammo_rpg": {"color": (100, 80, 60), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": "RPG"},
+    "ammo_arrow": {"color": (140, 100, 60), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": "arrow"},
+    
+    "attachment_scope_4x": {"color": (40, 40, 50), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "scope", "zoom": 4},
+    "attachment_scope_8x": {"color": (30, 30, 40), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "scope", "zoom": 8},
+    "attachment_scope_red_dot": {"color": (50, 50, 60), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "scope", "zoom": 1},
+    "attachment_silencer": {"color": (35, 35, 35), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "silencer"},
+    "attachment_extended_mag": {"color": (45, 45, 45), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "mag", "bonus": 20},
+    "attachment_grip": {"color": (55, 55, 55), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "grip"},
+    "attachment_laser": {"color": (60, 40, 40), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "laser"},
+    "attachment_flashlight": {"color": (70, 70, 70), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "flashlight"},
+    "attachment_bipod": {"color": (50, 50, 50), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "bipod"},
+    "attachment_stock": {"color": (60, 50, 40), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "stock"}
 }
 
 class GameMap3D:
@@ -655,6 +696,17 @@ class GameMap3D:
         self.tech_mode = False
         self.teleporter_targets = []
         self.last_tech_interact = 0
+        self.generals = []
+        self.projectiles = []
+        self.pets = []
+        self.enemies = []
+        self.player_health = 20
+        self.player_max_health = 20
+        self.has_saddle = False
+        self.marketplace = []
+        self.marketplace_timer = 0
+        self.marketplace_refresh_interval = 300
+        self.marketplace_open = False
 
     def initialize(self):
         if not opengl_available:
@@ -886,11 +938,13 @@ class GameMap3D:
             return False
     
     def calculate_facing_id(self, loc):
+        camera_yaw = self.camera["yaw"]
         angle = math.atan2(
             loc["y"] - self.player_pos[2],
             loc["x"] - self.player_pos[0]
         )
-        angle_deg = math.degrees(angle)
+        angle_deg = math.degrees(angle) - camera_yaw
+        angle_deg = (angle_deg + 180) % 360 - 180
         
         if -45 <= angle_deg < 45:
             return 0
@@ -1197,6 +1251,22 @@ class GameMap3D:
                     self.check_location_interaction()
                 elif event.key == pygame.K_r:
                     self.collect_nearby_resources()
+                elif event.key == pygame.K_q:
+                    if not self.equip_general_weapon():
+                        self.message = "附近没有可装备武器的武将"
+                        self.message_timer = 2000
+                elif event.key == pygame.K_t:
+                    self.marketplace_open = not self.marketplace_open
+                    if self.marketplace_open:
+                        if not self.marketplace:
+                            self.refresh_marketplace()
+                        self.is_mouse_locked = False
+                        pygame.mouse.set_visible(True)
+                        pygame.event.set_grab(False)
+                    else:
+                        self.is_mouse_locked = True
+                        pygame.mouse.set_visible(False)
+                        pygame.event.set_grab(True)
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     if self.inventory_open:
@@ -1209,10 +1279,18 @@ class GameMap3D:
                         self.message = "鼠标已锁定，按Tab键解锁"
                         self.message_timer = 3000
                     else:
-                        self.try_pickup_item()
+                        if pygame.key.get_pressed()[pygame.K_LSHIFT]:
+                            self.try_place_block()
+                        else:
+                            self.try_mine_block()
                 elif event.button == 3:
-                    if not self.check_tech_interaction():
-                        self.check_npc_interaction()
+                    if not self.inventory_open:
+                        selected_item = self.inventory[self.selected_slot]
+                        if selected_item and self.can_use_item(selected_item["item"]):
+                            self.use_item(selected_item)
+                        elif not self.check_tech_interaction():
+                            if not self.check_npc_interaction():
+                                self.try_interact_block()
                 elif event.button == 4:
                     self.selected_slot = (self.selected_slot - 1) % 9
                 elif event.button == 5:
@@ -1225,6 +1303,603 @@ class GameMap3D:
                     self.camera["pitch"] = max(-89, min(89, self.camera["pitch"]))
         
         return True
+    
+    def can_use_item(self, item_name):
+        weapon_items = ["bow", "crossbow", "trident"]
+        gun_items = ["gun_ak47", "gun_m4a1", "gun_awp", "gun_mp5", "gun_m1911", "gun_glock",
+                    "gun_scarh", "gun_p90", "gun_uzi", "gun_deserteagle", "gun_barrett", "gun_rpg"]
+        food_items = [
+            "apple", "bread", "cooked_beef", "raw_beef", "cooked_chicken", "raw_chicken",
+            "cooked_mutton", "raw_mutton", "cooked_porkchop", "raw_porkchop",
+            "cooked_rabbit", "raw_rabbit", "cooked_cod", "raw_cod", "cooked_salmon", "raw_salmon",
+            "pumpkin_pie", "cake", "cookie", "melon_slice", "carrot", "golden_carrot",
+            "potato", "baked_potato", "beetroot", "sweet_berries", "glow_berries",
+            "chorus_fruit", "rabbit_stew", "mushroom_stew", "beetroot_soup", "suspicious_stew"
+        ]
+        pet_items = ["oak_boat", "saddle", "horse_armor_leather", "horse_armor_iron", 
+                    "horse_armor_gold", "horse_armor_diamond"]
+        potion_items = ["enchanted_golden_apple", "golden_apple"]
+        
+        if item_name in weapon_items:
+            return True
+        if item_name in gun_items:
+            return True
+        if item_name in food_items:
+            return True
+        if item_name in pet_items:
+            return True
+        if item_name in potion_items:
+            return True
+        if item_name.startswith("pet_"):
+            return True
+        if item_name.startswith("武将卡_") or item_name.startswith("general_"):
+            return True
+        if item_name in ["diamond_sword", "iron_sword", "stone_sword", "wooden_sword", "netherite_sword"]:
+            return True
+        if item_name.startswith("attachment_"):
+            return True
+        
+        return False
+    
+    def use_item(self, item):
+        item_name = item["item"]
+        
+        weapon_items = ["bow", "crossbow", "trident"]
+        gun_items = ["gun_ak47", "gun_m4a1", "gun_awp", "gun_mp5", "gun_m1911", "gun_glock",
+                    "gun_scarh", "gun_p90", "gun_uzi", "gun_deserteagle", "gun_barrett", "gun_rpg"]
+        
+        if item_name in weapon_items:
+            self.shoot_projectile(item_name)
+            return
+        
+        if item_name in gun_items:
+            self.shoot_gun(item_name)
+            return
+        
+        if item_name.startswith("attachment_"):
+            self.attach_attachment(item_name)
+            return
+        
+        food_items = [
+            "apple", "bread", "cooked_beef", "raw_beef", "cooked_chicken", "raw_chicken",
+            "cooked_mutton", "raw_mutton", "cooked_porkchop", "raw_porkchop",
+            "cooked_rabbit", "raw_rabbit", "cooked_cod", "raw_cod", "cooked_salmon", "raw_salmon",
+            "pumpkin_pie", "cake", "cookie", "melon_slice", "carrot", "golden_carrot",
+            "potato", "baked_potato", "beetroot", "sweet_berries", "glow_berries",
+            "chorus_fruit", "rabbit_stew", "mushroom_stew", "beetroot_soup", "suspicious_stew"
+        ]
+        if item_name in food_items:
+            self.eat_food(item)
+            return
+        
+        potion_items = ["enchanted_golden_apple", "golden_apple"]
+        if item_name in potion_items:
+            self.drink_potion(item)
+            return
+        
+        if item_name.startswith("pet_"):
+            self.summon_pet(item_name)
+            return
+        
+        if item_name.startswith("武将卡_") or item_name.startswith("general_"):
+            self.summon_general(item_name)
+            return
+        
+        if item_name in ["diamond_sword", "iron_sword", "stone_sword", "wooden_sword", "netherite_sword"]:
+            self.swing_sword(item)
+            return
+        
+        if item_name == "saddle":
+            self.equip_saddle()
+            return
+    
+    def shoot_projectile(self, weapon_type):
+        if not hasattr(self, 'last_shot_time'):
+            self.last_shot_time = 0
+        
+        current_time = time.time()
+        if current_time - self.last_shot_time < 0.5:
+            return
+        
+        self.last_shot_time = current_time
+        
+        yaw_rad = math.radians(self.camera["yaw"])
+        pitch_rad = math.radians(self.camera["pitch"])
+        
+        if weapon_type == "bow":
+            projectile = {
+                "type": "arrow",
+                "x": self.player_pos[0],
+                "y": self.player_pos[1] + 1.5,
+                "z": self.player_pos[2],
+                "velocity": [
+                    math.cos(yaw_rad) * math.cos(pitch_rad) * 1.5,
+                    math.sin(pitch_rad) * 1.5,
+                    math.sin(yaw_rad) * math.cos(pitch_rad) * 1.5
+                ],
+                "lifetime": 200
+            }
+            self.message = "🏹 射出一支箭！"
+        elif weapon_type == "crossbow":
+            projectile = {
+                "type": "bolt",
+                "x": self.player_pos[0],
+                "y": self.player_pos[1] + 1.5,
+                "z": self.player_pos[2],
+                "velocity": [
+                    math.cos(yaw_rad) * math.cos(pitch_rad) * 2.0,
+                    math.sin(pitch_rad) * 2.0,
+                    math.sin(yaw_rad) * math.cos(pitch_rad) * 2.0
+                ],
+                "lifetime": 150
+            }
+            self.message = "⚔️ 射出一支弩箭！"
+        elif weapon_type == "trident":
+            projectile = {
+                "type": "trident",
+                "x": self.player_pos[0],
+                "y": self.player_pos[1] + 1.5,
+                "z": self.player_pos[2],
+                "velocity": [
+                    math.cos(yaw_rad) * math.cos(pitch_rad) * 1.8,
+                    math.sin(pitch_rad) * 1.8,
+                    math.sin(yaw_rad) * math.cos(pitch_rad) * 1.8
+                ],
+                "lifetime": 180
+            }
+            self.message = "🔱 投出三叉戟！"
+        
+        self.projectiles.append(projectile)
+        self.message_timer = 2000
+    
+    def shoot_gun(self, gun_type):
+        if not hasattr(self, 'last_gun_shot_time'):
+            self.last_gun_shot_time = 0
+        
+        current_time = time.time()
+        gun_data = MC_BLOCKS.get(gun_type, {})
+        fire_rate = gun_data.get("fire_rate", 0.2)
+        
+        if current_time - self.last_gun_shot_time < fire_rate:
+            return
+        
+        self.last_gun_shot_time = current_time
+        
+        ammo_type = gun_data.get("ammo_type", "ammo_9mm")
+        damage = gun_data.get("damage", 15)
+        
+        has_ammo = False
+        for i, inv_item in enumerate(self.inventory):
+            if inv_item and inv_item["item"] == ammo_type:
+                has_ammo = True
+                if inv_item["count"] > 1:
+                    self.inventory[i]["count"] -= 1
+                else:
+                    self.inventory[i] = None
+                break
+        
+        if not has_ammo:
+            self.message = "⚠️ 没有弹药！需要 " + ammo_type
+            self.message_timer = 2000
+            return
+        
+        yaw_rad = math.radians(self.camera["yaw"])
+        pitch_rad = math.radians(self.camera["pitch"])
+        
+        speed = 3.0
+        if gun_type in ["gun_awp", "gun_barrett"]:
+            speed = 5.0
+        elif gun_type in ["gun_mp5", "gun_p90", "gun_uzi"]:
+            speed = 2.5
+        
+        projectile = {
+            "type": "bullet",
+            "x": self.player_pos[0],
+            "y": self.player_pos[1] + 1.5,
+            "z": self.player_pos[2],
+            "velocity": [
+                math.cos(yaw_rad) * math.cos(pitch_rad) * speed,
+                math.sin(pitch_rad) * speed,
+                math.sin(yaw_rad) * math.cos(pitch_rad) * speed
+            ],
+            "lifetime": 100,
+            "damage": damage
+        }
+        
+        self.projectiles.append(projectile)
+        
+        gun_names = {
+            "gun_ak47": "AK-47", "gun_m4a1": "M4A1", "gun_awp": "AWP",
+            "gun_mp5": "MP5", "gun_m1911": "M1911", "gun_glock": "Glock",
+            "gun_scarh": "SCAR-H", "gun_p90": "P90", "gun_uzi": "Uzi",
+            "gun_deserteagle": "沙漠之鹰", "gun_barrett": "巴雷特", "gun_rpg": "RPG"
+        }
+        gun_name = gun_names.get(gun_type, gun_type)
+        self.message = f"🔫 {gun_name} 开火！伤害:{damage}"
+        self.message_timer = 1500
+    
+    def attach_attachment(self, attachment_type):
+        selected_item = self.inventory[self.selected_slot]
+        if not selected_item:
+            self.message = "⚠️ 请先选择一把枪械"
+            self.message_timer = 2000
+            return
+        
+        gun_items = ["gun_ak47", "gun_m4a1", "gun_awp", "gun_mp5", "gun_m1911", "gun_glock",
+                    "gun_scarh", "gun_p90", "gun_uzi", "gun_deserteagle", "gun_barrett", "gun_rpg"]
+        
+        if selected_item["item"] not in gun_items:
+            self.message = "⚠️ 只能给枪械装备配件"
+            self.message_timer = 2000
+            return
+        
+        if "attachments" not in selected_item:
+            selected_item["attachments"] = []
+        
+        attachment_data = MC_BLOCKS.get(attachment_type, {})
+        attachment_type_str = attachment_data.get("type", "unknown")
+        
+        for existing in selected_item["attachments"]:
+            if existing.get("type") == attachment_type_str:
+                self.message = f"⚠️ 已经装备了{attachment_type_str}类型配件"
+                self.message_timer = 2000
+                return
+        
+        selected_item["attachments"].append({
+            "item": attachment_type,
+            "type": attachment_type_str,
+            "zoom": attachment_data.get("zoom", 0),
+            "bonus": attachment_data.get("bonus", 0)
+        })
+        
+        for i, inv_item in enumerate(self.inventory):
+            if inv_item and inv_item["item"] == attachment_type:
+                if inv_item["count"] > 1:
+                    self.inventory[i]["count"] -= 1
+                else:
+                    self.inventory[i] = None
+                break
+        
+        attachment_names = {
+            "attachment_scope_4x": "4倍镜", "attachment_scope_8x": "8倍镜",
+            "attachment_scope_red_dot": "红点瞄准镜", "attachment_silencer": "消音器",
+            "attachment_extended_mag": "扩容弹匣", "attachment_grip": "握把",
+            "attachment_laser": "激光瞄准器", "attachment_flashlight": "战术手电",
+            "attachment_bipod": "两脚架", "attachment_stock": "枪托"
+        }
+        att_name = attachment_names.get(attachment_type, attachment_type)
+        self.message = f"🔧 已装备配件: {att_name}"
+        self.message_timer = 2000
+    
+    def eat_food(self, item):
+        food_values = {
+            "apple": 4, "bread": 5, "cooked_beef": 8, "raw_beef": 3,
+            "cooked_chicken": 6, "raw_chicken": 2, "cooked_mutton": 8, "raw_mutton": 2,
+            "cooked_porkchop": 8, "raw_porkchop": 3, "cooked_rabbit": 5, "raw_rabbit": 3,
+            "cooked_cod": 5, "raw_cod": 2, "cooked_salmon": 6, "raw_salmon": 2,
+            "pumpkin_pie": 8, "cake": 14, "cookie": 2, "melon_slice": 2,
+            "carrot": 4, "golden_carrot": 10, "potato": 1, "baked_potato": 5,
+            "beetroot": 2, "sweet_berries": 2, "glow_berries": 4,
+            "chorus_fruit": 4, "rabbit_stew": 10, "mushroom_stew": 6,
+            "beetroot_soup": 6, "suspicious_stew": 6
+        }
+        
+        food_value = food_values.get(item["item"], 2)
+        
+        if not hasattr(self, 'player_health'):
+            self.player_health = 20
+        if not hasattr(self, 'player_max_health'):
+            self.player_max_health = 20
+        
+        self.player_health = min(self.player_health + food_value, self.player_max_health)
+        
+        if item["count"] > 1:
+            self.inventory[self.selected_slot]["count"] -= 1
+        else:
+            self.inventory[self.selected_slot] = None
+        
+        food_names = {
+            "apple": "苹果", "bread": "面包", "cooked_beef": "熟牛肉", "cooked_chicken": "熟鸡肉",
+            "pumpkin_pie": "南瓜派", "cake": "蛋糕", "golden_carrot": "金胡萝卜",
+            "baked_potato": "烤土豆"
+        }
+        food_name = food_names.get(item["item"], item["item"])
+        self.message = f"🍖 食用{food_name}，恢复{food_value}点生命！"
+        self.message_timer = 2000
+    
+    def drink_potion(self, item):
+        if item["item"] == "golden_apple":
+            heal_amount = 4
+            self.message = "🍎 食用金苹果，附有微弱治疗效果！"
+        else:
+            heal_amount = 8
+            self.message = "✨ 食用附魔金苹果，获得生命恢复效果！"
+        
+        if not hasattr(self, 'player_health'):
+            self.player_health = 20
+        if not hasattr(self, 'player_max_health'):
+            self.player_max_health = 20
+        
+        self.player_health = min(self.player_health + heal_amount, self.player_max_health)
+        
+        if item["count"] > 1:
+            self.inventory[self.selected_slot]["count"] -= 1
+        else:
+            self.inventory[self.selected_slot] = None
+        self.message_timer = 2000
+    
+    def equip_general_weapon(self):
+        selected_item = self.inventory[self.selected_slot]
+        if not selected_item:
+            return False
+        
+        item_name = selected_item["item"]
+        weapon_types = ["bow", "crossbow", "trident", "diamond_sword", "iron_sword", "stone_sword", "wooden_sword", "netherite_sword"]
+        
+        if item_name not in weapon_types:
+            return False
+        
+        for general in self.generals:
+            distance = math.hypot(
+                general["x"] - self.player_pos[0],
+                general["z"] - self.player_pos[2]
+            )
+            if distance < 5:
+                general["weapon"] = item_name
+                
+                if selected_item["count"] > 1:
+                    self.inventory[self.selected_slot]["count"] -= 1
+                else:
+                    self.inventory[self.selected_slot] = None
+                
+                weapon_names = {
+                    "bow": "弓", "crossbow": "弩", "trident": "三叉戟",
+                    "diamond_sword": "钻石剑", "iron_sword": "铁剑",
+                    "stone_sword": "石剑", "wooden_sword": "木剑", "netherite_sword": "下界合金剑"
+                }
+                weapon_name = weapon_names.get(item_name, item_name)
+                self.message = f"⚔️ {general['name']} 装备了{weapon_name}！"
+                self.message_timer = 3000
+                return True
+        
+        return False
+    
+    def swing_sword(self, item):
+        self.message = "⚔️ 挥剑攻击！"
+        self.message_timer = 1500
+        
+        sword_range = 4.0
+        hit_entities = []
+        
+        for npc in self.npcs[:]:
+            distance = math.hypot(
+                npc["x"] - self.player_pos[0],
+                npc["z"] - self.player_pos[2]
+            )
+            if distance <= sword_range:
+                hit_entities.append(("npc", npc))
+        
+        for general in self.generals[:]:
+            distance = math.hypot(
+                general["x"] - self.player_pos[0],
+                general["z"] - self.player_pos[2]
+            )
+            if distance <= sword_range:
+                hit_entities.append(("general", general))
+        
+        for enemy in self.enemies[:]:
+            distance = math.hypot(
+                enemy["x"] - self.player_pos[0],
+                enemy["z"] - self.player_pos[2]
+            )
+            if distance <= sword_range:
+                hit_entities.append(("enemy", enemy))
+        
+        for entity_type, entity in hit_entities:
+            if entity_type == "npc":
+                entity["health"] = entity.get("health", 20) - 5
+            elif entity_type == "general":
+                entity["hp"] = entity.get("hp", 100) - 5
+            elif entity_type == "enemy":
+                entity["health"] = entity.get("health", 20) - 10
+                if entity["health"] <= 0:
+                    self.enemies.remove(entity)
+                    self.spawn_loot(entity["x"], entity["z"])
+    
+    def summon_pet(self, pet_type):
+        yaw_rad = math.radians(self.camera["yaw"])
+        spawn_distance = 2.0
+        spawn_x = self.player_pos[0] + math.cos(yaw_rad) * spawn_distance
+        spawn_z = self.player_pos[2] + math.sin(yaw_rad) * spawn_distance
+        
+        pet_data = self.get_pet_data(pet_type)
+        pet = {
+            "type": "pet",
+            "name": pet_data["name"],
+            "x": spawn_x,
+            "y": 0,
+            "z": spawn_z,
+            "health": pet_data["health"],
+            "max_health": pet_data["health"],
+            "damage": pet_data["damage"],
+            "color": pet_data["color"],
+            "size": pet_data["size"],
+            "following": True
+        }
+        
+        self.pets.append(pet)
+        
+        if self.inventory[self.selected_slot]["count"] > 1:
+            self.inventory[self.selected_slot]["count"] -= 1
+        else:
+            self.inventory[self.selected_slot] = None
+        
+        self.message = f"🐾 召唤宠物: {pet_data['name']}！"
+        self.message_timer = 3000
+    
+    def get_pet_data(self, pet_type):
+        pet_database = {
+            "pet_wolf": {"name": "狼", "health": 20, "damage": 5, "color": (0.5, 0.5, 0.5), "size": 1.2},
+            "pet_cat": {"name": "猫", "health": 10, "damage": 2, "color": (0.8, 0.6, 0.4), "size": 0.8},
+            "pet_horse": {"name": "马", "health": 30, "damage": 3, "color": (0.6, 0.4, 0.2), "size": 1.5},
+            "pet_pig": {"name": "猪", "health": 10, "damage": 1, "color": (0.9, 0.7, 0.7), "size": 1.0},
+            "pet_cow": {"name": "牛", "health": 20, "damage": 2, "color": (0.4, 0.3, 0.3), "size": 1.3},
+            "pet_sheep": {"name": "羊", "health": 10, "damage": 1, "color": (0.9, 0.9, 0.9), "size": 1.1},
+            "pet_chicken": {"name": "鸡", "health": 4, "damage": 0, "color": (0.9, 0.8, 0.6), "size": 0.6},
+            "pet_rabbit": {"name": "兔子", "health": 3, "damage": 0, "color": (0.8, 0.7, 0.6), "size": 0.5}
+        }
+        return pet_database.get(pet_type, {"name": "未知宠物", "health": 10, "damage": 2, "color": (0.5, 0.5, 0.5), "size": 1.0})
+    
+    def equip_saddle(self):
+        self.has_saddle = True
+        if self.inventory[self.selected_slot]["count"] > 1:
+            self.inventory[self.selected_slot]["count"] -= 1
+        else:
+            self.inventory[self.selected_slot] = None
+        self.message = "🫏 装备马鞍成功！可以骑乘马匹了！"
+        self.message_timer = 2000
+    
+    def try_mine_block(self):
+        selected_item = self.inventory[self.selected_slot]
+        if not selected_item:
+            return
+        
+        item_name = selected_item["item"]
+        
+        if item_name in ["wooden_pickaxe", "stone_pickaxe", "iron_pickaxe", "diamond_pickaxe", "netherite_pickaxe"]:
+            self.mine_with_pickaxe(selected_item)
+        elif item_name in ["wooden_shovel", "stone_shovel", "iron_shovel", "diamond_shovel", "netherite_shovel"]:
+            self.mine_with_shovel(selected_item)
+        elif item_name in ["wooden_axe", "stone_axe", "iron_axe", "diamond_axe", "netherite_axe"]:
+            self.mine_with_axe(selected_item)
+        else:
+            self.mine_with_hand(selected_item)
+    
+    def mine_with_hand(self, item):
+        self.message = "空手无法破坏方块"
+        self.message_timer = 1500
+    
+    def mine_with_pickaxe(self, item):
+        self.message = "⛏️ 正在挖掘..."
+        self.message_timer = 1000
+        tool_tiers = {
+            "wooden_pickaxe": 1.0,
+            "stone_pickaxe": 1.5,
+            "iron_pickaxe": 2.0,
+            "diamond_pickaxe": 2.5,
+            "netherite_pickaxe": 3.0
+        }
+        efficiency = tool_tiers.get(item["item"], 1.0)
+        self.message = f"⛏️ 效率 {efficiency}x"
+    
+    def mine_with_shovel(self, item):
+        self.message = "🔨 正在铲..."
+        self.message_timer = 1000
+    
+    def mine_with_axe(self, item):
+        self.message = "🪓 正在砍..."
+        self.message_timer = 1000
+    
+    def try_place_block(self):
+        selected_item = self.inventory[self.selected_slot]
+        if not selected_item:
+            return
+        
+        item_name = selected_item["item"]
+        
+        if item_name in MC_BLOCKS:
+            block_data = MC_BLOCKS[item_name]
+            if block_data.get("solid", True):
+                yaw_rad = math.radians(self.camera["yaw"])
+                place_distance = 4.0
+                place_x = self.player_pos[0] + math.cos(yaw_rad) * place_distance
+                place_z = self.player_pos[2] + math.sin(yaw_rad) * place_distance
+                place_y = self.player_pos[1] - 1.0
+                
+                if self.inventory[self.selected_slot]["count"] > 1:
+                    self.inventory[self.selected_slot]["count"] -= 1
+                else:
+                    self.inventory[self.selected_slot] = None
+                
+                self.spawn_pickup(item_name, place_x, place_z, 1)
+                self.message = f"放置: {item_name}"
+                self.message_timer = 1500
+            else:
+                self.message = "无法放置透明方块"
+                self.message_timer = 1500
+        else:
+                if item_name.startswith("武将卡_") or item_name.startswith("general_"):
+                    self.summon_general(item_name)
+                else:
+                    self.message = "无法放置该物品"
+                    self.message_timer = 1500
+    
+    def try_interact_block(self):
+        yaw_rad = math.radians(self.camera["yaw"])
+        interact_distance = 5.0
+        target_x = self.player_pos[0] + math.cos(yaw_rad) * interact_distance
+        target_z = self.player_pos[2] + math.sin(yaw_rad) * interact_distance
+        
+        for tech_block in self.tech_blocks:
+            if math.hypot(tech_block["x"] - target_x, tech_block["z"] - target_z) < 3:
+                self.check_tech_interaction()
+                return
+        
+        self.try_pickup_item()
+    
+    def summon_general(self, card_name):
+        general_data = self.get_general_from_card(card_name)
+        if not general_data:
+            self.message = "无效的武将卡"
+            self.message_timer = 2000
+            return
+        
+        yaw_rad = math.radians(self.camera["yaw"])
+        spawn_distance = 3.0
+        spawn_x = self.player_pos[0] + math.cos(yaw_rad) * spawn_distance
+        spawn_z = self.player_pos[2] + math.sin(yaw_rad) * spawn_distance
+        
+        general = {
+            "type": "general",
+            "name": general_data["name"],
+            "x": spawn_x,
+            "z": spawn_z,
+            "level": general_data.get("level", 1),
+            "power": general_data.get("power", 100),
+            "hp": general_data.get("hp", 100),
+            "max_hp": general_data.get("hp", 100),
+            "equipment": general_data.get("equipment", {}),
+            "skills": general_data.get("skills", []),
+            "color": (0.8, 0.6, 0.2)
+        }
+        
+        self.generals.append(general)
+        
+        self.inventory[self.selected_slot] = None
+        
+        self.message = f"⚔️ 召唤武将: {general_data['name']}"
+        self.message_timer = 3000
+    
+    def get_general_from_card(self, card_name):
+        generals_db = data.get("generals", {})
+        
+        if card_name.startswith("武将卡_"):
+            general_id = card_name.replace("武将卡_", "")
+        else:
+            general_id = card_name.replace("general_", "")
+        
+        for general_id_key, general_data in generals_db.items():
+            if general_id_key == general_id or general_data.get("name", "").replace(" ", "_") == general_id:
+                return general_data
+        
+        return {
+            "name": general_id.replace("_", " ").title(),
+            "level": 1,
+            "power": 100,
+            "hp": 100,
+            "equipment": {},
+            "skills": ["攻击", "防御"]
+        }
     
     def check_tech_interaction(self):
         current_time = time.time()
@@ -1343,10 +2018,206 @@ class GameMap3D:
         }
         self.pickups.append(pickup)
     
+    def spawn_enemy(self):
+        if len(self.enemies) >= 15:
+            return
+        
+        enemy_types = [
+            {"name": "僵尸", "health": 20, "damage": 5, "color": (0.4, 0.6, 0.3), "speed": 0.3},
+            {"name": "骷髅", "health": 15, "damage": 4, "color": (0.9, 0.9, 0.8), "speed": 0.4},
+            {"name": "蜘蛛", "health": 12, "damage": 3, "color": (0.2, 0.2, 0.2), "speed": 0.5},
+            {"name": "苦力怕", "health": 18, "damage": 10, "color": (0.5, 0.9, 0.4), "speed": 0.35}
+        ]
+        
+        enemy_type = random.choice(enemy_types)
+        angle = random.uniform(0, 2 * math.pi)
+        distance = random.uniform(50, 100)
+        
+        enemy = {
+            "type": enemy_type["name"],
+            "x": self.player_pos[0] + math.cos(angle) * distance,
+            "z": self.player_pos[2] + math.sin(angle) * distance,
+            "health": enemy_type["health"],
+            "max_health": enemy_type["health"],
+            "damage": enemy_type["damage"],
+            "color": enemy_type["color"],
+            "speed": enemy_type["speed"],
+            "attack_cooldown": 0
+        }
+        
+        self.enemies.append(enemy)
+    
+    def update_enemies(self):
+        if random.random() < 0.005 and len(self.enemies) < 10:
+            self.spawn_enemy()
+        
+        for enemy in self.enemies[:]:
+            dx = self.player_pos[0] - enemy["x"]
+            dz = self.player_pos[2] - enemy["z"]
+            distance = math.hypot(dx, dz)
+            
+            if distance > 1:
+                enemy["x"] += (dx / distance) * enemy["speed"]
+                enemy["z"] += (dz / distance) * enemy["speed"]
+            
+            if enemy.get("attack_cooldown", 0) > 0:
+                enemy["attack_cooldown"] -= 1
+            
+            if distance < 2 and enemy["attack_cooldown"] <= 0:
+                self.player_health -= enemy["damage"]
+                enemy["attack_cooldown"] = 60
+                self.message = f"💀 {enemy['type']} 攻击了你！-{enemy['damage']}生命"
+                self.message_timer = 2000
+            
+            for general in self.generals[:]:
+                gx = general["x"] - enemy["x"]
+                gz = general["z"] - enemy["z"]
+                g_dist = math.hypot(gx, gz)
+                
+                if g_dist > 1:
+                    general["x"] += (gx / g_dist) * enemy["speed"] * 0.8
+                    general["z"] += (gz / g_dist) * enemy["speed"] * 0.8
+                
+                if g_dist < 2 and general.get("attack_cooldown", 0) <= 0:
+                    enemy["health"] -= 5
+                    general["attack_cooldown"] = 40
+                    if enemy["health"] <= 0:
+                        self.enemies.remove(enemy)
+                        self.spawn_loot(enemy["x"], enemy["z"])
+                        self.message = f"⚔️ {general['name']} 击败了{enemy['type']}！"
+                        self.message_timer = 2000
+    
+    def refresh_marketplace(self):
+        self.marketplace = []
+        
+        gun_items = ["gun_ak47", "gun_m4a1", "gun_awp", "gun_mp5", "gun_m1911", "gun_glock",
+                    "gun_scarh", "gun_p90", "gun_uzi", "gun_deserteagle", "gun_barrett", "gun_rpg"]
+        ammo_items = ["ammo_762", "ammo_556", "ammo_9mm", "ammo_45acp", "ammo_50ae", "ammo_50bmg", "ammo_57mm", "ammo_rpg"]
+        attachment_items = ["attachment_scope_4x", "attachment_scope_8x", "attachment_scope_red_dot",
+                          "attachment_silencer", "attachment_extended_mag", "attachment_grip",
+                          "attachment_laser", "attachment_flashlight", "attachment_bipod", "attachment_stock"]
+        rare_items = ["diamond", "emerald", "netherite_ingot", "golden_apple", "enchanted_golden_apple",
+                     "tech_advanced_chip", "tech_fusion_core"]
+        
+        all_items = gun_items + ammo_items + attachment_items + rare_items
+        
+        for _ in range(10):
+            item = random.choice(all_items)
+            base_price = 50
+            
+            if item.startswith("gun_"):
+                gun_data = MC_BLOCKS.get(item, {})
+                damage = gun_data.get("damage", 15)
+                base_price = damage * 5
+            elif item.startswith("ammo_"):
+                base_price = random.randint(10, 30)
+            elif item.startswith("attachment_"):
+                base_price = random.randint(30, 100)
+            elif item in rare_items:
+                base_price = random.randint(100, 500)
+            
+            price_variation = random.uniform(0.8, 1.5)
+            final_price = int(base_price * price_variation)
+            
+            self.marketplace.append({
+                "item": item,
+                "price": final_price,
+                "count": random.randint(1, 10),
+                "seller": random.choice(["系统商人", "玩家A", "玩家B", "神秘商人"])
+            })
+        
+        self.message = "🏪 交易行已刷新！新商品上架"
+        self.message_timer = 3000
+    
+    def buy_from_marketplace(self, index):
+        if index < 0 or index >= len(self.marketplace):
+            return
+        
+        item_data = self.marketplace[index]
+        price = item_data["price"]
+        item_name = item_data["item"]
+        count = item_data["count"]
+        
+        resources = data.get('resources', {})
+        gold = resources.get('金元宝', 0)
+        
+        if gold < price:
+            self.message = f"⚠️ 金元宝不足！需要{price}，当前{gold}"
+            self.message_timer = 2000
+            return
+        
+        resources['金元宝'] = gold - price
+        data['resources'] = resources
+        save()
+        
+        for i, inv_item in enumerate(self.inventory):
+            if inv_item and inv_item["item"] == item_name:
+                self.inventory[i]["count"] += count
+                self.marketplace.remove(item_data)
+                self.message = f"✅ 购买成功: {item_name} x{count}"
+                self.message_timer = 2000
+                return
+        
+        for i, inv_item in enumerate(self.inventory):
+            if inv_item is None:
+                self.inventory[i] = {"item": item_name, "count": count}
+                self.marketplace.remove(item_data)
+                self.message = f"✅ 购买成功: {item_name} x{count}"
+                self.message_timer = 2000
+                return
+        
+        self.message = "⚠️ 背包已满！"
+        self.message_timer = 2000
+    
+    def update_marketplace(self):
+        self.marketplace_timer += 1
+        if self.marketplace_timer >= self.marketplace_refresh_interval:
+            self.marketplace_timer = 0
+            self.refresh_marketplace()
+    
+    def update_projectiles(self):
+        for projectile in self.projectiles[:]:
+            projectile["x"] += projectile["velocity"][0]
+            projectile["y"] += projectile["velocity"][1]
+            projectile["z"] += projectile["velocity"][2]
+            projectile["velocity"][1] -= 0.02
+            projectile["lifetime"] -= 1
+            
+            if projectile["lifetime"] <= 0 or projectile["y"] < 0:
+                self.projectiles.remove(projectile)
+                continue
+            
+            for enemy in self.enemies[:]:
+                distance = math.hypot(
+                    enemy["x"] - projectile["x"],
+                    enemy["z"] - projectile["z"]
+                )
+                if distance < 2:
+                    enemy["health"] = enemy.get("health", 20) - 15
+                    self.projectiles.remove(projectile)
+                    if enemy["health"] <= 0:
+                        self.enemies.remove(enemy)
+                        self.spawn_loot(enemy["x"], enemy["z"])
+                    break
+    
     def update_pickups(self):
         if random.random() < 0.005 and len(self.pickups) < 30:
-            common_drops = ["dirt", "grass", "stone", "iron_ingot", "coal"]
-            rare_drops = ["gold_ingot", "diamond", "emerald", "tech_advanced_chip"]
+            common_drops = [
+                "dirt", "grass", "stone", "cobblestone", "oak_log", "oak_planks",
+                "iron_ingot", "coal", "sand", "gravel", "clay",
+                "wooden_sword", "stone_sword", "iron_sword", "diamond_sword",
+                "wooden_pickaxe", "stone_pickaxe", "iron_pickaxe", "diamond_pickaxe",
+                "apple", "bread", "cooked_beef", "cooked_chicken",
+                "carrot", "potato", "baked_potato", "beetroot"
+            ]
+            rare_drops = [
+                "gold_ingot", "diamond", "emerald", "lapis_lazuli", "redstone",
+                "tech_advanced_chip", "tech_circuit_board", "netherite_ingot",
+                "golden_apple", "enchanted_golden_apple", "diamond_sword",
+                "netherite_sword", "bow", "crossbow", "trident",
+                "iron_helmet", "iron_chestplate", "iron_leggings", "iron_boots",
+                "diamond_helmet", "diamond_chestplate", "diamond_leggings", "diamond_boots"
+            ]
             
             if random.random() < 0.15:
                 item = random.choice(rare_drops)
@@ -2017,6 +2888,54 @@ class GameMap3D:
                 0, 1, 0
             )
             
+            if c_renderer_available and renderer:
+                self.draw_3d_scene_cpp()
+            else:
+                self.draw_3d_scene_python()
+            
+            pygame.display.flip()
+        except Exception as e:
+            print(f"渲染错误: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def draw_3d_scene_cpp(self):
+        try:
+            renderer.render_terrain(self.player_pos)
+            
+            if hasattr(self, 'trees'):
+                renderer.render_trees(self.trees)
+            
+            renderer.render_structures(self.large_structures)
+            renderer.render_locations(self.locations)
+            renderer.render_npcs(self.npcs)
+            renderer.render_enemies(self.enemies)
+            renderer.render_generals(self.generals)
+            renderer.render_pets(self.pets)
+            
+            if self.camera["mode"] == "third":
+                player_data = {
+                    "x": self.player_pos[0],
+                    "y": self.player_pos[1],
+                    "z": self.player_pos[2],
+                    "color": (0.8, 0.8, 0.8),
+                    "yaw": self.camera["yaw"]
+                }
+                renderer.render_player(player_data)
+            
+            renderer.render_followers(self.followers)
+            
+            for tech_block in self.tech_blocks:
+                renderer.render_tech_block(tech_block, MC_BLOCKS)
+            
+            renderer.render_projectiles(self.projectiles)
+            renderer.render_pickups(self.pickups, MC_BLOCKS)
+        except Exception as e:
+            print(f"C++渲染器错误: {e}")
+            self.draw_3d_scene_python()
+    
+    def draw_3d_scene_python(self):
+        try:
             self.draw_terrain()
             
             if hasattr(self, 'trees'):
@@ -2033,6 +2952,15 @@ class GameMap3D:
             for npc in self.npcs:
                 self.draw_npc(npc)
             
+            for enemy in self.enemies:
+                self.draw_enemy(enemy)
+            
+            for general in self.generals:
+                self.draw_general(general)
+            
+            for pet in self.pets:
+                self.draw_pet(pet)
+            
             if self.camera["mode"] == "third":
                 self.draw_player()
             
@@ -2042,13 +2970,10 @@ class GameMap3D:
             for tech_block in self.tech_blocks:
                 self.draw_tech_block(tech_block)
             
+            self.draw_projectiles()
             self.draw_pickups()
-            
-            pygame.display.flip()
         except Exception as e:
-            print(f"渲染错误: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"Python渲染错误: {e}")
     
     def draw_terrain(self):
         try:
@@ -2086,6 +3011,74 @@ class GameMap3D:
             glEnable(GL_LIGHTING)
         except Exception as e:
             print(f"绘制地形错误: {e}")
+    
+    def spawn_loot(self, x, z):
+        loot_items = ["iron_ingot", "gold_ingot", "diamond", "coal", "bread", "arrow"]
+        for _ in range(random.randint(1, 4)):
+            item = random.choice(loot_items)
+            offset_x = random.uniform(-2, 2)
+            offset_z = random.uniform(-2, 2)
+            self.spawn_pickup(item, x + offset_x, z + offset_z, 1)
+    
+    def draw_projectiles(self):
+        try:
+            glDisable(GL_LIGHTING)
+            
+            for projectile in self.projectiles:
+                x, y, z = projectile["x"], projectile["y"], projectile["z"]
+                proj_type = projectile["type"]
+                
+                glPushMatrix()
+                glTranslatef(x, y, z)
+                
+                if proj_type == "arrow":
+                    glColor3f(0.6, 0.4, 0.2)
+                    glBegin(GL_LINES)
+                    glVertex3f(0, 0, 0)
+                    glVertex3f(0, 0.5, 0)
+                    glEnd()
+                    
+                    glColor3f(0.9, 0.9, 0.9)
+                    glBegin(GL_LINES)
+                    glVertex3f(0, 0.5, 0)
+                    glVertex3f(0, 0.8, 0)
+                    glEnd()
+                
+                elif proj_type == "bolt":
+                    glColor3f(0.5, 0.5, 0.5)
+                    glBegin(GL_LINES)
+                    glVertex3f(0, 0, 0)
+                    glVertex3f(0, 0.6, 0)
+                    glEnd()
+                    
+                    glColor3f(0.3, 0.3, 0.3)
+                    glBegin(GL_LINES)
+                    glVertex3f(-0.1, 0.1, 0)
+                    glVertex3f(0.1, 0.1, 0)
+                    glEnd()
+                
+                elif proj_type == "trident":
+                    glColor3f(0.3, 0.5, 0.8)
+                    glBegin(GL_LINES)
+                    glVertex3f(0, 0, 0)
+                    glVertex3f(0, 1.0, 0)
+                    glEnd()
+                    
+                    glColor3f(0.2, 0.4, 0.7)
+                    glBegin(GL_LINES)
+                    glVertex3f(-0.15, 0.2, 0)
+                    glVertex3f(0, 0.5, 0)
+                    glEnd()
+                    glBegin(GL_LINES)
+                    glVertex3f(0.15, 0.2, 0)
+                    glVertex3f(0, 0.5, 0)
+                    glEnd()
+                
+                glPopMatrix()
+            
+            glEnable(GL_LIGHTING)
+        except Exception as e:
+            print(f"绘制投射物错误: {e}")
     
     def draw_pickups(self):
         try:
@@ -2348,7 +3341,8 @@ class GameMap3D:
             owner = loc.get("owner", "neutral")
             height = loc.get("height", 8)
             rotation_id = loc.get("rotation_id", 0)
-            facing_id = loc.get("facing_id", 0)
+            
+            facing_id = self.calculate_facing_id(loc)
             
             glPushMatrix()
             glTranslatef(x, 0, z)
@@ -2435,6 +3429,114 @@ class GameMap3D:
             glPopMatrix()
         except Exception as e:
             print(f"绘制地点错误: {e}")
+    
+    def draw_enemy(self, enemy):
+        try:
+            glPushMatrix()
+            glTranslatef(enemy["x"], 0, enemy["z"])
+            
+            glDisable(GL_LIGHTING)
+            glColor3f(*enemy["color"])
+            
+            glBegin(GL_QUADS)
+            glVertex3f(-0.5, 0, -0.5)
+            glVertex3f(0.5, 0, -0.5)
+            glVertex3f(0.5, 1.8, -0.5)
+            glVertex3f(-0.5, 1.8, -0.5)
+            
+            glVertex3f(0.5, 0, -0.5)
+            glVertex3f(0.5, 0, 0.5)
+            glVertex3f(0.5, 1.8, 0.5)
+            glVertex3f(0.5, 1.8, -0.5)
+            
+            glVertex3f(0.5, 0, 0.5)
+            glVertex3f(-0.5, 0, 0.5)
+            glVertex3f(-0.5, 1.8, 0.5)
+            glVertex3f(0.5, 1.8, 0.5)
+            
+            glVertex3f(-0.5, 0, 0.5)
+            glVertex3f(-0.5, 0, -0.5)
+            glVertex3f(-0.5, 1.8, -0.5)
+            glVertex3f(-0.5, 1.8, 0.5)
+            glEnd()
+            
+            if enemy["health"] < enemy["max_health"]:
+                health_percent = enemy["health"] / enemy["max_health"]
+                glColor3f(1, 0, 0)
+                glBegin(GL_LINES)
+                glVertex3f(-0.6, 2.2, 0)
+                glVertex3f(-0.6 + 1.2 * health_percent, 2.2, 0)
+                glEnd()
+            
+            glEnable(GL_LIGHTING)
+            glPopMatrix()
+        except Exception as e:
+            print(f"绘制敌人错误: {e}")
+    
+    def draw_general(self, general):
+        try:
+            glPushMatrix()
+            glTranslatef(general["x"], 0, general["z"])
+            
+            glDisable(GL_LIGHTING)
+            glColor3f(*general.get("color", (0.8, 0.6, 0.2)))
+            
+            glBegin(GL_QUADS)
+            glVertex3f(-0.6, 0, -0.6)
+            glVertex3f(0.6, 0, -0.6)
+            glVertex3f(0.6, 2.0, -0.6)
+            glVertex3f(-0.6, 2.0, -0.6)
+            
+            glVertex3f(0.6, 0, -0.6)
+            glVertex3f(0.6, 0, 0.6)
+            glVertex3f(0.6, 2.0, 0.6)
+            glVertex3f(0.6, 2.0, -0.6)
+            
+            glVertex3f(0.6, 0, 0.6)
+            glVertex3f(-0.6, 0, 0.6)
+            glVertex3f(-0.6, 2.0, 0.6)
+            glVertex3f(0.6, 2.0, 0.6)
+            
+            glVertex3f(-0.6, 0, 0.6)
+            glVertex3f(-0.6, 0, -0.6)
+            glVertex3f(-0.6, 2.0, -0.6)
+            glVertex3f(-0.6, 2.0, 0.6)
+            glEnd()
+            
+            if general.get("weapon"):
+                glColor3f(0.6, 0.6, 0.6)
+                glBegin(GL_LINES)
+                glVertex3f(0.6, 1.2, 0)
+                glVertex3f(1.2, 1.2, 0)
+                glEnd()
+            
+            glEnable(GL_LIGHTING)
+            glPopMatrix()
+        except Exception as e:
+            print(f"绘制武将错误: {e}")
+    
+    def draw_pet(self, pet):
+        try:
+            glPushMatrix()
+            glTranslatef(pet["x"], 0, pet["z"])
+            
+            glDisable(GL_LIGHTING)
+            glColor3f(*pet.get("color", (0.6, 0.4, 0.2)))
+            
+            size = pet.get("size", 1.0)
+            glScalef(size, size, size)
+            
+            glBegin(GL_QUADS)
+            glVertex3f(-0.4, 0, -0.4)
+            glVertex3f(0.4, 0, -0.4)
+            glVertex3f(0.4, 1.0, -0.4)
+            glVertex3f(-0.4, 1.0, -0.4)
+            glEnd()
+            
+            glEnable(GL_LIGHTING)
+            glPopMatrix()
+        except Exception as e:
+            print(f"绘制宠物错误: {e}")
     
     def draw_npc(self, npc):
         try:
@@ -2616,7 +3718,10 @@ class GameMap3D:
             "Tab: 锁定鼠标",
             "F: 跟随模式",
             "F5: 切换视角",
-            "右键: NPC/科技方块交互"
+            "Q: 给武将装备武器",
+            "Shift+左键: 放置方块",
+            "左键: 挖掘/攻击",
+            "右键: 使用物品/交互"
         ]
         
         for i, control in enumerate(controls):
@@ -2662,6 +3767,9 @@ class GameMap3D:
             self.update_physics()
             self.update_npcs()
             self.update_followers()
+            self.update_enemies()
+            self.update_marketplace()
+            self.update_projectiles()
             self.update_pickups()
             
             self.draw_3d_scene()
