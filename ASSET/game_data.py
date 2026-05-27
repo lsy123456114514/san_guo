@@ -1443,6 +1443,17 @@ default_save = {
             "achievements": [],
             "pvp": []
         }
+    },
+    "mc_world": {
+        "placed_blocks": [],
+        "hotbar": [None] * 9,
+        "hotbar_selected": 0,
+        "player_pos": [0, 0, 0],
+        "camera_yaw": 0,
+        "camera_pitch": -20,
+        "camera_mode": "first",
+        "inventory": [],
+        "world_seed": 0
     }
 }
 
@@ -1606,7 +1617,14 @@ def load():
             if 'dungeon' not in data:
                 data['dungeon'] = default_save['dungeon']
             
-            # 计算离线被动收入
+            if 'mc_world' not in data:
+                data['mc_world'] = default_save['mc_world']
+            else:
+                mc_keys = ['placed_blocks', 'hotbar', 'hotbar_selected', 'player_pos', 'camera_yaw', 'camera_pitch', 'camera_mode', 'inventory', 'world_seed']
+                for key in mc_keys:
+                    if key not in data['mc_world']:
+                        data['mc_world'][key] = default_save['mc_world'][key]
+            
             calculate_passive_income()
 
         except Exception as e:

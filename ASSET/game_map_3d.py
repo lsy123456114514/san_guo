@@ -7,6 +7,8 @@ import time
 from ASSET.game_data import data, save, get_system_font_name, load_sound
 from ASSET import safe_exit
 
+MC_WORLD_KEY = "mc_world"
+
 # 尝试导入OpenGL
 try:
     from OpenGL.GL import *
@@ -91,6 +93,38 @@ class GameMap3D:
         self.selected_block_type = 0
         self.block_types = ["泥土", "石头", "木头", "草地", "沙子", "水", "玻璃", "砖块"]
         
+        # 背包系统（类似旅行者背包）
+        self.show_inventory = False
+        self.inventory_slots = 27  # 3行9列
+        self.inventory = [None] * self.inventory_slots
+        self.max_stack_size = 64
+        
+        # 物品类型定义
+        self.item_types = {
+            "方块类": ["泥土", "石头", "木头", "草地", "沙子", "水", "玻璃", "砖块"],
+            "资源类": ["水", "煤炭", "木头", "食物", "金元宝", "时间卡", "宠物食物"],
+            "武器类": ["手枪", "步枪", "狙击枪", "机枪", "弓", "弩"],
+            "弹药类": ["普通子弹", "高级子弹", "稀有子弹", "箭矢"],
+            "武将卡": ["刘备卡", "关羽卡", "张飞卡", "赵云卡", "诸葛亮卡", "曹操卡"],
+            "食物类": ["面包", "苹果", "烤肉", "药草", "零食"],
+            "工具类": ["镐子", "斧头", "铲子", "锄头", "钓鱼竿"],
+            "材料类": ["铁锭", "铜锭", "金锭", "皮革", "布料"]
+        }
+        
+        # 背包界面状态
+        self.inventory_selected_slot = -1
+        self.dragging_item = None
+        self.drag_source = None
+        self.inventory_category = "全部"
+        
+        # 合成系统
+        self.crafting_recipes = {
+            "石头镐子": {"石头": 3, "木头": 2},
+            "木头斧头": {"木头": 3, "石头": 1},
+            "铁锭": {"煤炭": 1, "铁矿石": 1},
+            "面包": {"小麦": 3}
+        }
+        
     def initialize(self):
         """初始化3D地图"""
         if not opengl_available:
@@ -132,6 +166,9 @@ class GameMap3D:
             
             # 加载地图数据
             self.load_map_data()
+            
+            # 加载MC世界存档数据
+            self.load_mc_world_data()
             
             # 显示内存和显卡占用提示
             self.show_performance_warning()
@@ -223,6 +260,53 @@ class GameMap3D:
         except Exception as e:
             print(f"保存地图数据失败: {e}")
             return False
+    
+    def load_mc_world_data(self):
+        """加载MC世界存档数据"""
+        try:
+            mc_world = data.get(MC_WORLD_KEY, {})
+            
+            if mc_world:
+                self.placed_blocks = mc_world.get("placed_blocks", [])
+                self.hotbar = mc_world.get("hotbar", [None] * 9)
+                self.hotbar_selected = mc_world.get("hotbar_selected", 0)
+                
+                saved_pos = mc_world.get("player_pos", [0, 0, 0])
+                if saved_pos and saved_pos != [0, 0, 0]:
+                    self.player_pos = saved_pos
+                
+                self.camera["yaw"] = mc_world.get("camera_yaw", 0)
+                self.camera["pitch"] = mc_world.get("camera_pitch", -20)
+                self.camera["mode"] = mc_world.get("camera_mode", "first")
+                
+                self.inventory = mc_world.get("inventory", [])
+                self.world_seed = mc_world.get("world_seed", 0)
+                
+                self.update_camera()
+                print(f"加载MC世界数据成功: {len(self.placed_blocks)} 个方块")
+        except Exception as e:
+            print(f"加载MC世界数据失败: {e}")
+    
+    def save_mc_world_data(self):
+        """保存MC世界存档数据"""
+        try:
+            mc_world = {
+                "placed_blocks": self.placed_blocks,
+                "hotbar": self.hotbar,
+                "hotbar_selected": self.hotbar_selected,
+                "player_pos": self.player_pos,
+                "camera_yaw": self.camera["yaw"],
+                "camera_pitch": self.camera["pitch"],
+                "camera_mode": self.camera["mode"],
+                "inventory": getattr(self, 'inventory', []),
+                "world_seed": getattr(self, 'world_seed', 0)
+            }
+            
+            data[MC_WORLD_KEY] = mc_world
+            save()
+            print(f"保存MC世界数据成功: {len(self.placed_blocks)} 个方块")
+        except Exception as e:
+            print(f"保存MC世界数据失败: {e}")
     
     def generate_locations(self, count):
         """生成地图地点"""
@@ -1437,6 +1521,319 @@ class GameMap3D:
         }
         return colors.get(block_type, (128, 128, 128))
     
+    def draw_inventory(self):
+        """绘制背包界面（类似旅行者背包）"""
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+        glDisable(GL_DEPTH_TEST)
+        
+        inv_width = 500
+        inv_height = 400
+        inv_x = SCREEN_WIDTH // 2 - inv_width // 2
+        inv_y = SCREEN_HEIGHT // 2 - inv_height // 2
+        
+        bg_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        bg_surf.fill((0, 0, 0, 150))
+        self.screen.blit(bg_surf, (0, 0))
+        
+        inv_surf = pygame.Surface((inv_width, inv_height), pygame.SRCALPHA)
+        inv_surf.fill((60, 60, 80, 240))
+        pygame.draw.rect(inv_surf, (100, 100, 120), (0, 0, inv_width, inv_height), 3, border_radius=10)
+        self.screen.blit(inv_surf, (inv_x, inv_y))
+        
+        title_surf = self.font_main.render("背包", True, COLORS["accent_gold"])
+        title_rect = title_surf.get_rect(center=(SCREEN_WIDTH // 2, inv_y + 25))
+        self.screen.blit(title_surf, title_rect)
+        
+        categories = ["全部", "方块类", "资源类", "武器类", "弹药类", "食物类", "工具类"]
+        cat_width = 60
+        cat_start_x = inv_x + 20
+        cat_y = inv_y + 50
+        
+        for i, cat in enumerate(categories):
+            cat_x = cat_start_x + i * (cat_width + 5)
+            cat_surf = pygame.Surface((cat_width, 25), pygame.SRCALPHA)
+            
+            if cat == self.inventory_category:
+                cat_surf.fill((80, 120, 80, 255))
+            else:
+                cat_surf.fill((50, 50, 70, 255))
+            
+            pygame.draw.rect(cat_surf, (80, 80, 100), (0, 0, cat_width, 25), 1, border_radius=3)
+            self.screen.blit(cat_surf, (cat_x, cat_y))
+            
+            cat_text = self.font_small.render(cat, True, COLORS["text_white"])
+            cat_text_rect = cat_text.get_rect(center=(cat_x + cat_width // 2, cat_y + 12))
+            self.screen.blit(cat_text, cat_text_rect)
+        
+        slot_size = 45
+        slot_spacing = 5
+        slots_per_row = 9
+        slot_start_x = inv_x + 20
+        slot_start_y = inv_y + 85
+        
+        for row in range(3):
+            for col in range(slots_per_row):
+                slot_idx = row * slots_per_row + col
+                slot_x = slot_start_x + col * (slot_size + slot_spacing)
+                slot_y = slot_start_y + row * (slot_size + slot_spacing)
+                
+                slot_surf = pygame.Surface((slot_size, slot_size), pygame.SRCALPHA)
+                
+                if slot_idx == self.inventory_selected_slot:
+                    slot_surf.fill((80, 120, 80, 255))
+                    pygame.draw.rect(slot_surf, COLORS["accent_gold"], (0, 0, slot_size, slot_size), 2)
+                else:
+                    slot_surf.fill((50, 50, 70, 255))
+                    pygame.draw.rect(slot_surf, (70, 70, 90), (0, 0, slot_size, slot_size), 1)
+                
+                self.screen.blit(slot_surf, (slot_x, slot_y))
+                
+                item = self.inventory[slot_idx]
+                if item:
+                    item_color = self.get_item_color(item["name"])
+                    item_surf = pygame.Surface((35, 35), pygame.SRCALPHA)
+                    item_surf.fill(item_color)
+                    self.screen.blit(item_surf, (slot_x + 5, slot_y + 5))
+                    
+                    if item.get("count", 1) > 1:
+                        count_text = self.font_small.render(str(item["count"]), True, COLORS["text_white"])
+                        self.screen.blit(count_text, (slot_x + slot_size - 20, slot_y + slot_size - 15))
+        
+        hotbar_y = inv_y + inv_height - 60
+        hotbar_width = 9 * 50 + 10
+        hotbar_x = inv_x + (inv_width - hotbar_width) // 2
+        
+        hotbar_label = self.font_small.render("快捷栏", True, COLORS["text_white"])
+        self.screen.blit(hotbar_label, (hotbar_x, hotbar_y - 20))
+        
+        for i in range(9):
+            slot_x = hotbar_x + 5 + i * 50
+            slot_surf = pygame.Surface((45, 45), pygame.SRCALPHA)
+            
+            if i == self.hotbar_selected:
+                slot_surf.fill((80, 120, 80, 255))
+                pygame.draw.rect(slot_surf, COLORS["accent_gold"], (0, 0, 45, 45), 2)
+            else:
+                slot_surf.fill((50, 50, 70, 255))
+                pygame.draw.rect(slot_surf, (70, 70, 90), (0, 0, 45, 45), 1)
+            
+            self.screen.blit(slot_surf, (slot_x, hotbar_y))
+            
+            if self.hotbar[i]:
+                item_color = self.get_item_color(self.hotbar[i])
+                item_surf = pygame.Surface((35, 35), pygame.SRCALPHA)
+                item_surf.fill(item_color)
+                self.screen.blit(item_surf, (slot_x + 5, hotbar_y + 5))
+        
+        if self.dragging_item:
+            mx, my = pygame.mouse.get_pos()
+            drag_color = self.get_item_color(self.dragging_item["name"])
+            drag_surf = pygame.Surface((40, 40), pygame.SRCALPHA)
+            drag_surf.fill(drag_color)
+            pygame.draw.rect(drag_surf, COLORS["accent_gold"], (0, 0, 40, 40), 2)
+            self.screen.blit(drag_surf, (mx - 20, my - 20))
+        
+        hint_surf = self.font_small.render("E: 关闭背包 | 左键: 选择/拖拽 | 右键: 放置半堆", True, (150, 150, 150))
+        hint_rect = hint_surf.get_rect(center=(SCREEN_WIDTH // 2, inv_y + inv_height - 10))
+        self.screen.blit(hint_surf, hint_rect)
+        
+        glEnable(GL_DEPTH_TEST)
+    
+    def get_item_color(self, item_name):
+        """获取物品颜色"""
+        colors = {
+            "泥土": (139, 90, 43),
+            "石头": (128, 128, 128),
+            "木头": (160, 82, 45),
+            "草地": (34, 139, 34),
+            "沙子": (238, 214, 175),
+            "水": (65, 105, 225),
+            "玻璃": (200, 200, 200),
+            "砖块": (178, 34, 34),
+            "煤炭": (50, 50, 50),
+            "金元宝": (255, 215, 0),
+            "食物": (255, 100, 100),
+            "手枪": (100, 100, 100),
+            "步枪": (80, 80, 80),
+            "狙击枪": (60, 60, 60),
+            "机枪": (70, 70, 70),
+            "普通子弹": (180, 180, 180),
+            "高级子弹": (200, 200, 200),
+            "稀有子弹": (220, 220, 220),
+            "面包": (210, 180, 140),
+            "苹果": (255, 0, 0),
+            "烤肉": (150, 80, 50),
+            "药草": (0, 200, 0),
+            "镐子": (150, 150, 150),
+            "斧头": (139, 90, 43),
+            "铲子": (180, 180, 180),
+            "刘备卡": (255, 200, 100),
+            "关羽卡": (255, 100, 100),
+            "张飞卡": (100, 100, 255),
+            "赵云卡": (100, 255, 100),
+            "诸葛亮卡": (200, 200, 255),
+            "曹操卡": (50, 50, 50)
+        }
+        return colors.get(item_name, (128, 128, 128))
+    
+    def handle_inventory_input(self):
+        """处理背包输入"""
+        inv_width = 500
+        inv_height = 400
+        inv_x = SCREEN_WIDTH // 2 - inv_width // 2
+        inv_y = SCREEN_HEIGHT // 2 - inv_height // 2
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return "quit"
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE or event.key == pygame.K_e:
+                    self.show_inventory = False
+                    self.is_mouse_locked = True
+                    pygame.mouse.set_visible(False)
+                    pygame.event.set_grab(True)
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mx, my = event.pos
+                
+                categories = ["全部", "方块类", "资源类", "武器类", "弹药类", "食物类", "工具类"]
+                cat_width = 60
+                cat_start_x = inv_x + 20
+                cat_y = inv_y + 50
+                
+                for i, cat in enumerate(categories):
+                    cat_x = cat_start_x + i * (cat_width + 5)
+                    if cat_x <= mx <= cat_x + cat_width and cat_y <= my <= cat_y + 25:
+                        self.inventory_category = cat
+                
+                slot_size = 45
+                slot_spacing = 5
+                slots_per_row = 9
+                slot_start_x = inv_x + 20
+                slot_start_y = inv_y + 85
+                
+                for row in range(3):
+                    for col in range(slots_per_row):
+                        slot_idx = row * slots_per_row + col
+                        slot_x = slot_start_x + col * (slot_size + slot_spacing)
+                        slot_y = slot_start_y + row * (slot_size + slot_spacing)
+                        
+                        if slot_x <= mx <= slot_x + slot_size and slot_y <= my <= slot_y + slot_size:
+                            if event.button == 1:
+                                self.handle_slot_click(slot_idx, "inventory")
+                            elif event.button == 3:
+                                self.handle_slot_right_click(slot_idx, "inventory")
+                
+                hotbar_y = inv_y + inv_height - 60
+                hotbar_width = 9 * 50 + 10
+                hotbar_x = inv_x + (inv_width - hotbar_width) // 2
+                
+                for i in range(9):
+                    slot_x = hotbar_x + 5 + i * 50
+                    if slot_x <= mx <= slot_x + 45 and hotbar_y <= my <= hotbar_y + 45:
+                        if event.button == 1:
+                            self.handle_slot_click(i, "hotbar")
+                        elif event.button == 3:
+                            self.handle_slot_right_click(i, "hotbar")
+        
+        return "continue"
+    
+    def handle_slot_click(self, slot_idx, source):
+        """处理槽位点击"""
+        if source == "inventory":
+            slot_item = self.inventory[slot_idx]
+        else:
+            slot_item = {"name": self.hotbar[slot_idx], "count": 1} if self.hotbar[slot_idx] else None
+        
+        if self.dragging_item:
+            if slot_item:
+                if slot_item["name"] == self.dragging_item["name"]:
+                    total = slot_item.get("count", 1) + self.dragging_item.get("count", 1)
+                    if total <= self.max_stack_size:
+                        slot_item["count"] = total
+                        self.dragging_item = None
+                    else:
+                        slot_item["count"] = self.max_stack_size
+                        self.dragging_item["count"] = total - self.max_stack_size
+                else:
+                    if source == "inventory":
+                        self.inventory[slot_idx] = self.dragging_item
+                    else:
+                        self.hotbar[slot_idx] = self.dragging_item["name"]
+                    self.dragging_item = slot_item
+            else:
+                if source == "inventory":
+                    self.inventory[slot_idx] = self.dragging_item
+                else:
+                    self.hotbar[slot_idx] = self.dragging_item["name"]
+                self.dragging_item = None
+        else:
+            if slot_item:
+                self.dragging_item = slot_item
+                if source == "inventory":
+                    self.inventory[slot_idx] = None
+                else:
+                    self.hotbar[slot_idx] = None
+                self.drag_source = source
+    
+    def handle_slot_right_click(self, slot_idx, source):
+        """处理槽位右键点击（放置半堆）"""
+        if self.dragging_item:
+            if source == "inventory":
+                if self.inventory[slot_idx]:
+                    if self.inventory[slot_idx]["name"] == self.dragging_item["name"]:
+                        self.inventory[slot_idx]["count"] += 1
+                        self.dragging_item["count"] -= 1
+                    else:
+                        return
+                else:
+                    self.inventory[slot_idx] = {"name": self.dragging_item["name"], "count": 1}
+                    self.dragging_item["count"] -= 1
+            else:
+                if self.hotbar[slot_idx] == self.dragging_item["name"]:
+                    pass
+                elif self.hotbar[slot_idx] is None:
+                    self.hotbar[slot_idx] = self.dragging_item["name"]
+                    self.dragging_item["count"] -= 1
+            
+            if self.dragging_item["count"] <= 0:
+                self.dragging_item = None
+    
+    def add_item_to_inventory(self, item_name, count=1):
+        """添加物品到背包"""
+        for i, slot in enumerate(self.inventory):
+            if slot and slot["name"] == item_name:
+                if slot["count"] + count <= self.max_stack_size:
+                    slot["count"] += count
+                    return True
+                else:
+                    remaining = self.max_stack_size - slot["count"]
+                    slot["count"] = self.max_stack_size
+                    count -= remaining
+        
+        for i, slot in enumerate(self.inventory):
+            if slot is None:
+                self.inventory[i] = {"name": item_name, "count": count}
+                return True
+        
+        return False
+    
+    def remove_item_from_inventory(self, item_name, count=1):
+        """从背包移除物品"""
+        for i, slot in enumerate(self.inventory):
+            if slot and slot["name"] == item_name:
+                if slot["count"] >= count:
+                    slot["count"] -= count
+                    if slot["count"] <= 0:
+                        self.inventory[i] = None
+                    return True
+                else:
+                    return False
+        return False
+    
     def main(self):
         """主循环"""
         if not self.initialize():
@@ -1453,6 +1850,17 @@ class GameMap3D:
                 
                 self.draw_3d_scene()
                 self.draw_pause_menu()
+                pygame.display.flip()
+                self.clock.tick(60)
+                continue
+            
+            if self.show_inventory:
+                result = self.handle_inventory_input()
+                if result == "quit":
+                    running = False
+                
+                self.draw_3d_scene()
+                self.draw_inventory()
                 pygame.display.flip()
                 self.clock.tick(60)
                 continue
@@ -1525,6 +1933,7 @@ class GameMap3D:
             # 限制帧率
             self.clock.tick(60)
         
+        self.save_mc_world_data()
         pygame.quit()
 
 def main():
