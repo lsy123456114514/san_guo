@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>三国游戏 - 经典与创新的完美结合</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#FFD700',
+                        secondary: '#8B4513',
+                        dark: '#1A1A2E',
+                        light: '#16213E',
+                        accent: '#0F3460'
+                    },
+                    fontFamily: {
+                        sans: ['Noto Sans SC', 'sans-serif'],
+                        serif: ['Noto Serif SC', 'serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .text-shadow {
+                text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            }
+            .text-shadow-lg {
+                text-shadow: 4px 4px 8px rgba(0, 0, 0, 0.7);
+            }
+            .bg-gradient-game {
+                background: linear-gradient(135deg, #1A1A2E 0%, #16213E 50%, #0F3460 100%);
+            }
+            .bg-gradient-gold {
+                background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+            }
+            .animate-float {
+                animation: float 6s ease-in-out infinite;
+            }
+            .animate-pulse-slow {
+                animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+            }
+            .animate-glow {
+                animation: glow 2s ease-in-out infinite alternate;
+            }
+            @keyframes float {
+                0% { transform: translateY(0px); }
+                50% { transform: translateY(-20px); }
+                100% { transform: translateY(0px); }
+            }
+            @keyframes glow {
+                from { box-shadow: 0 0 5px #FFD700, 0 0 10px #FFD700; }
+                to { box-shadow: 0 0 10px #FFD700, 0 0 20px #FFA500, 0 0 30px #FF8C00; }
+            }
+        }
+    </style>
+</head>
+<body class="bg-dark text-white font-sans overflow-x-hidden">
+    <!-- 导航栏 -->
+    <nav class="fixed top-0 left-0 w-full bg-dark/90 backdrop-blur-md z-50 border-b border-primary/20">
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <div class="w-10 h-10 bg-gradient-gold rounded-full flex items-center justify-center">
+                    <span class="text-dark font-bold text-xl">三</span>
+                </div>
+                <span class="text-2xl font-bold text-primary">三国游戏</span>
+            </div>
+            <div class="hidden md:flex space-x-8">
+                <a href="#features" class="hover:text-primary transition-colors duration-300">游戏特色</a>
+                <a href="#modes" class="hover:text-primary transition-colors duration-300">游戏模式</a>
+                <a href="#systems" class="hover:text-primary transition-colors duration-300">游戏系统</a>
+                <a href="#visuals" class="hover:text-primary transition-colors duration-300">视觉效果</a>
+                <a href="#download" class="hover:text-primary transition-colors duration-300">下载安装</a>
+            </div>
+            <button class="md:hidden text-2xl">
+                <i class="fa fa-bars"></i>
+            </button>
+        </div>
+    </nav>
+
+    <!-- 英雄区域 -->
+    <header class="relative min-h-screen flex items-center justify-center bg-gradient-game overflow-hidden">
+        <div class="absolute inset-0 z-0">
+            <div class="absolute inset-0 bg-dark/50"></div>
+            <!-- 动态背景效果 -->
+            <div class="absolute inset-0 overflow-hidden">
+                <div class="absolute top-1/4 left-1/4 w-64 h-64 bg-primary/20 rounded-full blur-3xl animate-pulse-slow"></div>
+                <div class="absolute bottom-1/4 right-1/4 w-80 h-80 bg-accent/20 rounded-full blur-3xl animate-pulse-slow" style="animation-delay: 1s;"></div>
+                <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse-slow" style="animation-delay: 2s;"></div>
+            </div>
+        </div>
+        <div class="container mx-auto px-4 z-10 text-center">
+            <h1 class="text-[clamp(2.5rem,8vw,5rem)] font-bold text-primary text-shadow-lg mb-6 animate-float">
+                三国游戏
+            </h1>
+            <p class="text-[clamp(1rem,3vw,1.5rem)] text-gray-300 mb-12 max-w-3xl mx-auto">
+                经典三国题材与现代游戏玩法的完美融合，打造属于你的三国霸业
+            </p>
+            <div class="flex flex-col sm:flex-row justify-center gap-4">
+                <a href="#download" class="px-8 py-4 bg-gradient-gold text-dark font-bold rounded-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 animate-glow">
+                    <i class="fa fa-download mr-2"></i>立即下载
+                </a>
+                <a href="#features" class="px-8 py-4 border-2 border-primary text-primary font-bold rounded-lg hover:bg-primary/10 transition-all duration-300">
+                    <i class="fa fa-info-circle mr-2"></i>了解更多
+                </a>
+            </div>
+        </div>
+        <div class="absolute bottom-10 left-1/2 transform -translate-x-1/2 animate-bounce">
+            <a href="#features" class="text-primary text-3xl">
+                <i class="fa fa-chevron-down"></i>
+            </a>
+        </div>
+    </header>
+
+    <!-- 游戏特色 -->
+    <section id="features" class="py-20 bg-light">
+        <div class="container mx-auto px-4">
+            <div class="text-center mb-16">
+                <h2 class="text-[clamp(1.5rem,4vw,3rem)] font-bold text-primary mb-4">游戏特色</h2>
+                <div class="w-24 h-1 bg-primary mx-auto mb-6"></div>
+                <p class="text-gray-300 max-w-2xl mx-auto">
+                    融合经典与创新，打造独特的三国游戏体验
+                </p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <!-- 特色1 -->
+                <div class="bg-dark/50 p-6 rounded-xl border border-primary/20 hover:border-primary/50 transition-all duration-300 transform hover:-translate-y-2">
+                    <div class="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center mb-6">
+                        <i class="fa fa-gamepad text-2xl text-primary"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-primary mb-3">多样游戏模式</h3>
+                    <p class="text-gray-400">
+                        包含蛇游戏、推箱子、打砖块、扫雷、2048、俄罗斯方块、五子棋等多种经典游戏模式，满足不同玩家的需求。
+                    </p>
+                </div>
+                <!-- 特色2 -->
+                <div class="bg-dark/50 p-6 rounded-xl border border-primary/20 hover:border-primary/50 transition-all duration-300 transform hover:-translate-y-2">
+                    <div class="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center mb-6">
+                        <i class="fa fa-users text-2xl text-primary"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-primary mb-3">丰富游戏系统</h3>
+                    <p class="text-gray-400">
+                        完整的英雄、宠物、装备、建筑、科技树、任务等系统，构建庞大的游戏世界，提供深度游戏体验。
+                    </p>
+                </div>
+                <!-- 特色3 -->
+                <div class="bg-dark/50 p-6 rounded-xl border border-primary/20 hover:border-primary/50 transition-all duration-300 transform hover:-translate-y-2">
+                    <div class="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center mb-6">
+                        <i class="fa fa-mobile text-2xl text-primary"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-primary mb-3">跨平台兼容</h3>
+                    <p class="text-gray-400">
+                        支持Windows、macOS、Linux和Android平台，随时随地享受游戏乐趣，数据同步，无缝切换。
+                    </p>
+                </div>
+                <!-- 特色4 -->
+                <div class="bg-dark/50 p-6 rounded-xl border border-primary/20 hover:border-primary/50 transition-all duration-300 transform hover:-translate-y-2">
+                    <div class="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center mb-6">
+                        <i class="fa fa-eye text-2xl text-primary"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-primary mb-3">震撼视觉效果</h3>
+                    <p class="text-gray-400">
+                        精美的粒子系统、动态光效、渐变背景和三国主题视觉元素，营造沉浸式游戏体验。
+                    </p>
+                </div>
+                <!-- 特色5 -->
+                <div class="bg-dark/50 p-6 rounded-xl border border-primary/20 hover:border-primary/50 transition-all duration-300 transform hover:-translate-y-2">
+                    <div class="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center mb-6">
+                        <i class="fa fa-shield text-2xl text-primary"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-primary mb-3">完善存档系统</h3>
+                    <p class="text-gray-400">
+                        自动保存游戏进度，支持多个存档槽位，确保游戏数据安全，随时继续游戏。
+                    </p>
+                </div>
+                <!-- 特色6 -->
+                <div class="bg-dark/50 p-6 rounded-xl border border-primary/20 hover:border-primary/50 transition-all duration-300 transform hover:-translate-y-2">
+                    <div class="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center mb-6">
+                        <i class="fa fa-line-chart text-2xl text-primary"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-primary mb-3">成长与成就</h3>
+                    <p class="text-gray-400">
+                        丰富的成就系统和排行榜，记录玩家的成长历程，与其他玩家一较高下。
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 游戏模式 -->
+    <section id="modes" class="py-20 bg-dark">
+        <div class="container mx-auto px-4">
+            <div class="text-center mb-16">
+                <h2 class="text-[clamp(1.5rem,4vw,3rem)] font-bold text-primary mb-4">游戏模式</h2>
+                <div class="w-24 h-1 bg-primary mx-auto mb-6"></div>
+                <p class="text-gray-300 max-w-2xl mx-auto">
+                    多种经典游戏模式，总有一款适合你
+                </p>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                <!-- 模式1 -->
+                <div class="bg-light/30 p-4 rounded-lg border border-primary/20 hover:border-primary/50 transition-all duration-300 transform hover:scale-105">
+                    <div class="aspect-square bg-primary/10 rounded-lg flex items-center justify-center mb-4">
+                        <i class="fa fa-puzzle-piece text-4xl text-primary"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-primary text-center">蛇游戏</h3>
+                </div>
+                <!-- 模式2 -->
+                <div class="bg-light/30 p-4 rounded-lg border border-primary/20 hover:border-primary/50 transition-all duration-300 transform hover:scale-105">
+                    <div class="aspect-square bg-primary/10 rounded-lg flex items-center justify-center mb-4">
+                        <i class="fa fa-cube text-4xl text-primary"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-primary text-center">推箱子</h3>
+                </div>
+                <!-- 模式3 -->
+                <div class="bg-light/30 p-4 rounded-lg border border-primary/20 hover:border-primary/50 transition-all duration-300 transform hover:scale-105">
+                    <div class="aspect-square bg-primary/10 rounded-lg flex items-center justify-center mb-4">
+                        <i class="fa fa-circle text-4xl text-primary"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-primary text-center">打砖块</h3>
+                </div>
+                <!-- 模式4 -->
+                <div class="bg-light/30 p-4 rounded-lg border border-primary/20 hover:border-primary/50 transition-all duration-300 transform hover:scale-105">
+                    <div class="aspect-square bg-primary/10 rounded-lg flex items-center justify-center mb-4">
+                        <i class="fa fa-bomb text-4xl text-primary"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-primary text-center">扫雷</h3>
+                </div>
+                <!-- 模式5 -->
+                <div class="bg-light/30 p-4 rounded-lg border border-primary/20 hover:border-primary/50 transition-all duration-300 transform hover:scale-105">
+                    <div class="aspect-square bg-primary/10 rounded-lg flex items-center justify-center mb-4">
+                        <i class="fa fa-th text-4xl text-primary"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-primary text-center">2048</h3>
+                </div>
+                <!-- 模式6 -->
+                <div class="bg-light/30 p-4 rounded-lg border border-primary/20 hover:border-primary/50 transition-all duration-300 transform hover:scale-105">
+                    <div class="aspect-square bg-primary/10 rounded-lg flex items-center justify-center mb-4">
+                        <i class="fa fa-square text-4xl text-primary"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-primary text-center">俄罗斯方块</h3>
+                </div>
+                <!-- 模式7 -->
+                <div class="bg-light/30 p-4 rounded-lg border border-primary/20 hover:border-primary/50 transition-all duration-300 transform hover:scale-105">
+                    <div class="aspect-square bg-primary/10 rounded-lg flex items-center justify-center mb-4">
+                        <i class="fa fa-circle-o text-4xl text-primary"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-primary text-center">五子棋</h3>
+                </div>
+                <!-- 模式8 -->
+                <div class="bg-light/30 p-4 rounded-lg border border-primary/20 hover:border-primary/50 transition-all duration-300 transform hover:scale-105">
+                    <div class="aspect-square bg-primary/10 rounded-lg flex items-center justify-center mb-4">
+                        <i class="fa fa-map text-4xl text-primary"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-primary text-center">三国地图</h3>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 游戏系统 -->
+    <section id="systems" class="py-20 bg-light">
+        <div class="container mx-auto px-4">
+            <div class="text-center mb-16">
+                <h2 class="text-[clamp(1.5rem,4vw,3rem)] font-bold text-primary mb-4">游戏系统</h2>
+                <div class="w-24 h-1 bg-primary mx-auto mb-6"></div>
+                <p class="text-gray-300 max-w-2xl mx-auto">
+                    丰富的游戏系统，构建完整的三国世界
+                </p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <!-- 系统1 -->
+                <div class="bg-dark/50 p-6 rounded-xl border border-primary/20">
+                    <h3 class="text-xl font-bold text-primary mb-4 flex items-center">
+                        <i class="fa fa-user-circle mr-2"></i>英雄系统
+                    </h3>
+                    <p class="text-gray-400 mb-4">
+                        招募三国名将，培养专属英雄，打造强大的武将阵容，参与各种战斗和活动。
+                    </p>
+                    <ul class="text-gray-400 space-y-2">
+                        <li class="flex items-center"><i class="fa fa-check text-green-400 mr-2"></i>英雄招募</li>
+                        <li class="flex items-center"><i class="fa fa-check text-green-400 mr-2"></i>英雄培养</li>
+                        <li class="flex items-center"><i class="fa fa-check text-green-400 mr-2"></i>英雄仓库</li>
+                    </ul>
+                </div>
+                <!-- 系统2 -->
+                <div class="bg-dark/50 p-6 rounded-xl border border-primary/20">
+                    <h3 class="text-xl font-bold text-primary mb-4 flex items-center">
+                        <i class="fa fa-paw mr-2"></i>宠物系统
+                    </h3>
+                    <p class="text-gray-400 mb-4">
+                        收集各种宠物，培养进化，参与宠物竞技场，与其他玩家的宠物一决高下。
+                    </p>
+                    <ul class="text-gray-400 space-y-2">
+                        <li class="flex items-center"><i class="fa fa-check text-green-400 mr-2"></i>宠物进化</li>
+                        <li class="flex items-center"><i class="fa fa-check text-green-400 mr-2"></i>宠物竞技场</li>
+                        <li class="flex items-center"><i class="fa fa-check text-green-400 mr-2"></i>宠物属性</li>
+                    </ul>
+                </div>
+                <!-- 系统3 -->
+                <div class="bg-dark/50 p-6 rounded-xl border border-primary/20">
+                    <h3 class="text-xl font-bold text-primary mb-4 flex items-center">
+                        <i class="fa fa-shopping-bag mr-2"></i>装备系统
+                    </h3>
+                    <p class="text-gray-400 mb-4">
+                        收集和打造各种装备，提升英雄实力，应对不同的战斗场景和挑战。
+                    </p>
+                    <ul class="text-gray-400 space-y-2">
+                        <li class="flex items-center"><i class="fa fa-check text-green-400 mr-2"></i>装备收集</li>
+                        <li class="flex items-center"><i class="fa fa-check text-green-400 mr-2"></i>装备强化</li>
+                        <li class="flex items-center"><i class="fa fa-check text-green-400 mr-2"></i>装备合成</li>
+                    </ul>
+                </div>
+                <!-- 系统4 -->
+                <div class="bg-dark/50 p-6 rounded-xl border border-primary/20">
+                    <h3 class="text-xl font-bold text-primary mb-4 flex items-center">
+                        <i class="fa fa-building mr-2"></i>建筑系统
+                    </h3>
+                    <p class="text-gray-400 mb-4">
+                        建设和升级各种建筑，生产资源，解锁新功能，发展自己的领地。
+                    </p>
+                    <ul class="text-gray-400 space-y-2">
+                        <li class="flex items-center"><i class="fa fa-check text-green-400 mr-2"></i>建筑升级</li>
+                        <li class="flex items-center"><i class="fa fa-check text-green-400 mr-2"></i>资源生产</li>
+                        <li class="flex items-center"><i class="fa fa-check text-green-400 mr-2"></i>领地发展</li>
+                    </ul>
+                </div>
+                <!-- 系统5 -->
+                <div class="bg-dark/50 p-6 rounded-xl border border-primary/20">
+                    <h3 class="text-xl font-bold text-primary mb-4 flex items-center">
+                        <i class="fa fa-tree mr-2"></i>科技树
+                    </h3>
+                    <p class="text-gray-400 mb-4">
+                        研究各种科技，提升各项能力，解锁新的游戏内容和玩法。
+                    </p>
+                    <ul class="text-gray-400 space-y-2">
+                        <li class="flex items-center"><i class="fa fa-check text-green-400 mr-2"></i>科技研究</li>
+                        <li class="flex items-center"><i class="fa fa-check text-green-400 mr-2"></i>能力提升</li>
+                        <li class="flex items-center"><i class="fa fa-check text-green-400 mr-2"></i>内容解锁</li>
+                    </ul>
+                </div>
+                <!-- 系统6 -->
+                <div class="bg-dark/50 p-6 rounded-xl border border-primary/20">
+                    <h3 class="text-xl font-bold text-primary mb-4 flex items-center">
+                        <i class="fa fa-tasks mr-2"></i>任务系统
+                    </h3>
+                    <p class="text-gray-400 mb-4">
+                        完成各种任务，获得丰厚奖励，推动游戏剧情发展，体验三国故事。
+                    </p>
+                    <ul class="text-gray-400 space-y-2">
+                        <li class="flex items-center"><i class="fa fa-check text-green-400 mr-2"></i>主线任务</li>
+                        <li class="flex items-center"><i class="fa fa-check text-green-400 mr-2"></i>支线任务</li>
+                        <li class="flex items-center"><i class="fa fa-check text-green-400 mr-2"></i>日常任务</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 视觉效果 -->
+    <section id="visuals" class="py-20 bg-dark">
+        <div class="container mx-auto px-4">
+            <div class="text-center mb-16">
+                <h2 class="text-[clamp(1.5rem,4vw,3rem)] font-bold text-primary mb-4">视觉效果</h2>
+                <div class="w-24 h-1 bg-primary mx-auto mb-6"></div>
+                <p class="text-gray-300 max-w-2xl mx-auto">
+                    精美的视觉效果，营造沉浸式游戏体验
+                </p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <!-- 视觉1 -->
+                <div class="bg-light/30 p-6 rounded-xl border border-primary/20">
+                    <h3 class="text-xl font-bold text-primary mb-4">粒子系统</h3>
+                    <p class="text-gray-400 mb-4">
+                        丰富的粒子效果，包括金色光芒、火焰、水波等，为游戏增添视觉冲击力。
+                    </p>
+                    <div class="h-48 bg-primary/10 rounded-lg flex items-center justify-center">
+                        <i class="fa fa-magic text-6xl text-primary animate-pulse"></i>
+                    </div>
+                </div>
+                <!-- 视觉2 -->
+                <div class="bg-light/30 p-6 rounded-xl border border-primary/20">
+                    <h3 class="text-xl font-bold text-primary mb-4">动态光效</h3>
+                    <p class="text-gray-400 mb-4">
+                        动态的光影效果，包括发光、脉冲、渐变等，提升游戏的视觉层次感。
+                    </p>
+                    <div class="h-48 bg-primary/10 rounded-lg flex items-center justify-center">
+                        <i class="fa fa-lightbulb-o text-6xl text-primary animate-glow"></i>
+                    </div>
+                </div>
+                <!-- 视觉3 -->
+                <div class="bg-light/30 p-6 rounded-xl border border-primary/20">
+                    <h3 class="text-xl font-bold text-primary mb-4">三国主题背景</h3>
+                    <p class="text-gray-400 mb-4">
+                        精美的三国主题背景，包括古风卷轴、水墨风格、金色装饰等元素。
+                    </p>
+                    <div class="h-48 bg-primary/10 rounded-lg flex items-center justify-center">
+                        <i class="fa fa-paint-brush text-6xl text-primary"></i>
+                    </div>
+                </div>
+                <!-- 视觉4 -->
+                <div class="bg-light/30 p-6 rounded-xl border border-primary/20">
+                    <h3 class="text-xl font-bold text-primary mb-4">装饰性边框</h3>
+                    <p class="text-gray-400 mb-4">
+                        精美的装饰性边框，包括中式花纹、金色边角、古典图案等，提升界面美感。
+                    </p>
+                    <div class="h-48 bg-primary/10 rounded-lg flex items-center justify-center">
+                        <i class="fa fa-square-o text-6xl text-primary"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 下载安装 -->
+    <section id="download" class="py-20 bg-gradient-game">
+        <div class="container mx-auto px-4">
+            <div class="text-center mb-16">
+                <h2 class="text-[clamp(1.5rem,4vw,3rem)] font-bold text-primary mb-4">下载安装</h2>
+                <div class="w-24 h-1 bg-primary mx-auto mb-6"></div>
+                <p class="text-gray-300 max-w-2xl mx-auto">
+                    简单几步，开始你的三国霸业
+                </p>
+            </div>
+            <div class="max-w-3xl mx-auto bg-dark/70 backdrop-blur-md p-8 rounded-2xl border border-primary/30">
+                <div class="space-y-8">
+                    <!-- Windows安装 -->
+                    <div class="flex flex-col md:flex-row items-center justify-between p-6 bg-light/20 rounded-xl">
+                        <div class="flex items-center mb-4 md:mb-0">
+                            <div class="w-16 h-16 bg-blue-600 rounded-lg flex items-center justify-center mr-4">
+                                <i class="fa fa-windows text-3xl text-white"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-bold text-primary">Windows安装程序</h3>
+                                <p class="text-gray-400">支持Windows 7及以上版本</p>
+                            </div>
+                        </div>
+                        <a href="#" class="px-6 py-3 bg-gradient-gold text-dark font-bold rounded-lg hover:shadow-xl transition-all duration-300">
+                            <i class="fa fa-download mr-2"></i>下载安装程序
+                        </a>
+                    </div>
+                    <!-- 依赖安装 -->
+                    <div class="flex flex-col md:flex-row items-center justify-between p-6 bg-light/20 rounded-xl">
+                        <div class="flex items-center mb-4 md:mb-0">
+                            <div class="w-16 h-16 bg-green-600 rounded-lg flex items-center justify-center mr-4">
+                                <i class="fa fa-code text-3xl text-white"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-bold text-primary">依赖库安装</h3>
+                                <p class="text-gray-400">自动安装所需Python依赖</p>
+                            </div>
+                        </div>
+                        <a href="install_dependencies.bat" class="px-6 py-3 bg-blue-600 text-white font-bold rounded-lg hover:shadow-xl transition-all duration-300">
+                            <i class="fa fa-file-code-o mr-2"></i>下载批处理文件
+                        </a>
+                    </div>
+                    <!-- 安装步骤 -->
+                    <div class="p-6 bg-light/20 rounded-xl">
+                        <h3 class="text-xl font-bold text-primary mb-4">安装步骤</h3>
+                        <ol class="text-gray-300 space-y-3">
+                            <li class="flex items-start">
+                                <span class="w-8 h-8 bg-primary text-dark font-bold rounded-full flex items-center justify-center mr-3 mt-0.5 flex-shrink-0">1</span>
+                                <span>下载Windows安装程序或依赖库批处理文件</span>
+                            </li>
+                            <li class="flex items-start">
+                                <span class="w-8 h-8 bg-primary text-dark font-bold rounded-full flex items-center justify-center mr-3 mt-0.5 flex-shrink-0">2</span>
+                                <span>运行安装程序，按照提示完成安装</span>
+                            </li>
+                            <li class="flex items-start">
+                                <span class="w-8 h-8 bg-primary text-dark font-bold rounded-full flex items-center justify-center mr-3 mt-0.5 flex-shrink-0">3</span>
+                                <span>安装完成后，点击桌面快捷方式启动游戏</span>
+                            </li>
+                            <li class="flex items-start">
+                                <span class="w-8 h-8 bg-primary text-dark font-bold rounded-full flex items-center justify-center mr-3 mt-0.5 flex-shrink-0">4</span>
+                                <span>首次启动时，按照提示完成初始设置</span>
+                            </li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 页脚 -->
+    <footer class="py-12 bg-dark border-t border-primary/20">
+        <div class="container mx-auto px-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+                <div>
+                    <div class="flex items-center space-x-2 mb-4">
+                        <div class="w-10 h-10 bg-gradient-gold rounded-full flex items-center justify-center">
+                            <span class="text-dark font-bold text-xl">三</span>
+                        </div>
+                        <span class="text-2xl font-bold text-primary">三国游戏</span>
+                    </div>
+                    <p class="text-gray-400 mb-4">
+                        经典三国题材与现代游戏玩法的完美融合，打造属于你的三国霸业。
+                    </p>
+                    <div class="flex space-x-4">
+                        <a href="#" class="w-10 h-10 bg-light rounded-full flex items-center justify-center hover:bg-primary/20 transition-colors duration-300">
+                            <i class="fa fa-weixin text-primary"></i>
+                        </a>
+                        <a href="#" class="w-10 h-10 bg-light rounded-full flex items-center justify-center hover:bg-primary/20 transition-colors duration-300">
+                            <i class="fa fa-weibo text-primary"></i>
+                        </a>
+                        <a href="#" class="w-10 h-10 bg-light rounded-full flex items-center justify-center hover:bg-primary/20 transition-colors duration-300">
+                            <i class="fa fa-github text-primary"></i>
+                        </a>
+                    </div>
+                </div>
+                <div>
+                    <h3 class="text-lg font-bold text-primary mb-4">快速链接</h3>
+                    <ul class="space-y-2 text-gray-400">
+                        <li><a href="#features" class="hover:text-primary transition-colors duration-300">游戏特色</a></li>
+                        <li><a href="#modes" class="hover:text-primary transition-colors duration-300">游戏模式</a></li>
+                        <li><a href="#systems" class="hover:text-primary transition-colors duration-300">游戏系统</a></li>
+                        <li><a href="#visuals" class="hover:text-primary transition-colors duration-300">视觉效果</a></li>
+                        <li><a href="#download" class="hover:text-primary transition-colors duration-300">下载安装</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="text-lg font-bold text-primary mb-4">联系我们</h3>
+                    <ul class="space-y-2 text-gray-400">
+                        <li class="flex items-center"><i class="fa fa-envelope mr-2 text-primary"></i> support@sanguogame.com</li>
+                        <li class="flex items-center"><i class="fa fa-phone mr-2 text-primary"></i> 400-123-4567</li>
+                        <li class="flex items-center"><i class="fa fa-map-marker mr-2 text-primary"></i> 中国，北京</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="border-t border-primary/20 pt-8 text-center text-gray-500">
+                <p>&copy; 2026 三国游戏. 保留所有权利.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script>
+        // 平滑滚动
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // 导航栏滚动效果
+        window.addEventListener('scroll', function() {
+            const nav = document.querySelector('nav');
+            if (window.scrollY > 100) {
+                nav.classList.add('bg-dark');
+                nav.classList.remove('bg-dark/90');
+            } else {
+                nav.classList.add('bg-dark/90');
+                nav.classList.remove('bg-dark');
+            }
+        });
+
+        // 移动菜单
+        const menuBtn = document.querySelector('button.md\:hidden');
+        if (menuBtn) {
+            menuBtn.addEventListener('click', function() {
+                // 这里可以添加移动菜单的展开/收起逻辑
+                alert('移动菜单功能开发中...');
+            });
+        }
+    </script>
+</body>
+</html>
