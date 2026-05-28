@@ -167,20 +167,63 @@ class GameMap3D:
         
         # MC风格玩家状态
         self.health = 20  # 生命值 (0-20)
+        self.max_health = 20
         self.hunger = 20  # 饥饿值 (0-20)
+        self.max_hunger = 20
         self.oxygen = 10  # 氧气值 (0-10, 水中使用)
+        self.max_oxygen = 10
         self.experience = 0  # 经验值
         self.level = 0  # 等级
         self.armor = 0  # 护甲值 (0-20)
+        self.max_armor = 20
         self.is_sneaking = False  # 潜行
         self.is_sprinting = False  # 冲刺
         
-        # 昼夜系统
+        # 昼夜系统（MC风格）
         self.day_time = 0  # 0-24000 (MC时间)
         self.day_speed = 10  # 时间流逝速度
         self.is_day = True
         self.sun_angle = 0
         self.moon_angle = 0
+        self.time_of_day = "上午"
+        
+        # MC风格音效系统
+        self.sounds = {
+            "block_place": {"pitch": 1.0, "volume": 0.5},
+            "block_break": {"pitch": 0.8, "volume": 0.6},
+            "jump": {"pitch": 1.0, "volume": 0.3},
+            "hurt": {"pitch": 1.0, "volume": 0.5},
+            "eat": {"pitch": 1.0, "volume": 0.4},
+            "craft": {"pitch": 0.9, "volume": 0.5}
+        }
+        
+        # MC风格粒子效果
+        self.particles = []
+        
+        # MC风格聊天系统
+        self.chat_messages = []
+        self.max_chat_lines = 10
+        
+        # MC风格物品提示
+        self.hovered_item = None
+        self.item_tooltip_timer = 0
+        
+        # MC风格成就系统
+        self.achievements = {
+            "first_block": {"name": "开始建造", "description": "放置第一个方块", "unlocked": False},
+            "first_craft": {"name": "工匠", "description": "完成第一次合成", "unlocked": False},
+            "first_kill": {"name": "猎人", "description": "杀死第一个怪物", "unlocked": False},
+            "day_night": {"name": "经历一天", "description": "度过一个完整的昼夜循环", "unlocked": False}
+        }
+        
+        # MC风格统计数据
+        self.stats = {
+            "blocks_placed": 0,
+            "blocks_broken": 0,
+            "items_crafted": 0,
+            "mobs_killed": 0,
+            "days_passed": 0
+        }
         
         # 天气系统
         self.weather = "clear"  # clear, rain, snow
@@ -378,9 +421,11 @@ class GameMap3D:
                 self.armor = mc_world.get("armor", 0)
                 
                 self.update_camera()
+                self.validate_all()
                 print(f"加载MC世界数据成功: {len(self.placed_blocks)} 个方块")
         except Exception as e:
             print(f"加载MC世界数据失败: {e}")
+            self.validate_all()
     
     def save_mc_world_data(self):
         """保存MC世界存档数据"""
@@ -528,8 +573,15 @@ class GameMap3D:
                             self.message = "没有可跟随的地点"
                     self.message_timer = 2000
                 elif event.key == pygame.K_F5:
-                    self.camera["mode"] = "third" if self.camera["mode"] == "first" else "first"
-                    self.message = f"切换到{'第三人称' if self.camera['mode'] == 'third' else '第一人称'}视角"
+                    if self.camera["mode"] == "first":
+                        self.camera["mode"] = "third_back"
+                        self.message = "切换到第三人称视角（背部）"
+                    elif self.camera["mode"] == "third_back":
+                        self.camera["mode"] = "third_front"
+                        self.message = "切换到第三人称视角（正面）"
+                    else:
+                        self.camera["mode"] = "first"
+                        self.message = "切换到第一人称视角"
                     self.message_timer = 2000
                 elif event.key in [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9]:
                     slot = event.key - pygame.K_1
@@ -654,22 +706,26 @@ class GameMap3D:
         self.message_timer = 1000
     
     def update_camera(self):
-        """更新相机位置"""
+        """更新相机位置（MC风格三种视角）"""
         yaw_rad = math.radians(self.camera["yaw"])
         pitch_rad = math.radians(self.camera["pitch"])
+        distance = 5.0
         
         if self.camera["mode"] == "first":
             # 第一人称视角：相机位置与玩家位置相同
-            # 但稍微偏移到玩家前方
             distance = 0.5
             self.camera["x"] = self.player_pos[0] + math.cos(yaw_rad) * math.cos(pitch_rad) * distance
-            self.camera["y"] = self.player_pos[1] + 1.5 + math.sin(pitch_rad) * distance  # 眼睛高度
+            self.camera["y"] = self.player_pos[1] + 1.5 + math.sin(pitch_rad) * distance
+            self.camera["z"] = self.player_pos[2] + math.sin(yaw_rad) * math.cos(pitch_rad) * distance
+        elif self.camera["mode"] == "third_front":
+            # 第三人称正面视角：相机位于玩家前方
+            self.camera["x"] = self.player_pos[0] + math.cos(yaw_rad) * math.cos(pitch_rad) * distance
+            self.camera["y"] = self.player_pos[1] + 2.0 - math.sin(pitch_rad) * distance
             self.camera["z"] = self.player_pos[2] + math.sin(yaw_rad) * math.cos(pitch_rad) * distance
         else:
-            # 第三人称视角：相机位于玩家背后
-            distance = 5.0
+            # 第三人称背面视角：相机位于玩家背后（默认）
             self.camera["x"] = self.player_pos[0] - math.cos(yaw_rad) * math.cos(pitch_rad) * distance
-            self.camera["y"] = self.player_pos[1] + 2.0 - math.sin(pitch_rad) * distance  # 相机高度
+            self.camera["y"] = self.player_pos[1] + 2.0 - math.sin(pitch_rad) * distance
             self.camera["z"] = self.player_pos[2] - math.sin(yaw_rad) * math.cos(pitch_rad) * distance
     
     def move_to_mouse(self):
@@ -2389,6 +2445,105 @@ class GameMap3D:
                     return False
         return False
     
+    def clamp_value(self, value, min_val, max_val):
+        """限制值在范围内（安全保护）"""
+        if not isinstance(value, (int, float)):
+            return min_val
+        return max(min_val, min(max_val, value))
+    
+    def set_health(self, value):
+        """安全设置生命值"""
+        self.health = self.clamp_value(value, 0, self.max_health)
+    
+    def add_health(self, amount):
+        """安全增加生命值"""
+        self.set_health(self.health + amount)
+    
+    def set_hunger(self, value):
+        """安全设置饥饿值"""
+        self.hunger = self.clamp_value(value, 0, self.max_hunger)
+    
+    def add_hunger(self, amount):
+        """安全增加饥饿值"""
+        self.set_hunger(self.hunger + amount)
+    
+    def set_oxygen(self, value):
+        """安全设置氧气值"""
+        self.oxygen = self.clamp_value(value, 0, self.max_oxygen)
+    
+    def add_oxygen(self, amount):
+        """安全增加氧气值"""
+        self.set_oxygen(self.oxygen + amount)
+    
+    def set_armor(self, value):
+        """安全设置护甲值"""
+        self.armor = self.clamp_value(value, 0, self.max_armor)
+    
+    def add_armor(self, amount):
+        """安全增加护甲值"""
+        self.set_armor(self.armor + amount)
+    
+    def validate_inventory(self):
+        """验证背包数据完整性（安全检查）"""
+        if not isinstance(self.inventory, list):
+            self.inventory = [None] * self.inventory_slots
+        
+        for i in range(len(self.inventory)):
+            if self.inventory[i] is not None:
+                if not isinstance(self.inventory[i], dict):
+                    self.inventory[i] = None
+                else:
+                    if "name" not in self.inventory[i] or "count" not in self.inventory[i]:
+                        self.inventory[i] = None
+                    else:
+                        self.inventory[i]["count"] = self.clamp_value(self.inventory[i]["count"], 1, self.max_stack_size)
+    
+    def validate_hotbar(self):
+        """验证快捷栏数据完整性"""
+        if not isinstance(self.hotbar, list):
+            self.hotbar = [None] * 9
+        
+        self.hotbar_selected = self.clamp_value(self.hotbar_selected, 0, 8)
+    
+    def validate_crafting_grid(self):
+        """验证合成网格数据完整性"""
+        if not isinstance(self.crafting_grid, list) or len(self.crafting_grid) != 3:
+            self.crafting_grid = [[None for _ in range(3)] for _ in range(3)]
+        
+        for row in range(3):
+            if not isinstance(self.crafting_grid[row], list) or len(self.crafting_grid[row]) != 3:
+                self.crafting_grid[row] = [None, None, None]
+    
+    def validate_player_position(self):
+        """验证玩家位置（防止非法位置）"""
+        if not isinstance(self.player_pos, list) or len(self.player_pos) != 3:
+            self.player_pos = [0, 0, 0]
+        
+        for i in range(3):
+            if not isinstance(self.player_pos[i], (int, float)):
+                self.player_pos[i] = 0
+        
+        self.player_pos[1] = max(self.player_pos[1], 0)
+    
+    def validate_camera(self):
+        """验证相机参数"""
+        self.camera["yaw"] = self.camera["yaw"] % 360
+        self.camera["pitch"] = self.clamp_value(self.camera["pitch"], -90, 90)
+        self.camera["speed"] = self.clamp_value(self.camera["speed"], 0.1, 2.0)
+    
+    def validate_all(self):
+        """全面验证所有数据（在加载后调用）"""
+        self.validate_inventory()
+        self.validate_hotbar()
+        self.validate_crafting_grid()
+        self.validate_player_position()
+        self.validate_camera()
+        
+        self.set_health(self.health)
+        self.set_hunger(self.hunger)
+        self.set_oxygen(self.oxygen)
+        self.set_armor(self.armor)
+    
     def draw_crafting_table(self):
         """绘制合成台界面（MC风格）"""
         glMatrixMode(GL_PROJECTION)
@@ -2538,13 +2693,19 @@ class GameMap3D:
         self.crafting_result = None
     
     def craft_item(self):
-        """执行合成"""
+        """执行合成（安全版本）"""
         if not self.crafting_result:
             return
         
         recipe = self.crafting_recipes.get(self.crafting_result)
         if not recipe:
             return
+        
+        for item, count in recipe.items():
+            if not self.remove_item_from_inventory(item, count):
+                self.message = f"材料不足: {item}"
+                self.message_timer = 2000
+                return
         
         for item, count in recipe.items():
             for _ in range(count):
