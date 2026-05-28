@@ -764,6 +764,8 @@ class GameMap3D:
     def draw_3d_scene_python(self):
         """使用Python绘制3D场景"""
         try:
+            sky_color = self.get_sky_color()
+            glClearColor(sky_color[0], sky_color[1], sky_color[2], 1.0)
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
             
             glMatrixMode(GL_PROJECTION)
@@ -786,6 +788,8 @@ class GameMap3D:
                 0, 1, 0
             )
             
+            self.draw_sun_moon()
+            
             self.draw_terrain()
             self.draw_placed_blocks()
             
@@ -796,11 +800,15 @@ class GameMap3D:
             for loc in self.locations:
                 self.draw_location(loc)
             
+            self.draw_entities()
+            
             if self.camera["mode"] == "third":
                 self.draw_player()
             
             for follower in self.followers:
                 self.draw_follower(follower)
+            
+            self.draw_weather()
             
             pygame.display.flip()
         except Exception as e:
@@ -951,6 +959,267 @@ class GameMap3D:
             glEnable(GL_LIGHTING)
         except Exception as e:
             print(f"绘制放置方块错误: {e}")
+    
+    def update_day_night(self):
+        """更新昼夜系统"""
+        self.day_time += self.day_speed
+        if self.day_time >= 24000:
+            self.day_time = 0
+        
+        self.is_day = self.day_time < 12000
+        
+        if self.is_day:
+            self.sun_angle = (self.day_time / 12000) * math.pi - math.pi/2
+            self.moon_angle = -math.pi/2
+        else:
+            self.sun_angle = -math.pi/2
+            self.moon_angle = ((self.day_time - 12000) / 12000) * math.pi - math.pi/2
+    
+    def get_time_of_day(self):
+        """获取当前时间段"""
+        if self.day_time < 2000:
+            return "日出"
+        elif self.day_time < 6000:
+            return "上午"
+        elif self.day_time < 10000:
+            return "中午"
+        elif self.day_time < 12000:
+            return "日落"
+        elif self.day_time < 14000:
+            return "黄昏"
+        elif self.day_time < 22000:
+            return "夜晚"
+        else:
+            return "午夜"
+    
+    def get_sky_color(self):
+        """根据时间获取天空颜色"""
+        if self.is_day:
+            t = self.day_time / 12000
+            if t < 0.2:
+                return (0.3 + t * 0.5, 0.4 + t * 0.4, 0.8 + t * 0.2)
+            elif t > 0.8:
+                t2 = (t - 0.8) * 5
+                return (0.8 - t2 * 0.5, 0.8 - t2 * 0.4, 1.0 - t2 * 0.2)
+            else:
+                return (0.8, 0.8, 1.0)
+        else:
+            t = (self.day_time - 12000) / 12000
+            if t < 0.2:
+                return (0.2 - t * 0.15, 0.25 - t * 0.15, 0.4 - t * 0.2)
+            elif t > 0.8:
+                t2 = (t - 0.8) * 5
+                return (0.05 + t2 * 0.25, 0.1 + t2 * 0.15, 0.2 + t2 * 0.2)
+            else:
+                return (0.05, 0.1, 0.2)
+    
+    def draw_sun_moon(self):
+        """绘制太阳和月亮"""
+        try:
+            glDisable(GL_LIGHTING)
+            glPushMatrix()
+            
+            sun_radius = 50
+            moon_radius = 45
+            
+            if self.is_day:
+                glColor3f(1.0, 1.0, 0.8)
+                x = math.cos(self.sun_angle) * 500
+                y = math.sin(self.sun_angle) * 300 + 100
+                z = 0
+                
+                glTranslatef(self.player_pos[0] + x, y, self.player_pos[2] + z)
+                glBegin(GL_QUADS)
+                for i in range(36):
+                    angle = i * 10 * math.pi / 180
+                    glVertex3f(sun_radius * math.cos(angle), sun_radius * math.sin(angle), 0)
+                    glVertex3f(sun_radius * math.cos((i+1)*10*math.pi/180), sun_radius * math.sin((i+1)*10*math.pi/180), 0)
+                glEnd()
+            else:
+                glColor3f(0.9, 0.9, 1.0)
+                x = math.cos(self.moon_angle) * 500
+                y = math.sin(self.moon_angle) * 300 + 100
+                z = 0
+                
+                glTranslatef(self.player_pos[0] + x, y, self.player_pos[2] + z)
+                glBegin(GL_QUADS)
+                for i in range(36):
+                    angle = i * 10 * math.pi / 180
+                    glVertex3f(moon_radius * math.cos(angle), moon_radius * math.sin(angle), 0)
+                    glVertex3f(moon_radius * math.cos((i+1)*10*math.pi/180), moon_radius * math.sin((i+1)*10*math.pi/180), 0)
+                glEnd()
+            
+            glPopMatrix()
+            glEnable(GL_LIGHTING)
+        except Exception as e:
+            pass
+    
+    def update_weather(self):
+        """更新天气系统"""
+        self.weather_timer += 1
+        
+        if self.weather_timer > 3000:
+            self.weather_timer = 0
+            rand = random.random()
+            if rand < 0.3:
+                self.weather = "rain"
+            elif rand < 0.4:
+                self.weather = "snow"
+            else:
+                self.weather = "clear"
+        
+        if self.weather == "rain":
+            for _ in range(5):
+                if len(self.rain_particles) < 500:
+                    self.rain_particles.append({
+                        "x": random.uniform(self.player_pos[0] - 100, self.player_pos[0] + 100),
+                        "y": 50 + random.uniform(0, 20),
+                        "z": random.uniform(self.player_pos[2] - 100, self.player_pos[2] + 100),
+                        "speed": random.uniform(8, 12)
+                    })
+            
+            self.rain_particles = [p for p in self.rain_particles if p["y"] > -5]
+            for p in self.rain_particles:
+                p["y"] -= p["speed"] * 0.1
+                p["x"] += 0.5
+        
+        elif self.weather == "snow":
+            for _ in range(3):
+                if len(self.snow_particles) < 300:
+                    self.snow_particles.append({
+                        "x": random.uniform(self.player_pos[0] - 100, self.player_pos[0] + 100),
+                        "y": 50 + random.uniform(0, 20),
+                        "z": random.uniform(self.player_pos[2] - 100, self.player_pos[2] + 100),
+                        "speed": random.uniform(2, 4),
+                        "drift_x": random.uniform(-1, 1),
+                        "drift_z": random.uniform(-1, 1)
+                    })
+            
+            self.snow_particles = [p for p in self.snow_particles if p["y"] > -5]
+            for p in self.snow_particles:
+                p["y"] -= p["speed"] * 0.05
+                p["x"] += p["drift_x"] * 0.1
+                p["z"] += p["drift_z"] * 0.1
+    
+    def draw_weather(self):
+        """绘制天气效果"""
+        try:
+            glDisable(GL_LIGHTING)
+            
+            if self.weather == "rain":
+                glColor4f(0.6, 0.7, 0.8, 0.5)
+                glBegin(GL_LINES)
+                for p in self.rain_particles:
+                    glVertex3f(p["x"], p["y"], p["z"])
+                    glVertex3f(p["x"] + 2, p["y"] - 10, p["z"])
+                glEnd()
+            
+            elif self.weather == "snow":
+                glColor4f(1.0, 1.0, 1.0, 0.8)
+                glBegin(GL_QUADS)
+                for p in self.snow_particles:
+                    size = 3
+                    glVertex3f(p["x"] - size, p["y"], p["z"] - size)
+                    glVertex3f(p["x"] + size, p["y"], p["z"] - size)
+                    glVertex3f(p["x"] + size, p["y"], p["z"] + size)
+                    glVertex3f(p["x"] - size, p["y"], p["z"] + size)
+                glEnd()
+            
+            glEnable(GL_LIGHTING)
+        except Exception as e:
+            pass
+    
+    def spawn_entity(self):
+        """生成生物"""
+        self.spawn_timer += 1
+        
+        if self.spawn_timer > 60:
+            self.spawn_timer = 0
+            
+            if random.random() < 0.1:
+                entity_type = random.choice(["猪", "牛", "羊", "鸡"]) if self.is_day else random.choice(["僵尸", "骷髅", "苦力怕"])
+                
+                entity = {
+                    "type": entity_type,
+                    "x": self.player_pos[0] + random.uniform(-50, 50),
+                    "y": 0,
+                    "z": self.player_pos[2] + random.uniform(-50, 50),
+                    "health": 20,
+                    "max_health": 20,
+                    "speed": random.uniform(0.1, 0.3),
+                    "direction": random.uniform(0, 360),
+                    "texture": entity_type
+                }
+                
+                if entity_type in ["僵尸", "骷髅", "苦力怕"]:
+                    self.monsters.append(entity)
+                else:
+                    self.animals.append(entity)
+    
+    def update_entities(self):
+        """更新生物位置"""
+        for animal in self.animals:
+            animal["direction"] += random.uniform(-5, 5)
+            animal["x"] += math.cos(math.radians(animal["direction"])) * animal["speed"]
+            animal["z"] += math.sin(math.radians(animal["direction"])) * animal["speed"]
+            
+            if animal["x"] < self.player_pos[0] - 100 or animal["x"] > self.player_pos[0] + 100:
+                self.animals.remove(animal)
+                break
+        
+        for monster in self.monsters:
+            dx = self.player_pos[0] - monster["x"]
+            dz = self.player_pos[2] - monster["z"]
+            monster["direction"] = math.degrees(math.atan2(dz, dx))
+            monster["x"] += math.cos(math.radians(monster["direction"])) * monster["speed"]
+            monster["z"] += math.sin(math.radians(monster["direction"])) * monster["speed"]
+            
+            if monster["x"] < self.player_pos[0] - 100 or monster["x"] > self.player_pos[0] + 100:
+                self.monsters.remove(monster)
+                break
+    
+    def draw_entities(self):
+        """绘制生物"""
+        try:
+            glDisable(GL_LIGHTING)
+            
+            for animal in self.animals:
+                glPushMatrix()
+                glTranslatef(animal["x"], animal["y"], animal["z"])
+                
+                color = {"猪": (0.9, 0.6, 0.6), "牛": (0.6, 0.4, 0.2), "羊": (0.9, 0.9, 0.9), "鸡": (0.9, 0.8, 0.6)}[animal["type"]]
+                glColor3f(*color)
+                
+                size = 0.8
+                glBegin(GL_QUADS)
+                glVertex3f(-size, 0, -size)
+                glVertex3f(size, 0, -size)
+                glVertex3f(size, size * 1.5, -size)
+                glVertex3f(-size, size * 1.5, -size)
+                glEnd()
+                
+                glPopMatrix()
+            
+            for monster in self.monsters:
+                glPushMatrix()
+                glTranslatef(monster["x"], monster["y"], monster["z"])
+                
+                color = {"僵尸": (0.3, 0.6, 0.3), "骷髅": (0.8, 0.8, 0.8), "苦力怕": (0.2, 0.8, 0.2)}[monster["type"]]
+                glColor3f(*color)
+                
+                size = 0.8
+                glBegin(GL_QUADS)
+                glVertex3f(-size, 0, -size)
+                glVertex3f(size, 0, -size)
+                glVertex3f(size, size * 2, -size)
+                glVertex3f(-size, size * 2, -size)
+                glEnd()
+                
+                glPopMatrix()
+            
+            glEnable(GL_LIGHTING)
+        except Exception as e:
+            pass
     
     def draw_tree(self, x, z):
         """绘制树木"""
@@ -2388,6 +2657,16 @@ class GameMap3D:
             # 摩擦力
             self.velocity[0] *= 0.9
             self.velocity[2] *= 0.9
+            
+            # 更新昼夜系统
+            self.update_day_night()
+            
+            # 更新天气系统
+            self.update_weather()
+            
+            # 更新生物系统
+            self.spawn_entity()
+            self.update_entities()
             
             # 更新相机
             self.update_camera()
