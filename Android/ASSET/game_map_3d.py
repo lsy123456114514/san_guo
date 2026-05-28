@@ -117,12 +117,279 @@ class GameMap3D:
         self.drag_source = None
         self.inventory_category = "全部"
         
-        # 合成系统
+        # 合成系统（完整MC风格配方）
         self.crafting_recipes = {
-            "石头镐子": {"石头": 3, "木头": 2},
-            "木头斧头": {"木头": 3, "石头": 1},
-            "铁锭": {"煤炭": 1, "铁矿石": 1},
-            "面包": {"小麦": 3}
+            # 工具
+            "木头镐子": {"木头": 3, "木棍": 2},
+            "石头镐子": {"圆石": 3, "木棍": 2},
+            "铁镐": {"铁锭": 3, "木棍": 2},
+            "木头斧头": {"木头": 3, "木棍": 2},
+            "石头斧头": {"圆石": 3, "木棍": 2},
+            "铁斧": {"铁锭": 3, "木棍": 2},
+            "木头铲子": {"木头": 1, "木棍": 2},
+            "石头铲子": {"圆石": 1, "木棍": 2},
+            "铁铲": {"铁锭": 1, "木棍": 2},
+            "木头锄": {"木头": 2, "木棍": 2},
+            "石头锄": {"圆石": 2, "木棍": 2},
+            "铁锄": {"铁锭": 2, "木棍": 2},
+            # 武器
+            "木剑": {"木头": 2, "木棍": 1},
+            "石剑": {"圆石": 2, "木棍": 1},
+            "铁剑": {"铁锭": 2, "木棍": 1},
+            "弓": {"线": 3, "木棍": 3},
+            # 建筑
+            "木板": {"木头": 1},
+            "木棍": {"木板": 2},
+            "砖块": {"粘土": 4},
+            "玻璃": {"沙子": 1},
+            "梯子": {"木棍": 7},
+            "门": {"木板": 6},
+            "栅栏": {"木棍": 4},
+            # 食物
+            "面包": {"小麦": 3},
+            "蛋糕": {"小麦": 3, "鸡蛋": 2, "牛奶": 1, "糖": 1},
+            # 材料
+            "铁锭": {"铁矿石": 1, "煤炭": 1},
+            "金锭": {"金矿石": 1, "煤炭": 1},
+            "线": {"羊毛": 1},
+            "纸": {"甘蔗": 3},
+            "书": {"纸": 3, "皮革": 1},
+            # 三国特色
+            "武将召唤台": {"金锭": 4, "木头": 4, "武将卡": 1},
+            "武器架": {"木头": 6},
+            "弹药箱": {"木头": 8, "铁锭": 2}
+        }
+        
+        # 合成网格（3x3）
+        self.crafting_grid = [[None for _ in range(3)] for _ in range(3)]
+        self.show_crafting = False
+        self.crafting_result = None
+        
+        # MC风格玩家状态
+        self.health = 20  # 生命值 (0-20)
+        self.max_health = 20
+        self.hunger = 20  # 饥饿值 (0-20)
+        self.max_hunger = 20
+        self.oxygen = 10  # 氧气值 (0-10, 水中使用)
+        self.max_oxygen = 10
+        self.experience = 0  # 经验值
+        self.level = 0  # 等级
+        self.armor = 0  # 护甲值 (0-20)
+        self.max_armor = 20
+        self.is_sneaking = False  # 潜行
+        self.is_sprinting = False  # 冲刺
+        
+        # 昼夜系统（MC风格）
+        self.day_time = 0  # 0-24000 (MC时间)
+        self.day_speed = 10  # 时间流逝速度
+        self.is_day = True
+        self.sun_angle = 0
+        self.moon_angle = 0
+        self.time_of_day = "上午"
+        
+        # MC风格音效系统
+        self.sounds = {
+            "block_place": {"pitch": 1.0, "volume": 0.5},
+            "block_break": {"pitch": 0.8, "volume": 0.6},
+            "jump": {"pitch": 1.0, "volume": 0.3},
+            "hurt": {"pitch": 1.0, "volume": 0.5},
+            "eat": {"pitch": 1.0, "volume": 0.4},
+            "craft": {"pitch": 0.9, "volume": 0.5}
+        }
+        
+        # MC风格粒子效果
+        self.particles = []
+        
+        # MC风格聊天系统
+        self.chat_messages = []
+        self.max_chat_lines = 10
+        
+        # MC风格物品提示
+        self.hovered_item = None
+        self.item_tooltip_timer = 0
+        
+        # MC风格成就系统
+        self.achievements = {
+            "first_block": {"name": "开始建造", "description": "放置第一个方块", "unlocked": False},
+            "first_craft": {"name": "工匠", "description": "完成第一次合成", "unlocked": False},
+            "first_kill": {"name": "猎人", "description": "杀死第一个怪物", "unlocked": False},
+            "day_night": {"name": "经历一天", "description": "度过一个完整的昼夜循环", "unlocked": False}
+        }
+        
+        # MC风格统计数据
+        self.stats = {
+            "blocks_placed": 0,
+            "blocks_broken": 0,
+            "items_crafted": 0,
+            "mobs_killed": 0,
+            "days_passed": 0
+        }
+        
+        # MC风格游戏模式
+        self.game_mode = "survival"  # survival, creative, adventure
+        self.can_fly = False
+        self.flying = False
+        self.fly_speed = 0.1
+        
+        # MC风格命令系统
+        self.command_input = ""
+        self.show_command = False
+        self.command_history = []
+        
+        # 彩蛋系统（100个彩蛋！）
+        self.eggs = {
+            "notch": {"found": False, "hint": "找到Notch的头像"},
+            "herobrine": {"found": False, "hint": "在夜晚遇到Herobrine"},
+            "creeper_explosion": {"found": False, "hint": "让苦力怕在你面前爆炸"},
+            "secret_base": {"found": False, "hint": "找到隐藏的基地"},
+            "developer": {"found": False, "hint": "输入开发者命令"},
+            "first_block": {"found": False, "hint": "放置第一个方块"},
+            "first_craft": {"found": False, "hint": "完成第一次合成"},
+            "first_kill": {"found": False, "hint": "杀死第一个怪物"},
+            "day_night": {"found": False, "hint": "度过一个完整的昼夜循环"},
+            "100_blocks": {"found": False, "hint": "放置100个方块"},
+            "100_kills": {"found": False, "hint": "杀死100个怪物"},
+            "diamond": {"found": False, "hint": "找到钻石"},
+            "gold": {"found": False, "hint": "找到金矿"},
+            "iron": {"found": False, "hint": "找到铁矿"},
+            "coal": {"found": False, "hint": "找到煤矿"},
+            "lava": {"found": False, "hint": "找到岩浆"},
+            "water": {"found": False, "hint": "找到水源"},
+            "tree": {"found": False, "hint": "砍倒10棵树"},
+            "house": {"found": False, "hint": "建造一个房子"},
+            "tower": {"found": False, "hint": "建造一个高塔"},
+            "bridge": {"found": False, "hint": "建造一座桥"},
+            "underground": {"found": False, "hint": "深入地下50格"},
+            "high_altitude": {"found": False, "hint": "到达高空50格"},
+            "speed_run": {"found": False, "hint": "在1分钟内跑100格"},
+            "no_damage": {"found": False, "hint": "无伤生存10分钟"},
+            "night_owl": {"found": False, "hint": "在夜晚活动30分钟"},
+            "sunrise": {"found": False, "hint": "观看一次日出"},
+            "sunset": {"found": False, "hint": "观看一次日落"},
+            "rain": {"found": False, "hint": "在雨中待5分钟"},
+            "snow": {"found": False, "hint": "在雪中待5分钟"},
+            "swim": {"found": False, "hint": "游泳100格"},
+            "jump_100": {"found": False, "hint": "跳跃100次"},
+            "sneak": {"found": False, "hint": "潜行100格"},
+            "sprint": {"found": False, "hint": "冲刺100格"},
+            "fly_creative": {"found": False, "hint": "在创造模式飞行100格"},
+            "build_pyramid": {"found": False, "hint": "建造一个金字塔"},
+            "build_castle": {"found": False, "hint": "建造一座城堡"},
+            "farm": {"found": False, "hint": "建造一个农场"},
+            "mine_shaft": {"found": False, "hint": "挖掘一个矿道"},
+            "library": {"found": False, "hint": "建造一个图书馆"},
+            "armor": {"found": False, "hint": "穿上全套护甲"},
+            "sword": {"found": False, "hint": "制作一把剑"},
+            "bow": {"found": False, "hint": "制作一把弓"},
+            "pickaxe": {"found": False, "hint": "制作一把镐子"},
+            "axe": {"found": False, "hint": "制作一把斧头"},
+            "shovel": {"found": False, "hint": "制作一把铲子"},
+            "hoe": {"found": False, "hint": "制作一把锄头"},
+            "craft_table": {"found": False, "hint": "制作一个工作台"},
+            "furnace": {"found": False, "hint": "制作一个熔炉"},
+            "chest": {"found": False, "hint": "制作一个箱子"},
+            "bed": {"found": False, "hint": "制作一张床"},
+            "door": {"found": False, "hint": "制作一扇门"},
+            "fence": {"found": False, "hint": "制作栅栏"},
+            "ladder": {"found": False, "hint": "制作梯子"},
+            "glass": {"found": False, "hint": "制作玻璃"},
+            "brick": {"found": False, "hint": "制作砖块"},
+            "cake": {"found": False, "hint": "制作一个蛋糕"},
+            "bread": {"found": False, "hint": "制作面包"},
+            "gold_ingot": {"found": False, "hint": "冶炼金锭"},
+            "iron_ingot": {"found": False, "hint": "冶炼铁锭"},
+            "cook_food": {"found": False, "hint": "烹饪食物"},
+            "fish": {"found": False, "hint": "钓一条鱼"},
+            "pet": {"found": False, "hint": "拥有一只宠物"},
+            "follower": {"found": False, "hint": "拥有一个追随者"},
+            "general": {"found": False, "hint": "召唤一名武将"},
+            "gun": {"found": False, "hint": "制作一把枪"},
+            "ammo": {"found": False, "hint": "制作弹药"},
+            "firework": {"found": False, "hint": "制作烟花"},
+            "music_disc": {"found": False, "hint": "找到音乐唱片"},
+            "painting": {"found": False, "hint": "放置一幅画"},
+            "map": {"found": False, "hint": "制作一张地图"},
+            "compass": {"found": False, "hint": "制作一个指南针"},
+            "clock": {"found": False, "hint": "制作一个时钟"},
+            "enchant": {"found": False, "hint": "附魔物品"},
+            "anvil": {"found": False, "hint": "制作铁砧"},
+            "beacon": {"found": False, "hint": "激活信标"},
+            "ender_eye": {"found": False, "hint": "制作末影之眼"},
+            "nether_portal": {"found": False, "hint": "建造地狱门"},
+            "end_portal": {"found": False, "hint": "建造末地传送门"},
+            "dragon_kill": {"found": False, "hint": "击败末影龙"},
+            "wither_kill": {"found": False, "hint": "击败凋灵"},
+            "elder_guardian": {"found": False, "hint": "击败远古守卫者"},
+            "wither_skeleton": {"found": False, "hint": "击败凋灵骷髅"},
+            "stray": {"found": False, "hint": "击败流浪者"},
+            "husk": {"found": False, "hint": "击败尸壳"},
+            "phantom": {"found": False, "hint": "击败幻翼"},
+            "ravager": {"found": False, "hint": "击败劫掠兽"},
+            "pillager": {"found": False, "hint": "击败掠夺者"},
+            "vindicator": {"found": False, "hint": "击败卫道士"},
+            "evoker": {"found": False, "hint": "击败唤魔者"},
+            "shulker": {"found": False, "hint": "击败潜影贝"},
+            "enderman": {"found": False, "hint": "击败末影人"},
+            "slime": {"found": False, "hint": "击败史莱姆"},
+            "magma_cube": {"found": False, "hint": "击败岩浆怪"},
+            "ghast": {"found": False, "hint": "击败恶魂"},
+            "blaze": {"found": False, "hint": "击败烈焰人"},
+            "cave_spider": {"found": False, "hint": "击败洞穴蜘蛛"},
+            "spider_jockey": {"found": False, "hint": "击败蜘蛛骑士"},
+            "jockey": {"found": False, "hint": "击败骷髅骑士"},
+            "zombie_villager": {"found": False, "hint": "治愈僵尸村民"},
+            "villager_trade": {"found": False, "hint": "与村民交易"},
+            "raid": {"found": False, "hint": "完成一次袭击"},
+            "pillager_outpost": {"found": False, "hint": "找到掠夺者前哨站"},
+            "stronghold": {"found": False, "hint": "找到要塞"},
+            "jungle_temple": {"found": False, "hint": "找到丛林神庙"},
+            "desert_temple": {"found": False, "hint": "找到沙漠神殿"},
+            "ocean_monument": {"found": False, "hint": "找到海底遗迹"},
+            "woodland_mansion": {"found": False, "hint": "找到林地府邸"},
+            "shipwreck": {"found": False, "hint": "找到沉船"},
+            "ruined_portal": {"found": False, "hint": "找到废弃传送门"},
+            "treasure": {"found": False, "hint": "找到宝藏"},
+            "easter_egg": {"found": False, "hint": "找到复活节彩蛋"},
+            "birthday": {"found": False, "hint": "庆祝生日"},
+            "anniversary": {"found": False, "hint": "庆祝一周年"},
+            "secret_command": {"found": False, "hint": "发现隐藏命令"}
+        }
+        self.herobrine_active = False
+        self.herobrine_pos = None
+        self.herobrine_timer = 0
+        
+        # 海浪效果
+        self.wave_particles = []
+        self.wave_timer = 0
+        
+        # 天气系统
+        self.weather = "clear"  # clear, rain, snow
+        self.weather_timer = 0
+        self.rain_particles = []
+        self.snow_particles = []
+        
+        # 生物系统
+        self.entities = []  # 存储所有实体
+        self.monsters = []  # 怪物
+        self.animals = []   # 动物
+        self.spawn_timer = 0
+        
+        # 方块颜色定义 (MC风格)
+        self.block_colors = {
+            "泥土": (0.6, 0.4, 0.2),
+            "石头": (0.5, 0.5, 0.5),
+            "木头": (0.5, 0.35, 0.15),
+            "草地": (0.3, 0.8, 0.2),
+            "沙子": (0.9, 0.85, 0.6),
+            "水": (0.2, 0.4, 0.8, 0.7),
+            "玻璃": (0.8, 0.9, 1.0, 0.4),
+            "砖块": (0.8, 0.3, 0.2),
+            "树叶": (0.2, 0.6, 0.15),
+            "橡木": (0.6, 0.4, 0.2),
+            "圆石": (0.45, 0.45, 0.45),
+            "铁矿石": (0.55, 0.5, 0.5),
+            "煤炭": (0.2, 0.2, 0.2),
+            "金矿石": (0.8, 0.7, 0.3)
         }
         
     def initialize(self):
@@ -282,10 +549,20 @@ class GameMap3D:
                 self.inventory = mc_world.get("inventory", [])
                 self.world_seed = mc_world.get("world_seed", 0)
                 
+                # 加载MC状态
+                self.health = mc_world.get("health", 20)
+                self.hunger = mc_world.get("hunger", 20)
+                self.oxygen = mc_world.get("oxygen", 10)
+                self.experience = mc_world.get("experience", 0)
+                self.level = mc_world.get("level", 0)
+                self.armor = mc_world.get("armor", 0)
+                
                 self.update_camera()
+                self.validate_all()
                 print(f"加载MC世界数据成功: {len(self.placed_blocks)} 个方块")
         except Exception as e:
             print(f"加载MC世界数据失败: {e}")
+            self.validate_all()
     
     def save_mc_world_data(self):
         """保存MC世界存档数据"""
@@ -299,7 +576,13 @@ class GameMap3D:
                 "camera_pitch": self.camera["pitch"],
                 "camera_mode": self.camera["mode"],
                 "inventory": getattr(self, 'inventory', []),
-                "world_seed": getattr(self, 'world_seed', 0)
+                "world_seed": getattr(self, 'world_seed', 0),
+                "health": self.health,
+                "hunger": self.hunger,
+                "oxygen": self.oxygen,
+                "experience": self.experience,
+                "level": self.level,
+                "armor": self.armor
             }
             
             data[MC_WORLD_KEY] = mc_world
@@ -427,8 +710,15 @@ class GameMap3D:
                             self.message = "没有可跟随的地点"
                     self.message_timer = 2000
                 elif event.key == pygame.K_F5:
-                    self.camera["mode"] = "third" if self.camera["mode"] == "first" else "first"
-                    self.message = f"切换到{'第三人称' if self.camera['mode'] == 'third' else '第一人称'}视角"
+                    if self.camera["mode"] == "first":
+                        self.camera["mode"] = "third_back"
+                        self.message = "切换到第三人称视角（背部）"
+                    elif self.camera["mode"] == "third_back":
+                        self.camera["mode"] = "third_front"
+                        self.message = "切换到第三人称视角（正面）"
+                    else:
+                        self.camera["mode"] = "first"
+                        self.message = "切换到第一人称视角"
                     self.message_timer = 2000
                 elif event.key in [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9]:
                     slot = event.key - pygame.K_1
@@ -439,8 +729,40 @@ class GameMap3D:
                         self.message_timer = 1000
                 elif event.key == pygame.K_e:
                     self.show_inventory = not self.show_inventory
-                    self.message = "物品栏功能开发中..."
-                    self.message_timer = 2000
+                    if self.show_inventory:
+                        self.is_mouse_locked = False
+                        pygame.mouse.set_visible(True)
+                        pygame.event.set_grab(False)
+                elif event.key == pygame.K_c:
+                    self.show_crafting = not self.show_crafting
+                    if self.show_crafting:
+                        self.is_mouse_locked = False
+                        pygame.mouse.set_visible(True)
+                        pygame.event.set_grab(False)
+                elif event.key == pygame.K_SLASH:
+                    self.show_command = True
+                    self.command_input = ""
+                    self.is_mouse_locked = False
+                    pygame.mouse.set_visible(True)
+                    pygame.event.set_grab(False)
+                elif event.key == pygame.K_g and pygame.key.get_mods() & pygame.KMOD_CTRL:
+                    self.toggle_gamemode()
+                elif event.key == pygame.K_RETURN and self.show_command:
+                    if self.command_input.strip():
+                        self.execute_command(self.command_input)
+                        self.command_history.append(self.command_input)
+                        if len(self.command_history) > 10:
+                            self.command_history.pop(0)
+                    self.show_command = False
+                    self.command_input = ""
+                    self.is_mouse_locked = True
+                    pygame.mouse.set_visible(False)
+                    pygame.event.set_grab(True)
+                elif event.key == pygame.K_BACKSPACE and self.show_command:
+                    self.command_input = self.command_input[:-1]
+                elif self.show_command:
+                    if event.unicode:
+                        self.command_input += event.unicode
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     if not self.is_mouse_locked:
@@ -545,22 +867,26 @@ class GameMap3D:
         self.message_timer = 1000
     
     def update_camera(self):
-        """更新相机位置"""
+        """更新相机位置（MC风格三种视角）"""
         yaw_rad = math.radians(self.camera["yaw"])
         pitch_rad = math.radians(self.camera["pitch"])
+        distance = 5.0
         
         if self.camera["mode"] == "first":
             # 第一人称视角：相机位置与玩家位置相同
-            # 但稍微偏移到玩家前方
             distance = 0.5
             self.camera["x"] = self.player_pos[0] + math.cos(yaw_rad) * math.cos(pitch_rad) * distance
-            self.camera["y"] = self.player_pos[1] + 1.5 + math.sin(pitch_rad) * distance  # 眼睛高度
+            self.camera["y"] = self.player_pos[1] + 1.5 + math.sin(pitch_rad) * distance
+            self.camera["z"] = self.player_pos[2] + math.sin(yaw_rad) * math.cos(pitch_rad) * distance
+        elif self.camera["mode"] == "third_front":
+            # 第三人称正面视角：相机位于玩家前方
+            self.camera["x"] = self.player_pos[0] + math.cos(yaw_rad) * math.cos(pitch_rad) * distance
+            self.camera["y"] = self.player_pos[1] + 2.0 - math.sin(pitch_rad) * distance
             self.camera["z"] = self.player_pos[2] + math.sin(yaw_rad) * math.cos(pitch_rad) * distance
         else:
-            # 第三人称视角：相机位于玩家背后
-            distance = 5.0
+            # 第三人称背面视角：相机位于玩家背后（默认）
             self.camera["x"] = self.player_pos[0] - math.cos(yaw_rad) * math.cos(pitch_rad) * distance
-            self.camera["y"] = self.player_pos[1] + 2.0 - math.sin(pitch_rad) * distance  # 相机高度
+            self.camera["y"] = self.player_pos[1] + 2.0 - math.sin(pitch_rad) * distance
             self.camera["z"] = self.player_pos[2] - math.sin(yaw_rad) * math.cos(pitch_rad) * distance
     
     def move_to_mouse(self):
@@ -655,6 +981,8 @@ class GameMap3D:
     def draw_3d_scene_python(self):
         """使用Python绘制3D场景"""
         try:
+            sky_color = self.get_sky_color()
+            glClearColor(sky_color[0], sky_color[1], sky_color[2], 1.0)
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
             
             glMatrixMode(GL_PROJECTION)
@@ -677,7 +1005,10 @@ class GameMap3D:
                 0, 1, 0
             )
             
+            self.draw_sun_moon()
+            
             self.draw_terrain()
+            self.draw_placed_blocks()
             
             if hasattr(self, 'trees'):
                 for tree_x, tree_z in self.trees:
@@ -686,11 +1017,16 @@ class GameMap3D:
             for loc in self.locations:
                 self.draw_location(loc)
             
+            self.draw_entities()
+            
             if self.camera["mode"] == "third":
                 self.draw_player()
             
             for follower in self.followers:
                 self.draw_follower(follower)
+            
+            self.draw_waves()
+            self.draw_weather()
             
             pygame.display.flip()
         except Exception as e:
@@ -757,6 +1093,481 @@ class GameMap3D:
             glEnable(GL_LIGHTING)
         except Exception as e:
             print(f"绘制地形错误: {e}")
+    
+    def draw_placed_blocks(self):
+        """绘制玩家放置的方块 - MC风格"""
+        try:
+            glDisable(GL_LIGHTING)
+            
+            block_size = 1
+            
+            for block in self.placed_blocks:
+                x = block.get("x", 0)
+                y = block.get("y", 0)
+                z = block.get("z", 0)
+                block_type = block.get("type", "泥土")
+                
+                color = self.block_colors.get(block_type, (0.5, 0.5, 0.5))
+                
+                glPushMatrix()
+                glTranslatef(x, y, z)
+                
+                if len(color) == 4:
+                    glColor4f(*color)
+                    if color[3] < 1.0:
+                        glEnable(GL_BLEND)
+                        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                else:
+                    glColor3f(*color)
+                
+                # 绘制方块六个面
+                # 顶面
+                glBegin(GL_QUADS)
+                glVertex3f(0, block_size, 0)
+                glVertex3f(block_size, block_size, 0)
+                glVertex3f(block_size, block_size, block_size)
+                glVertex3f(0, block_size, block_size)
+                glEnd()
+                
+                # 底面
+                glBegin(GL_QUADS)
+                glVertex3f(0, 0, 0)
+                glVertex3f(0, 0, block_size)
+                glVertex3f(block_size, 0, block_size)
+                glVertex3f(block_size, 0, 0)
+                glEnd()
+                
+                # 前面
+                glBegin(GL_QUADS)
+                glVertex3f(0, 0, block_size)
+                glVertex3f(0, block_size, block_size)
+                glVertex3f(block_size, block_size, block_size)
+                glVertex3f(block_size, 0, block_size)
+                glEnd()
+                
+                # 后面
+                glBegin(GL_QUADS)
+                glVertex3f(0, 0, 0)
+                glVertex3f(block_size, 0, 0)
+                glVertex3f(block_size, block_size, 0)
+                glVertex3f(0, block_size, 0)
+                glEnd()
+                
+                # 左面
+                glBegin(GL_QUADS)
+                glVertex3f(0, 0, 0)
+                glVertex3f(0, block_size, 0)
+                glVertex3f(0, block_size, block_size)
+                glVertex3f(0, 0, block_size)
+                glEnd()
+                
+                # 右面
+                glBegin(GL_QUADS)
+                glVertex3f(block_size, 0, 0)
+                glVertex3f(block_size, 0, block_size)
+                glVertex3f(block_size, block_size, block_size)
+                glVertex3f(block_size, block_size, 0)
+                glEnd()
+                
+                glPopMatrix()
+                
+                if len(color) == 4 and color[3] < 1.0:
+                    glDisable(GL_BLEND)
+            
+            glEnable(GL_LIGHTING)
+        except Exception as e:
+            print(f"绘制放置方块错误: {e}")
+    
+    def update_day_night(self):
+        """更新昼夜系统"""
+        self.day_time += self.day_speed
+        if self.day_time >= 24000:
+            self.day_time = 0
+        
+        self.is_day = self.day_time < 12000
+        
+        if self.is_day:
+            self.sun_angle = (self.day_time / 12000) * math.pi - math.pi/2
+            self.moon_angle = -math.pi/2
+        else:
+            self.sun_angle = -math.pi/2
+            self.moon_angle = ((self.day_time - 12000) / 12000) * math.pi - math.pi/2
+    
+    def get_time_of_day(self):
+        """获取当前时间段"""
+        if self.day_time < 2000:
+            return "日出"
+        elif self.day_time < 6000:
+            return "上午"
+        elif self.day_time < 10000:
+            return "中午"
+        elif self.day_time < 12000:
+            return "日落"
+        elif self.day_time < 14000:
+            return "黄昏"
+        elif self.day_time < 22000:
+            return "夜晚"
+        else:
+            return "午夜"
+    
+    def get_sky_color(self):
+        """根据时间获取天空颜色"""
+        if self.is_day:
+            t = self.day_time / 12000
+            if t < 0.2:
+                return (0.3 + t * 0.5, 0.4 + t * 0.4, 0.8 + t * 0.2)
+            elif t > 0.8:
+                t2 = (t - 0.8) * 5
+                return (0.8 - t2 * 0.5, 0.8 - t2 * 0.4, 1.0 - t2 * 0.2)
+            else:
+                return (0.8, 0.8, 1.0)
+        else:
+            t = (self.day_time - 12000) / 12000
+            if t < 0.2:
+                return (0.2 - t * 0.15, 0.25 - t * 0.15, 0.4 - t * 0.2)
+            elif t > 0.8:
+                t2 = (t - 0.8) * 5
+                return (0.05 + t2 * 0.25, 0.1 + t2 * 0.15, 0.2 + t2 * 0.2)
+            else:
+                return (0.05, 0.1, 0.2)
+    
+    def draw_sun_moon(self):
+        """绘制太阳和月亮"""
+        try:
+            glDisable(GL_LIGHTING)
+            glPushMatrix()
+            
+            sun_radius = 50
+            moon_radius = 45
+            
+            if self.is_day:
+                glColor3f(1.0, 1.0, 0.8)
+                x = math.cos(self.sun_angle) * 500
+                y = math.sin(self.sun_angle) * 300 + 100
+                z = 0
+                
+                glTranslatef(self.player_pos[0] + x, y, self.player_pos[2] + z)
+                glBegin(GL_QUADS)
+                for i in range(36):
+                    angle = i * 10 * math.pi / 180
+                    glVertex3f(sun_radius * math.cos(angle), sun_radius * math.sin(angle), 0)
+                    glVertex3f(sun_radius * math.cos((i+1)*10*math.pi/180), sun_radius * math.sin((i+1)*10*math.pi/180), 0)
+                glEnd()
+            else:
+                glColor3f(0.9, 0.9, 1.0)
+                x = math.cos(self.moon_angle) * 500
+                y = math.sin(self.moon_angle) * 300 + 100
+                z = 0
+                
+                glTranslatef(self.player_pos[0] + x, y, self.player_pos[2] + z)
+                glBegin(GL_QUADS)
+                for i in range(36):
+                    angle = i * 10 * math.pi / 180
+                    glVertex3f(moon_radius * math.cos(angle), moon_radius * math.sin(angle), 0)
+                    glVertex3f(moon_radius * math.cos((i+1)*10*math.pi/180), moon_radius * math.sin((i+1)*10*math.pi/180), 0)
+                glEnd()
+            
+            glPopMatrix()
+            glEnable(GL_LIGHTING)
+        except Exception as e:
+            pass
+    
+    def update_weather(self):
+        """更新天气系统"""
+        self.weather_timer += 1
+        
+        if self.weather_timer > 3000:
+            self.weather_timer = 0
+            rand = random.random()
+            if rand < 0.3:
+                self.weather = "rain"
+            elif rand < 0.4:
+                self.weather = "snow"
+            else:
+                self.weather = "clear"
+        
+        if self.weather == "rain":
+            for _ in range(5):
+                if len(self.rain_particles) < 500:
+                    self.rain_particles.append({
+                        "x": random.uniform(self.player_pos[0] - 100, self.player_pos[0] + 100),
+                        "y": 50 + random.uniform(0, 20),
+                        "z": random.uniform(self.player_pos[2] - 100, self.player_pos[2] + 100),
+                        "speed": random.uniform(8, 12)
+                    })
+            
+            self.rain_particles = [p for p in self.rain_particles if p["y"] > -5]
+            for p in self.rain_particles:
+                p["y"] -= p["speed"] * 0.1
+                p["x"] += 0.5
+        
+        elif self.weather == "snow":
+            for _ in range(3):
+                if len(self.snow_particles) < 300:
+                    self.snow_particles.append({
+                        "x": random.uniform(self.player_pos[0] - 100, self.player_pos[0] + 100),
+                        "y": 50 + random.uniform(0, 20),
+                        "z": random.uniform(self.player_pos[2] - 100, self.player_pos[2] + 100),
+                        "speed": random.uniform(2, 4),
+                        "drift_x": random.uniform(-1, 1),
+                        "drift_z": random.uniform(-1, 1)
+                    })
+            
+            self.snow_particles = [p for p in self.snow_particles if p["y"] > -5]
+            for p in self.snow_particles:
+                p["y"] -= p["speed"] * 0.05
+                p["x"] += p["drift_x"] * 0.1
+                p["z"] += p["drift_z"] * 0.1
+    
+    def draw_weather(self):
+        """绘制天气效果"""
+        try:
+            glDisable(GL_LIGHTING)
+            
+            if self.weather == "rain":
+                glColor4f(0.6, 0.7, 0.8, 0.5)
+                glBegin(GL_LINES)
+                for p in self.rain_particles:
+                    glVertex3f(p["x"], p["y"], p["z"])
+                    glVertex3f(p["x"] + 2, p["y"] - 10, p["z"])
+                glEnd()
+            
+            elif self.weather == "snow":
+                glColor4f(1.0, 1.0, 1.0, 0.8)
+                glBegin(GL_QUADS)
+                for p in self.snow_particles:
+                    size = 3
+                    glVertex3f(p["x"] - size, p["y"], p["z"] - size)
+                    glVertex3f(p["x"] + size, p["y"], p["z"] - size)
+                    glVertex3f(p["x"] + size, p["y"], p["z"] + size)
+                    glVertex3f(p["x"] - size, p["y"], p["z"] + size)
+                glEnd()
+            
+            glEnable(GL_LIGHTING)
+        except Exception as e:
+            pass
+    
+    def spawn_entity(self):
+        """生成生物"""
+        self.spawn_timer += 1
+        
+        if self.spawn_timer > 60:
+            self.spawn_timer = 0
+            
+            if random.random() < 0.1:
+                entity_type = random.choice(["猪", "牛", "羊", "鸡"]) if self.is_day else random.choice(["僵尸", "骷髅", "苦力怕"])
+                
+                entity = {
+                    "type": entity_type,
+                    "x": self.player_pos[0] + random.uniform(-50, 50),
+                    "y": 0,
+                    "z": self.player_pos[2] + random.uniform(-50, 50),
+                    "health": 20,
+                    "max_health": 20,
+                    "speed": random.uniform(0.1, 0.3),
+                    "direction": random.uniform(0, 360),
+                    "texture": entity_type
+                }
+                
+                if entity_type in ["僵尸", "骷髅", "苦力怕"]:
+                    self.monsters.append(entity)
+                else:
+                    self.animals.append(entity)
+    
+    def update_entities(self):
+        """更新生物位置"""
+        for animal in self.animals:
+            animal["direction"] += random.uniform(-5, 5)
+            animal["x"] += math.cos(math.radians(animal["direction"])) * animal["speed"]
+            animal["z"] += math.sin(math.radians(animal["direction"])) * animal["speed"]
+            
+            if animal["x"] < self.player_pos[0] - 100 or animal["x"] > self.player_pos[0] + 100:
+                self.animals.remove(animal)
+                break
+        
+        for monster in self.monsters:
+            dx = self.player_pos[0] - monster["x"]
+            dz = self.player_pos[2] - monster["z"]
+            monster["direction"] = math.degrees(math.atan2(dz, dx))
+            monster["x"] += math.cos(math.radians(monster["direction"])) * monster["speed"]
+            monster["z"] += math.sin(math.radians(monster["direction"])) * monster["speed"]
+            
+            if monster["x"] < self.player_pos[0] - 100 or monster["x"] > self.player_pos[0] + 100:
+                self.monsters.remove(monster)
+                break
+    
+    def draw_entities(self):
+        """绘制生物"""
+        try:
+            glDisable(GL_LIGHTING)
+            
+            for animal in self.animals:
+                glPushMatrix()
+                glTranslatef(animal["x"], animal["y"], animal["z"])
+                
+                color = {"猪": (0.9, 0.6, 0.6), "牛": (0.6, 0.4, 0.2), "羊": (0.9, 0.9, 0.9), "鸡": (0.9, 0.8, 0.6)}[animal["type"]]
+                glColor3f(*color)
+                
+                size = 0.8
+                glBegin(GL_QUADS)
+                glVertex3f(-size, 0, -size)
+                glVertex3f(size, 0, -size)
+                glVertex3f(size, size * 1.5, -size)
+                glVertex3f(-size, size * 1.5, -size)
+                glEnd()
+                
+                glPopMatrix()
+            
+            for monster in self.monsters:
+                glPushMatrix()
+                glTranslatef(monster["x"], monster["y"], monster["z"])
+                
+                color = {"僵尸": (0.3, 0.6, 0.3), "骷髅": (0.8, 0.8, 0.8), "苦力怕": (0.2, 0.8, 0.2)}[monster["type"]]
+                glColor3f(*color)
+                
+                size = 0.8
+                glBegin(GL_QUADS)
+                glVertex3f(-size, 0, -size)
+                glVertex3f(size, 0, -size)
+                glVertex3f(size, size * 2, -size)
+                glVertex3f(-size, size * 2, -size)
+                glEnd()
+                
+                glPopMatrix()
+            
+            if self.herobrine_active and self.herobrine_pos:
+                self.draw_herobrine()
+            
+            glEnable(GL_LIGHTING)
+        except Exception as e:
+            pass
+    
+    def draw_herobrine(self):
+        """绘制Herobrine（彩蛋）"""
+        if not self.herobrine_active or not self.herobrine_pos:
+            return
+        
+        glPushMatrix()
+        glTranslatef(self.herobrine_pos[0], self.herobrine_pos[1], self.herobrine_pos[2])
+        
+        glColor3f(1.0, 1.0, 1.0)
+        
+        size = 0.6
+        glBegin(GL_QUADS)
+        
+        glVertex3f(-size, 0, -size)
+        glVertex3f(size, 0, -size)
+        glVertex3f(size, size * 2.5, -size)
+        glVertex3f(-size, size * 2.5, -size)
+        glEnd()
+        
+        glColor3f(0.8, 0.8, 0.8)
+        glBegin(GL_QUADS)
+        glVertex3f(-size * 0.8, size * 1.8, -size * 0.6)
+        glVertex3f(size * 0.8, size * 1.8, -size * 0.6)
+        glVertex3f(size * 0.8, size * 2.5, -size * 0.6)
+        glVertex3f(-size * 0.8, size * 2.5, -size * 0.6)
+        glEnd()
+        
+        glColor3f(0.2, 0.2, 0.2)
+        glBegin(GL_QUADS)
+        glVertex3f(-size * 0.3, size * 2.1, -size * 0.55)
+        glVertex3f(-size * 0.1, size * 2.1, -size * 0.55)
+        glVertex3f(-size * 0.1, size * 2.3, -size * 0.55)
+        glVertex3f(-size * 0.3, size * 2.3, -size * 0.55)
+        glEnd()
+        
+        glBegin(GL_QUADS)
+        glVertex3f(size * 0.1, size * 2.1, -size * 0.55)
+        glVertex3f(size * 0.3, size * 2.1, -size * 0.55)
+        glVertex3f(size * 0.3, size * 2.3, -size * 0.55)
+        glVertex3f(size * 0.1, size * 2.3, -size * 0.55)
+        glEnd()
+        
+        glPopMatrix()
+    
+    def update_herobrine(self):
+        """更新Herobrine行为（彩蛋）"""
+        if not self.herobrine_active or not self.herobrine_pos:
+            return
+        
+        self.herobrine_timer += 1
+        
+        if self.herobrine_timer > 300:
+            self.herobrine_active = False
+            self.herobrine_pos = None
+            self.herobrine_timer = 0
+            self.add_chat_message("Herobrine消失了...")
+            return
+        
+        dx = self.player_pos[0] - self.herobrine_pos[0]
+        dz = self.player_pos[2] - self.herobrine_pos[2]
+        distance = math.hypot(dx, dz)
+        
+        if distance < 3:
+            self.health -= 1
+            if self.health <= 0:
+                self.add_chat_message("你被Herobrine杀死了!")
+        
+        if random.random() < 0.02:
+            self.herobrine_pos[0] += (random.random() - 0.5) * 2
+            self.herobrine_pos[2] += (random.random() - 0.5) * 2
+    
+    def update_waves(self):
+        """更新海浪效果"""
+        self.wave_timer += 1
+        
+        if self.wave_timer > 5:
+            self.wave_timer = 0
+            
+            for _ in range(20):
+                if len(self.wave_particles) < 1000:
+                    angle = random.uniform(0, math.pi * 2)
+                    distance = random.uniform(50, 150)
+                    self.wave_particles.append({
+                        "x": self.player_pos[0] + math.cos(angle) * distance,
+                        "y": 0.1,
+                        "z": self.player_pos[2] + math.sin(angle) * distance,
+                        "amplitude": random.uniform(0.1, 0.3),
+                        "frequency": random.uniform(0.05, 0.1),
+                        "phase": random.uniform(0, math.pi * 2),
+                        "speed": random.uniform(0.02, 0.05)
+                    })
+        
+        for wave in list(self.wave_particles):
+            wave["y"] = 0.1 + wave["amplitude"] * math.sin(self.wave_timer * wave["frequency"] + wave["phase"])
+            wave["x"] += wave["speed"] * math.cos(wave["phase"])
+            wave["z"] += wave["speed"] * math.sin(wave["phase"])
+            
+            dx = wave["x"] - self.player_pos[0]
+            dz = wave["z"] - self.player_pos[2]
+            if math.hypot(dx, dz) > 200:
+                self.wave_particles.remove(wave)
+    
+    def draw_waves(self):
+        """绘制海浪效果"""
+        try:
+            glDisable(GL_LIGHTING)
+            
+            for wave in self.wave_particles:
+                glPushMatrix()
+                glTranslatef(wave["x"], wave["y"], wave["z"])
+                
+                glColor4f(0.2, 0.5, 0.8, 0.6)
+                
+                size = 2
+                glBegin(GL_QUADS)
+                glVertex3f(-size, 0, -size)
+                glVertex3f(size, 0, -size)
+                glVertex3f(size, 0.1, size)
+                glVertex3f(-size, 0.1, size)
+                glEnd()
+                
+                glPopMatrix()
+            
+            glEnable(GL_LIGHTING)
+        except Exception as e:
+            pass
     
     def draw_tree(self, x, z):
         """绘制树木"""
@@ -1330,13 +2141,15 @@ class GameMap3D:
         controls = [
             "WASD: 移动",
             "空格: 跳跃",
-            "Shift: 减速",
+            "Shift: 潜行",
             "Tab: 锁定鼠标",
             "F: 跟随模式",
             "F5: 切换视角",
-            "1-9: 选择方块",
-            "左键: 放置方块",
-            "右键: 破坏方块",
+            "1-9: 选择物品",
+            "左键: 放置/使用",
+            "右键: 破坏/交互",
+            "E: 背包",
+            "C: 合成台",
             "Esc: 暂停菜单"
         ]
         for i, control in enumerate(controls):
@@ -1346,6 +2159,157 @@ class GameMap3D:
         self.draw_hotbar()
         
         glEnable(GL_DEPTH_TEST)
+    
+    def draw_mc_hud(self):
+        """绘制MC风格HUD（生命值、饥饿值等）"""
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+        glDisable(GL_DEPTH_TEST)
+        
+        # 屏幕中心下方位置
+        center_x = SCREEN_WIDTH // 2
+        bottom_y = SCREEN_HEIGHT - 100
+        
+        # 绘制生命值（红色心形）
+        heart_size = 20
+        heart_spacing = 24
+        start_heart_x = center_x - 10 * heart_spacing // 2
+        for i in range(10):
+            heart_x = start_heart_x + i * heart_spacing
+            heart_y = bottom_y
+            
+            # 绘制心形容器
+            heart_surf = pygame.Surface((heart_size, heart_size), pygame.SRCALPHA)
+            if i * 2 < self.health:
+                if i * 2 + 1 < self.health:
+                    heart_surf.fill((255, 0, 0, 255))  # 满血
+                else:
+                    heart_surf.fill((255, 100, 100, 255))  # 半血
+            else:
+                heart_surf.fill((80, 80, 80, 180))  # 空血
+            
+            pygame.draw.circle(heart_surf, (0, 0, 0, 100), (10, 10), 9, 2)
+            self.screen.blit(heart_surf, (heart_x, heart_y))
+        
+        # 绘制饥饿值（鸡腿）
+        start_hunger_x = center_x + 10 * heart_spacing // 2 - heart_size
+        for i in range(10):
+            hunger_x = start_hunger_x - i * heart_spacing
+            hunger_y = bottom_y
+            
+            hunger_surf = pygame.Surface((heart_size, heart_size), pygame.SRCALPHA)
+            if i * 2 < self.hunger:
+                if i * 2 + 1 < self.hunger:
+                    hunger_surf.fill((255, 165, 0, 255))  # 饱
+                else:
+                    hunger_surf.fill((255, 200, 100, 255))  # 半饱
+            else:
+                hunger_surf.fill((80, 80, 80, 180))  # 饿
+            
+            pygame.draw.circle(hunger_surf, (0, 0, 0, 100), (10, 10), 9, 2)
+            self.screen.blit(hunger_surf, (hunger_x, hunger_y))
+        
+        # 绘制氧气值（水中使用）
+        if self.oxygen < 10:
+            start_oxygen_x = center_x - 10 * heart_spacing // 2
+            for i in range(10):
+                oxygen_x = start_oxygen_x + i * heart_spacing
+                oxygen_y = bottom_y + 30
+                
+                oxygen_surf = pygame.Surface((heart_size, heart_size), pygame.SRCALPHA)
+                if i < self.oxygen:
+                    oxygen_surf.fill((0, 150, 255, 255))
+                else:
+                    oxygen_surf.fill((50, 50, 80, 180))
+                
+                pygame.draw.circle(oxygen_surf, (0, 0, 0, 100), (10, 10), 9, 2)
+                self.screen.blit(oxygen_surf, (oxygen_x, oxygen_y))
+        
+        # 绘制经验条
+        exp_bar_width = 200
+        exp_bar_height = 10
+        exp_bar_x = center_x - exp_bar_width // 2
+        exp_bar_y = bottom_y - 30
+        
+        exp_bar_bg = pygame.Surface((exp_bar_width, exp_bar_height), pygame.SRCALPHA)
+        exp_bar_bg.fill((50, 50, 50, 200))
+        self.screen.blit(exp_bar_bg, (exp_bar_x, exp_bar_y))
+        
+        exp_fill = pygame.Surface((int(exp_bar_width * (self.experience % 100 / 100)), exp_bar_height), pygame.SRCALPHA)
+        exp_fill.fill((50, 200, 50, 255))
+        self.screen.blit(exp_fill, (exp_bar_x, exp_bar_y))
+        
+        # 绘制等级
+        if self.level > 0:
+            level_text = self.font_main.render(str(self.level), True, (255, 215, 0))
+            level_rect = level_text.get_rect(center=(center_x, exp_bar_y - 15))
+            self.screen.blit(level_text, level_rect)
+        
+        # 绘制十字准星
+        crosshair_size = 15
+        crosshair_thickness = 2
+        crosshair_color = (255, 255, 255)
+        
+        # 水平线
+        pygame.draw.line(self.screen, crosshair_color, 
+                        (center_x - crosshair_size, center_y), 
+                        (center_x + crosshair_size, center_y), 
+                        crosshair_thickness)
+        # 垂直线
+        pygame.draw.line(self.screen, crosshair_color, 
+                        (center_x, center_y - crosshair_size), 
+                        (center_x, center_y + crosshair_size), 
+                        crosshair_thickness)
+        
+        # 绘制聊天窗口
+        chat_width = 400
+        chat_height = 150
+        chat_x = 10
+        chat_y = SCREEN_HEIGHT - chat_height - 70
+        
+        chat_bg = pygame.Surface((chat_width, chat_height), pygame.SRCALPHA)
+        chat_bg.fill((0, 0, 0, 120))
+        self.screen.blit(chat_bg, (chat_x, chat_y))
+        
+        for i, msg in enumerate(self.chat_messages[-5:]):
+            msg_text = self.font_small.render(msg, True, (255, 255, 255))
+            self.screen.blit(msg_text, (chat_x + 5, chat_y + 5 + i * 25))
+        
+        # 绘制物品提示
+        if self.hovered_item and self.item_tooltip_timer > 0:
+            tooltip_text = self.font_small.render(self.hovered_item, True, (255, 255, 255))
+            tooltip_bg = pygame.Surface((tooltip_text.get_width() + 10, tooltip_text.get_height() + 6), pygame.SRCALPHA)
+            tooltip_bg.fill((0, 0, 0, 200))
+            
+            mx, my = pygame.mouse.get_pos()
+            tooltip_x = mx + 15
+            tooltip_y = my - tooltip_text.get_height() - 3
+            
+            if tooltip_x + tooltip_bg.get_width() > SCREEN_WIDTH:
+                tooltip_x = mx - tooltip_bg.get_width() - 15
+            
+            self.screen.blit(tooltip_bg, (tooltip_x, tooltip_y))
+            self.screen.blit(tooltip_text, (tooltip_x + 5, tooltip_y + 3))
+            
+            self.item_tooltip_timer -= 1
+        
+        glEnable(GL_DEPTH_TEST)
+    
+    def add_chat_message(self, message):
+        """添加聊天消息"""
+        self.chat_messages.append(message)
+        if len(self.chat_messages) > self.max_chat_lines:
+            self.chat_messages.pop(0)
+    
+    def unlock_achievement(self, achievement_id):
+        """解锁成就"""
+        if achievement_id in self.achievements and not self.achievements[achievement_id]["unlocked"]:
+            self.achievements[achievement_id]["unlocked"] = True
+            achievement = self.achievements[achievement_id]
+            self.add_chat_message(f"[成就] {achievement['name']}: {achievement['description']}")
     
     def draw_pause_menu(self):
         """绘制暂停菜单（类似MC风格）"""
@@ -1834,6 +2798,472 @@ class GameMap3D:
                     return False
         return False
     
+    def clamp_value(self, value, min_val, max_val):
+        """限制值在范围内（安全保护）"""
+        if not isinstance(value, (int, float)):
+            return min_val
+        return max(min_val, min(max_val, value))
+    
+    def set_health(self, value):
+        """安全设置生命值"""
+        self.health = self.clamp_value(value, 0, self.max_health)
+    
+    def add_health(self, amount):
+        """安全增加生命值"""
+        self.set_health(self.health + amount)
+    
+    def set_hunger(self, value):
+        """安全设置饥饿值"""
+        self.hunger = self.clamp_value(value, 0, self.max_hunger)
+    
+    def add_hunger(self, amount):
+        """安全增加饥饿值"""
+        self.set_hunger(self.hunger + amount)
+    
+    def set_oxygen(self, value):
+        """安全设置氧气值"""
+        self.oxygen = self.clamp_value(value, 0, self.max_oxygen)
+    
+    def add_oxygen(self, amount):
+        """安全增加氧气值"""
+        self.set_oxygen(self.oxygen + amount)
+    
+    def set_armor(self, value):
+        """安全设置护甲值"""
+        self.armor = self.clamp_value(value, 0, self.max_armor)
+    
+    def add_armor(self, amount):
+        """安全增加护甲值"""
+        self.set_armor(self.armor + amount)
+    
+    def validate_inventory(self):
+        """验证背包数据完整性（安全检查）"""
+        if not isinstance(self.inventory, list):
+            self.inventory = [None] * self.inventory_slots
+        
+        for i in range(len(self.inventory)):
+            if self.inventory[i] is not None:
+                if not isinstance(self.inventory[i], dict):
+                    self.inventory[i] = None
+                else:
+                    if "name" not in self.inventory[i] or "count" not in self.inventory[i]:
+                        self.inventory[i] = None
+                    else:
+                        self.inventory[i]["count"] = self.clamp_value(self.inventory[i]["count"], 1, self.max_stack_size)
+    
+    def validate_hotbar(self):
+        """验证快捷栏数据完整性"""
+        if not isinstance(self.hotbar, list):
+            self.hotbar = [None] * 9
+        
+        self.hotbar_selected = self.clamp_value(self.hotbar_selected, 0, 8)
+    
+    def validate_crafting_grid(self):
+        """验证合成网格数据完整性"""
+        if not isinstance(self.crafting_grid, list) or len(self.crafting_grid) != 3:
+            self.crafting_grid = [[None for _ in range(3)] for _ in range(3)]
+        
+        for row in range(3):
+            if not isinstance(self.crafting_grid[row], list) or len(self.crafting_grid[row]) != 3:
+                self.crafting_grid[row] = [None, None, None]
+    
+    def validate_player_position(self):
+        """验证玩家位置（防止非法位置）"""
+        if not isinstance(self.player_pos, list) or len(self.player_pos) != 3:
+            self.player_pos = [0, 0, 0]
+        
+        for i in range(3):
+            if not isinstance(self.player_pos[i], (int, float)):
+                self.player_pos[i] = 0
+        
+        self.player_pos[1] = max(self.player_pos[1], 0)
+    
+    def validate_camera(self):
+        """验证相机参数"""
+        self.camera["yaw"] = self.camera["yaw"] % 360
+        self.camera["pitch"] = self.clamp_value(self.camera["pitch"], -90, 90)
+        self.camera["speed"] = self.clamp_value(self.camera["speed"], 0.1, 2.0)
+    
+    def validate_all(self):
+        """全面验证所有数据（在加载后调用）"""
+        self.validate_inventory()
+        self.validate_hotbar()
+        self.validate_crafting_grid()
+        self.validate_player_position()
+        self.validate_camera()
+        
+        self.set_health(self.health)
+        self.set_hunger(self.hunger)
+        self.set_oxygen(self.oxygen)
+        self.set_armor(self.armor)
+    
+    def toggle_gamemode(self):
+        """切换游戏模式（生存/创造）"""
+        if self.game_mode == "survival":
+            self.game_mode = "creative"
+            self.can_fly = True
+            self.flying = False
+            self.health = self.max_health
+            self.hunger = self.max_hunger
+            self.add_chat_message("已切换到创造模式")
+        else:
+            self.game_mode = "survival"
+            self.can_fly = False
+            self.flying = False
+            self.add_chat_message("已切换到生存模式")
+    
+    def handle_flying(self):
+        """处理飞行逻辑（创造模式）"""
+        if not self.can_fly:
+            return
+        
+        keys = pygame.key.get_pressed()
+        
+        if keys[pygame.K_SPACE]:
+            self.flying = True
+            self.player_pos[1] += self.fly_speed
+        elif keys[pygame.K_LSHIFT]:
+            self.player_pos[1] -= self.fly_speed
+        else:
+            self.flying = False
+    
+    def execute_command(self, command):
+        """执行命令"""
+        command = command.strip().lower()
+        args = command.split()
+        
+        if not args:
+            return
+        
+        cmd = args[0]
+        
+        if cmd == "gamemode" or cmd == "gm":
+            if len(args) >= 2:
+                mode = args[1]
+                if mode in ["creative", "c", "1"]:
+                    self.game_mode = "creative"
+                    self.can_fly = True
+                    self.add_chat_message("已切换到创造模式")
+                elif mode in ["survival", "s", "0"]:
+                    self.game_mode = "survival"
+                    self.can_fly = False
+                    self.flying = False
+                    self.add_chat_message("已切换到生存模式")
+                else:
+                    self.add_chat_message("未知游戏模式: " + mode)
+            else:
+                self.add_chat_message("当前模式: " + self.game_mode)
+        
+        elif cmd == "give":
+            if len(args) >= 2:
+                item_name = args[1]
+                count = int(args[2]) if len(args) >= 3 else 1
+                self.add_item_to_inventory(item_name, count)
+                self.add_chat_message(f"获得 {count} 个 {item_name}")
+            else:
+                self.add_chat_message("用法: /give <物品名称> [数量]")
+        
+        elif cmd == "kill":
+            self.health = 0
+            self.add_chat_message("你自杀了!")
+        
+        elif cmd == "time":
+            if len(args) >= 2:
+                sub_cmd = args[1]
+                if sub_cmd == "day":
+                    self.day_time = 1000
+                    self.add_chat_message("已设置为白天")
+                elif sub_cmd == "night":
+                    self.day_time = 13000
+                    self.add_chat_message("已设置为夜晚")
+                elif sub_cmd == "add" and len(args) >= 3:
+                    self.day_time += int(args[2])
+                    self.add_chat_message(f"时间增加了 {args[2]}")
+            else:
+                time_str = "白天" if self.is_day else "夜晚"
+                self.add_chat_message(f"当前时间: {self.day_time} ({time_str})")
+        
+        elif cmd == "weather":
+            if len(args) >= 2:
+                weather_type = args[1]
+                if weather_type in ["clear", "sunny"]:
+                    self.weather = "clear"
+                    self.add_chat_message("天气已设置为晴天")
+                elif weather_type == "rain":
+                    self.weather = "rain"
+                    self.add_chat_message("天气已设置为下雨")
+                elif weather_type == "snow":
+                    self.weather = "snow"
+                    self.add_chat_message("天气已设置为下雪")
+                else:
+                    self.add_chat_message("未知天气类型: " + weather_type)
+            else:
+                self.add_chat_message(f"当前天气: {self.weather}")
+        
+        elif cmd == "tp" or cmd == "teleport":
+            if len(args) >= 4:
+                try:
+                    x = float(args[1])
+                    y = float(args[2])
+                    z = float(args[3])
+                    self.player_pos = [x, y, z]
+                    self.add_chat_message(f"已传送到 ({x}, {y}, {z})")
+                except:
+                    self.add_chat_message("用法: /tp <x> <y> <z>")
+        
+        elif cmd == "heal":
+            self.health = self.max_health
+            self.add_chat_message("已恢复全部生命值")
+        
+        elif cmd == "feed":
+            self.hunger = self.max_hunger
+            self.add_chat_message("已恢复全部饥饿值")
+        
+        elif cmd == "help":
+            help_text = [
+                "可用命令:",
+                "/gamemode <creative/survival> - 切换游戏模式",
+                "/give <物品> [数量] - 获得物品",
+                "/kill - 自杀",
+                "/time <day/night/add> - 设置时间",
+                "/weather <clear/rain/snow> - 设置天气",
+                "/tp <x> <y> <z> - 传送",
+                "/heal - 恢复生命",
+                "/feed - 恢复饥饿",
+                "/help - 显示帮助",
+                "/eggs - 显示彩蛋提示",
+                "/developer - 开发者彩蛋"
+            ]
+            for line in help_text:
+                self.add_chat_message(line)
+        
+        elif cmd == "eggs":
+            self.add_chat_message("=== 彩蛋列表 ===")
+            for egg_id, egg_data in self.eggs.items():
+                status = "✅" if egg_data["found"] else "❓"
+                self.add_chat_message(f"{status} {egg_data['hint']}")
+        
+        elif cmd == "developer":
+            if not self.eggs["developer"]["found"]:
+                self.eggs["developer"]["found"] = True
+                self.add_chat_message("🎉 恭喜解锁开发者彩蛋！")
+                self.add_chat_message("神秘信息: 42是宇宙的终极答案")
+                self.add_chat_message("你发现了隐藏的开发者命令！")
+            else:
+                self.add_chat_message("你已经解锁过这个彩蛋了！")
+        
+        elif cmd == "herobrine":
+            self.herobrine_active = True
+            self.herobrine_pos = [self.player_pos[0] + 10, 0, self.player_pos[2] + 10]
+            self.add_chat_message("⚠️ Herobrine已被召唤...")
+        
+        else:
+            self.add_chat_message("未知命令: " + cmd)
+    
+    def draw_command_input(self):
+        """绘制命令输入框"""
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+        glDisable(GL_DEPTH_TEST)
+        
+        input_width = 400
+        input_height = 30
+        input_x = SCREEN_WIDTH // 2 - input_width // 2
+        input_y = SCREEN_HEIGHT - 50
+        
+        input_bg = pygame.Surface((input_width, input_height), pygame.SRCALPHA)
+        input_bg.fill((0, 0, 0, 200))
+        pygame.draw.rect(input_bg, (50, 50, 50), (0, 0, input_width, input_height), 1)
+        self.screen.blit(input_bg, (input_x, input_y))
+        
+        cmd_text = self.font_main.render("/" + self.command_input, True, (255, 255, 255))
+        self.screen.blit(cmd_text, (input_x + 5, input_y + 5))
+        
+        glEnable(GL_DEPTH_TEST)
+    
+    def draw_crafting_table(self):
+        """绘制合成台界面（MC风格）"""
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+        glDisable(GL_DEPTH_TEST)
+        
+        craft_width = 400
+        craft_height = 350
+        craft_x = SCREEN_WIDTH // 2 - craft_width // 2
+        craft_y = SCREEN_HEIGHT // 2 - craft_height // 2
+        
+        bg_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        bg_surf.fill((0, 0, 0, 150))
+        self.screen.blit(bg_surf, (0, 0))
+        
+        craft_surf = pygame.Surface((craft_width, craft_height), pygame.SRCALPHA)
+        craft_surf.fill((60, 60, 80, 240))
+        pygame.draw.rect(craft_surf, (100, 100, 120), (0, 0, craft_width, craft_height), 3, border_radius=10)
+        self.screen.blit(craft_surf, (craft_x, craft_y))
+        
+        title_surf = self.font_main.render("合成台", True, COLORS["accent_gold"])
+        title_rect = title_surf.get_rect(center=(SCREEN_WIDTH // 2, craft_y + 25))
+        self.screen.blit(title_surf, title_rect)
+        
+        slot_size = 50
+        slot_spacing = 5
+        
+        grid_x = craft_x + 30
+        grid_y = craft_y + 50
+        
+        for row in range(3):
+            for col in range(3):
+                slot_x = grid_x + col * (slot_size + slot_spacing)
+                slot_y = grid_y + row * (slot_size + slot_spacing)
+                
+                slot_surf = pygame.Surface((slot_size, slot_size), pygame.SRCALPHA)
+                slot_surf.fill((50, 50, 70, 255))
+                pygame.draw.rect(slot_surf, (80, 80, 100), (0, 0, slot_size, slot_size), 2)
+                self.screen.blit(slot_surf, (slot_x, slot_y))
+                
+                item = self.crafting_grid[row][col]
+                if item:
+                    item_color = self.get_item_color(item)
+                    item_surf = pygame.Surface((40, 40), pygame.SRCALPHA)
+                    item_surf.fill(item_color)
+                    self.screen.blit(item_surf, (slot_x + 5, slot_y + 5))
+        
+        arrow_x = grid_x + 3 * (slot_size + slot_spacing) + 20
+        arrow_y = craft_y + craft_height // 2 - 20
+        
+        arrow_surf = pygame.Surface((40, 40), pygame.SRCALPHA)
+        pygame.draw.polygon(arrow_surf, (255, 215, 0), [(35, 20), (5, 5), (5, 35)])
+        self.screen.blit(arrow_surf, (arrow_x, arrow_y))
+        
+        result_x = arrow_x + 60
+        result_y = craft_y + craft_height // 2 - slot_size // 2
+        
+        result_slot = pygame.Surface((slot_size, slot_size), pygame.SRCALPHA)
+        result_slot.fill((50, 70, 50, 255))
+        pygame.draw.rect(result_slot, COLORS["accent_green"], (0, 0, slot_size, slot_size), 2)
+        self.screen.blit(result_slot, (result_x, result_y))
+        
+        if self.crafting_result:
+            result_color = self.get_item_color(self.crafting_result)
+            result_surf = pygame.Surface((40, 40), pygame.SRCALPHA)
+            result_surf.fill(result_color)
+            self.screen.blit(result_surf, (result_x + 5, result_y + 5))
+        
+        hint_surf = self.font_small.render("拖拽物品到格子中 | C: 关闭", True, (150, 150, 150))
+        hint_rect = hint_surf.get_rect(center=(SCREEN_WIDTH // 2, craft_y + craft_height - 20))
+        self.screen.blit(hint_surf, hint_rect)
+        
+        glEnable(GL_DEPTH_TEST)
+    
+    def handle_crafting_input(self):
+        """处理合成台输入"""
+        craft_width = 400
+        craft_height = 350
+        craft_x = SCREEN_WIDTH // 2 - craft_width // 2
+        craft_y = SCREEN_HEIGHT // 2 - craft_height // 2
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return "quit"
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE or event.key == pygame.K_c:
+                    self.show_crafting = False
+                    self.is_mouse_locked = True
+                    pygame.mouse.set_visible(False)
+                    pygame.event.set_grab(True)
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mx, my = event.pos
+                
+                slot_size = 50
+                slot_spacing = 5
+                grid_x = craft_x + 30
+                grid_y = craft_y + 50
+                
+                for row in range(3):
+                    for col in range(3):
+                        slot_x = grid_x + col * (slot_size + slot_spacing)
+                        slot_y = grid_y + row * (slot_size + slot_spacing)
+                        
+                        if slot_x <= mx <= slot_x + slot_size and slot_y <= my <= slot_y + slot_size:
+                            if event.button == 1:
+                                if self.dragging_item:
+                                    self.crafting_grid[row][col] = self.dragging_item["name"]
+                                    self.dragging_item = None
+                                else:
+                                    item = self.crafting_grid[row][col]
+                                    if item:
+                                        self.dragging_item = {"name": item, "count": 1}
+                                        self.crafting_grid[row][col] = None
+                            
+                result_x = grid_x + 3 * (slot_size + slot_spacing) + 80
+                result_y = craft_y + craft_height // 2 - slot_size // 2
+                
+                if result_x <= mx <= result_x + slot_size and result_y <= my <= result_y + slot_size:
+                    if self.crafting_result:
+                        self.craft_item()
+        
+        self.check_crafting()
+        return "continue"
+    
+    def check_crafting(self):
+        """检查合成配方"""
+        items = {}
+        for row in self.crafting_grid:
+            for item in row:
+                if item:
+                    items[item] = items.get(item, 0) + 1
+        
+        for result, recipe in self.crafting_recipes.items():
+            match = True
+            for item, count in recipe.items():
+                if items.get(item, 0) < count:
+                    match = False
+                    break
+            
+            if match:
+                self.crafting_result = result
+                return
+        
+        self.crafting_result = None
+    
+    def craft_item(self):
+        """执行合成（安全版本）"""
+        if not self.crafting_result:
+            return
+        
+        recipe = self.crafting_recipes.get(self.crafting_result)
+        if not recipe:
+            return
+        
+        for item, count in recipe.items():
+            if not self.remove_item_from_inventory(item, count):
+                self.message = f"材料不足: {item}"
+                self.message_timer = 2000
+                return
+        
+        for item, count in recipe.items():
+            for _ in range(count):
+                found = False
+                for row in range(3):
+                    for col in range(3):
+                        if self.crafting_grid[row][col] == item:
+                            self.crafting_grid[row][col] = None
+                            found = True
+                            break
+                    if found:
+                        break
+        
+        self.add_item_to_inventory(self.crafting_result)
+        self.message = f"合成了 {self.crafting_result}！"
+        self.message_timer = 2000
+        self.check_crafting()
+    
     def main(self):
         """主循环"""
         if not self.initialize():
@@ -1865,11 +3295,31 @@ class GameMap3D:
                 self.clock.tick(60)
                 continue
             
+            if self.show_crafting:
+                result = self.handle_crafting_input()
+                if result == "quit":
+                    running = False
+                
+                self.draw_3d_scene()
+                self.draw_crafting_table()
+                pygame.display.flip()
+                self.clock.tick(60)
+                continue
+            
             running = self.handle_input()
             
+            if self.show_command:
+                self.draw_3d_scene()
+                self.draw_command_input()
+                pygame.display.flip()
+                self.clock.tick(60)
+                continue
+            
             # 物理更新
-            # 应用重力
-            self.velocity[1] += self.gravity
+            if not self.flying:
+                self.velocity[1] += self.gravity
+            
+            self.handle_flying()
             
             # 更新位置
             self.player_pos[0] += self.velocity[0]
@@ -1918,6 +3368,22 @@ class GameMap3D:
             self.velocity[0] *= 0.9
             self.velocity[2] *= 0.9
             
+            # 更新昼夜系统
+            self.update_day_night()
+            
+            # 更新天气系统
+            self.update_weather()
+            
+            # 更新生物系统
+            self.spawn_entity()
+            self.update_entities()
+            
+            # 更新Herobrine彩蛋
+            self.update_herobrine()
+            
+            # 更新海浪效果
+            self.update_waves()
+            
             # 更新相机
             self.update_camera()
             
@@ -1928,7 +3394,8 @@ class GameMap3D:
             self.draw_3d_scene()
             
             # 绘制HUD
-            self.draw_hud()
+            self.draw_mc_hud()
+            self.draw_hotbar()
             
             # 限制帧率
             self.clock.tick(60)

@@ -225,6 +225,143 @@ class GameMap3D:
             "days_passed": 0
         }
         
+        # MC风格游戏模式
+        self.game_mode = "survival"  # survival, creative, adventure
+        self.can_fly = False
+        self.flying = False
+        self.fly_speed = 0.1
+        
+        # MC风格命令系统
+        self.command_input = ""
+        self.show_command = False
+        self.command_history = []
+        
+        # 彩蛋系统（100个彩蛋！）
+        self.eggs = {
+            "notch": {"found": False, "hint": "找到Notch的头像"},
+            "herobrine": {"found": False, "hint": "在夜晚遇到Herobrine"},
+            "creeper_explosion": {"found": False, "hint": "让苦力怕在你面前爆炸"},
+            "secret_base": {"found": False, "hint": "找到隐藏的基地"},
+            "developer": {"found": False, "hint": "输入开发者命令"},
+            "first_block": {"found": False, "hint": "放置第一个方块"},
+            "first_craft": {"found": False, "hint": "完成第一次合成"},
+            "first_kill": {"found": False, "hint": "杀死第一个怪物"},
+            "day_night": {"found": False, "hint": "度过一个完整的昼夜循环"},
+            "100_blocks": {"found": False, "hint": "放置100个方块"},
+            "100_kills": {"found": False, "hint": "杀死100个怪物"},
+            "diamond": {"found": False, "hint": "找到钻石"},
+            "gold": {"found": False, "hint": "找到金矿"},
+            "iron": {"found": False, "hint": "找到铁矿"},
+            "coal": {"found": False, "hint": "找到煤矿"},
+            "lava": {"found": False, "hint": "找到岩浆"},
+            "water": {"found": False, "hint": "找到水源"},
+            "tree": {"found": False, "hint": "砍倒10棵树"},
+            "house": {"found": False, "hint": "建造一个房子"},
+            "tower": {"found": False, "hint": "建造一个高塔"},
+            "bridge": {"found": False, "hint": "建造一座桥"},
+            "underground": {"found": False, "hint": "深入地下50格"},
+            "high_altitude": {"found": False, "hint": "到达高空50格"},
+            "speed_run": {"found": False, "hint": "在1分钟内跑100格"},
+            "no_damage": {"found": False, "hint": "无伤生存10分钟"},
+            "night_owl": {"found": False, "hint": "在夜晚活动30分钟"},
+            "sunrise": {"found": False, "hint": "观看一次日出"},
+            "sunset": {"found": False, "hint": "观看一次日落"},
+            "rain": {"found": False, "hint": "在雨中待5分钟"},
+            "snow": {"found": False, "hint": "在雪中待5分钟"},
+            "swim": {"found": False, "hint": "游泳100格"},
+            "jump_100": {"found": False, "hint": "跳跃100次"},
+            "sneak": {"found": False, "hint": "潜行100格"},
+            "sprint": {"found": False, "hint": "冲刺100格"},
+            "fly_creative": {"found": False, "hint": "在创造模式飞行100格"},
+            "build_pyramid": {"found": False, "hint": "建造一个金字塔"},
+            "build_castle": {"found": False, "hint": "建造一座城堡"},
+            "farm": {"found": False, "hint": "建造一个农场"},
+            "mine_shaft": {"found": False, "hint": "挖掘一个矿道"},
+            "library": {"found": False, "hint": "建造一个图书馆"},
+            "armor": {"found": False, "hint": "穿上全套护甲"},
+            "sword": {"found": False, "hint": "制作一把剑"},
+            "bow": {"found": False, "hint": "制作一把弓"},
+            "pickaxe": {"found": False, "hint": "制作一把镐子"},
+            "axe": {"found": False, "hint": "制作一把斧头"},
+            "shovel": {"found": False, "hint": "制作一把铲子"},
+            "hoe": {"found": False, "hint": "制作一把锄头"},
+            "craft_table": {"found": False, "hint": "制作一个工作台"},
+            "furnace": {"found": False, "hint": "制作一个熔炉"},
+            "chest": {"found": False, "hint": "制作一个箱子"},
+            "bed": {"found": False, "hint": "制作一张床"},
+            "door": {"found": False, "hint": "制作一扇门"},
+            "fence": {"found": False, "hint": "制作栅栏"},
+            "ladder": {"found": False, "hint": "制作梯子"},
+            "glass": {"found": False, "hint": "制作玻璃"},
+            "brick": {"found": False, "hint": "制作砖块"},
+            "cake": {"found": False, "hint": "制作一个蛋糕"},
+            "bread": {"found": False, "hint": "制作面包"},
+            "gold_ingot": {"found": False, "hint": "冶炼金锭"},
+            "iron_ingot": {"found": False, "hint": "冶炼铁锭"},
+            "cook_food": {"found": False, "hint": "烹饪食物"},
+            "fish": {"found": False, "hint": "钓一条鱼"},
+            "pet": {"found": False, "hint": "拥有一只宠物"},
+            "follower": {"found": False, "hint": "拥有一个追随者"},
+            "general": {"found": False, "hint": "召唤一名武将"},
+            "gun": {"found": False, "hint": "制作一把枪"},
+            "ammo": {"found": False, "hint": "制作弹药"},
+            "firework": {"found": False, "hint": "制作烟花"},
+            "music_disc": {"found": False, "hint": "找到音乐唱片"},
+            "painting": {"found": False, "hint": "放置一幅画"},
+            "map": {"found": False, "hint": "制作一张地图"},
+            "compass": {"found": False, "hint": "制作一个指南针"},
+            "clock": {"found": False, "hint": "制作一个时钟"},
+            "enchant": {"found": False, "hint": "附魔物品"},
+            "anvil": {"found": False, "hint": "制作铁砧"},
+            "beacon": {"found": False, "hint": "激活信标"},
+            "ender_eye": {"found": False, "hint": "制作末影之眼"},
+            "nether_portal": {"found": False, "hint": "建造地狱门"},
+            "end_portal": {"found": False, "hint": "建造末地传送门"},
+            "dragon_kill": {"found": False, "hint": "击败末影龙"},
+            "wither_kill": {"found": False, "hint": "击败凋灵"},
+            "elder_guardian": {"found": False, "hint": "击败远古守卫者"},
+            "wither_skeleton": {"found": False, "hint": "击败凋灵骷髅"},
+            "stray": {"found": False, "hint": "击败流浪者"},
+            "husk": {"found": False, "hint": "击败尸壳"},
+            "phantom": {"found": False, "hint": "击败幻翼"},
+            "ravager": {"found": False, "hint": "击败劫掠兽"},
+            "pillager": {"found": False, "hint": "击败掠夺者"},
+            "vindicator": {"found": False, "hint": "击败卫道士"},
+            "evoker": {"found": False, "hint": "击败唤魔者"},
+            "shulker": {"found": False, "hint": "击败潜影贝"},
+            "enderman": {"found": False, "hint": "击败末影人"},
+            "slime": {"found": False, "hint": "击败史莱姆"},
+            "magma_cube": {"found": False, "hint": "击败岩浆怪"},
+            "ghast": {"found": False, "hint": "击败恶魂"},
+            "blaze": {"found": False, "hint": "击败烈焰人"},
+            "cave_spider": {"found": False, "hint": "击败洞穴蜘蛛"},
+            "spider_jockey": {"found": False, "hint": "击败蜘蛛骑士"},
+            "jockey": {"found": False, "hint": "击败骷髅骑士"},
+            "zombie_villager": {"found": False, "hint": "治愈僵尸村民"},
+            "villager_trade": {"found": False, "hint": "与村民交易"},
+            "raid": {"found": False, "hint": "完成一次袭击"},
+            "pillager_outpost": {"found": False, "hint": "找到掠夺者前哨站"},
+            "stronghold": {"found": False, "hint": "找到要塞"},
+            "jungle_temple": {"found": False, "hint": "找到丛林神庙"},
+            "desert_temple": {"found": False, "hint": "找到沙漠神殿"},
+            "ocean_monument": {"found": False, "hint": "找到海底遗迹"},
+            "woodland_mansion": {"found": False, "hint": "找到林地府邸"},
+            "shipwreck": {"found": False, "hint": "找到沉船"},
+            "ruined_portal": {"found": False, "hint": "找到废弃传送门"},
+            "treasure": {"found": False, "hint": "找到宝藏"},
+            "easter_egg": {"found": False, "hint": "找到复活节彩蛋"},
+            "birthday": {"found": False, "hint": "庆祝生日"},
+            "anniversary": {"found": False, "hint": "庆祝一周年"},
+            "secret_command": {"found": False, "hint": "发现隐藏命令"}
+        }
+        self.herobrine_active = False
+        self.herobrine_pos = None
+        self.herobrine_timer = 0
+        
+        # 海浪效果
+        self.wave_particles = []
+        self.wave_timer = 0
+        
         # 天气系统
         self.weather = "clear"  # clear, rain, snow
         self.weather_timer = 0
@@ -602,6 +739,30 @@ class GameMap3D:
                         self.is_mouse_locked = False
                         pygame.mouse.set_visible(True)
                         pygame.event.set_grab(False)
+                elif event.key == pygame.K_SLASH:
+                    self.show_command = True
+                    self.command_input = ""
+                    self.is_mouse_locked = False
+                    pygame.mouse.set_visible(True)
+                    pygame.event.set_grab(False)
+                elif event.key == pygame.K_g and pygame.key.get_mods() & pygame.KMOD_CTRL:
+                    self.toggle_gamemode()
+                elif event.key == pygame.K_RETURN and self.show_command:
+                    if self.command_input.strip():
+                        self.execute_command(self.command_input)
+                        self.command_history.append(self.command_input)
+                        if len(self.command_history) > 10:
+                            self.command_history.pop(0)
+                    self.show_command = False
+                    self.command_input = ""
+                    self.is_mouse_locked = True
+                    pygame.mouse.set_visible(False)
+                    pygame.event.set_grab(True)
+                elif event.key == pygame.K_BACKSPACE and self.show_command:
+                    self.command_input = self.command_input[:-1]
+                elif self.show_command:
+                    if event.unicode:
+                        self.command_input += event.unicode
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     if not self.is_mouse_locked:
@@ -864,6 +1025,7 @@ class GameMap3D:
             for follower in self.followers:
                 self.draw_follower(follower)
             
+            self.draw_waves()
             self.draw_weather()
             
             pygame.display.flip()
@@ -1269,6 +1431,136 @@ class GameMap3D:
                 glVertex3f(size, 0, -size)
                 glVertex3f(size, size * 2, -size)
                 glVertex3f(-size, size * 2, -size)
+                glEnd()
+                
+                glPopMatrix()
+            
+            if self.herobrine_active and self.herobrine_pos:
+                self.draw_herobrine()
+            
+            glEnable(GL_LIGHTING)
+        except Exception as e:
+            pass
+    
+    def draw_herobrine(self):
+        """绘制Herobrine（彩蛋）"""
+        if not self.herobrine_active or not self.herobrine_pos:
+            return
+        
+        glPushMatrix()
+        glTranslatef(self.herobrine_pos[0], self.herobrine_pos[1], self.herobrine_pos[2])
+        
+        glColor3f(1.0, 1.0, 1.0)
+        
+        size = 0.6
+        glBegin(GL_QUADS)
+        
+        glVertex3f(-size, 0, -size)
+        glVertex3f(size, 0, -size)
+        glVertex3f(size, size * 2.5, -size)
+        glVertex3f(-size, size * 2.5, -size)
+        glEnd()
+        
+        glColor3f(0.8, 0.8, 0.8)
+        glBegin(GL_QUADS)
+        glVertex3f(-size * 0.8, size * 1.8, -size * 0.6)
+        glVertex3f(size * 0.8, size * 1.8, -size * 0.6)
+        glVertex3f(size * 0.8, size * 2.5, -size * 0.6)
+        glVertex3f(-size * 0.8, size * 2.5, -size * 0.6)
+        glEnd()
+        
+        glColor3f(0.2, 0.2, 0.2)
+        glBegin(GL_QUADS)
+        glVertex3f(-size * 0.3, size * 2.1, -size * 0.55)
+        glVertex3f(-size * 0.1, size * 2.1, -size * 0.55)
+        glVertex3f(-size * 0.1, size * 2.3, -size * 0.55)
+        glVertex3f(-size * 0.3, size * 2.3, -size * 0.55)
+        glEnd()
+        
+        glBegin(GL_QUADS)
+        glVertex3f(size * 0.1, size * 2.1, -size * 0.55)
+        glVertex3f(size * 0.3, size * 2.1, -size * 0.55)
+        glVertex3f(size * 0.3, size * 2.3, -size * 0.55)
+        glVertex3f(size * 0.1, size * 2.3, -size * 0.55)
+        glEnd()
+        
+        glPopMatrix()
+    
+    def update_herobrine(self):
+        """更新Herobrine行为（彩蛋）"""
+        if not self.herobrine_active or not self.herobrine_pos:
+            return
+        
+        self.herobrine_timer += 1
+        
+        if self.herobrine_timer > 300:
+            self.herobrine_active = False
+            self.herobrine_pos = None
+            self.herobrine_timer = 0
+            self.add_chat_message("Herobrine消失了...")
+            return
+        
+        dx = self.player_pos[0] - self.herobrine_pos[0]
+        dz = self.player_pos[2] - self.herobrine_pos[2]
+        distance = math.hypot(dx, dz)
+        
+        if distance < 3:
+            self.health -= 1
+            if self.health <= 0:
+                self.add_chat_message("你被Herobrine杀死了!")
+        
+        if random.random() < 0.02:
+            self.herobrine_pos[0] += (random.random() - 0.5) * 2
+            self.herobrine_pos[2] += (random.random() - 0.5) * 2
+    
+    def update_waves(self):
+        """更新海浪效果"""
+        self.wave_timer += 1
+        
+        if self.wave_timer > 5:
+            self.wave_timer = 0
+            
+            for _ in range(20):
+                if len(self.wave_particles) < 1000:
+                    angle = random.uniform(0, math.pi * 2)
+                    distance = random.uniform(50, 150)
+                    self.wave_particles.append({
+                        "x": self.player_pos[0] + math.cos(angle) * distance,
+                        "y": 0.1,
+                        "z": self.player_pos[2] + math.sin(angle) * distance,
+                        "amplitude": random.uniform(0.1, 0.3),
+                        "frequency": random.uniform(0.05, 0.1),
+                        "phase": random.uniform(0, math.pi * 2),
+                        "speed": random.uniform(0.02, 0.05)
+                    })
+        
+        for wave in list(self.wave_particles):
+            wave["y"] = 0.1 + wave["amplitude"] * math.sin(self.wave_timer * wave["frequency"] + wave["phase"])
+            wave["x"] += wave["speed"] * math.cos(wave["phase"])
+            wave["z"] += wave["speed"] * math.sin(wave["phase"])
+            
+            dx = wave["x"] - self.player_pos[0]
+            dz = wave["z"] - self.player_pos[2]
+            if math.hypot(dx, dz) > 200:
+                self.wave_particles.remove(wave)
+    
+    def draw_waves(self):
+        """绘制海浪效果"""
+        try:
+            glDisable(GL_LIGHTING)
+            
+            for wave in self.wave_particles:
+                glPushMatrix()
+                glTranslatef(wave["x"], wave["y"], wave["z"])
+                
+                glColor4f(0.2, 0.5, 0.8, 0.6)
+                
+                size = 2
+                glBegin(GL_QUADS)
+                glVertex3f(-size, 0, -size)
+                glVertex3f(size, 0, -size)
+                glVertex3f(size, 0.1, size)
+                glVertex3f(-size, 0.1, size)
                 glEnd()
                 
                 glPopMatrix()
@@ -2605,6 +2897,193 @@ class GameMap3D:
         self.set_oxygen(self.oxygen)
         self.set_armor(self.armor)
     
+    def toggle_gamemode(self):
+        """切换游戏模式（生存/创造）"""
+        if self.game_mode == "survival":
+            self.game_mode = "creative"
+            self.can_fly = True
+            self.flying = False
+            self.health = self.max_health
+            self.hunger = self.max_hunger
+            self.add_chat_message("已切换到创造模式")
+        else:
+            self.game_mode = "survival"
+            self.can_fly = False
+            self.flying = False
+            self.add_chat_message("已切换到生存模式")
+    
+    def handle_flying(self):
+        """处理飞行逻辑（创造模式）"""
+        if not self.can_fly:
+            return
+        
+        keys = pygame.key.get_pressed()
+        
+        if keys[pygame.K_SPACE]:
+            self.flying = True
+            self.player_pos[1] += self.fly_speed
+        elif keys[pygame.K_LSHIFT]:
+            self.player_pos[1] -= self.fly_speed
+        else:
+            self.flying = False
+    
+    def execute_command(self, command):
+        """执行命令"""
+        command = command.strip().lower()
+        args = command.split()
+        
+        if not args:
+            return
+        
+        cmd = args[0]
+        
+        if cmd == "gamemode" or cmd == "gm":
+            if len(args) >= 2:
+                mode = args[1]
+                if mode in ["creative", "c", "1"]:
+                    self.game_mode = "creative"
+                    self.can_fly = True
+                    self.add_chat_message("已切换到创造模式")
+                elif mode in ["survival", "s", "0"]:
+                    self.game_mode = "survival"
+                    self.can_fly = False
+                    self.flying = False
+                    self.add_chat_message("已切换到生存模式")
+                else:
+                    self.add_chat_message("未知游戏模式: " + mode)
+            else:
+                self.add_chat_message("当前模式: " + self.game_mode)
+        
+        elif cmd == "give":
+            if len(args) >= 2:
+                item_name = args[1]
+                count = int(args[2]) if len(args) >= 3 else 1
+                self.add_item_to_inventory(item_name, count)
+                self.add_chat_message(f"获得 {count} 个 {item_name}")
+            else:
+                self.add_chat_message("用法: /give <物品名称> [数量]")
+        
+        elif cmd == "kill":
+            self.health = 0
+            self.add_chat_message("你自杀了!")
+        
+        elif cmd == "time":
+            if len(args) >= 2:
+                sub_cmd = args[1]
+                if sub_cmd == "day":
+                    self.day_time = 1000
+                    self.add_chat_message("已设置为白天")
+                elif sub_cmd == "night":
+                    self.day_time = 13000
+                    self.add_chat_message("已设置为夜晚")
+                elif sub_cmd == "add" and len(args) >= 3:
+                    self.day_time += int(args[2])
+                    self.add_chat_message(f"时间增加了 {args[2]}")
+            else:
+                time_str = "白天" if self.is_day else "夜晚"
+                self.add_chat_message(f"当前时间: {self.day_time} ({time_str})")
+        
+        elif cmd == "weather":
+            if len(args) >= 2:
+                weather_type = args[1]
+                if weather_type in ["clear", "sunny"]:
+                    self.weather = "clear"
+                    self.add_chat_message("天气已设置为晴天")
+                elif weather_type == "rain":
+                    self.weather = "rain"
+                    self.add_chat_message("天气已设置为下雨")
+                elif weather_type == "snow":
+                    self.weather = "snow"
+                    self.add_chat_message("天气已设置为下雪")
+                else:
+                    self.add_chat_message("未知天气类型: " + weather_type)
+            else:
+                self.add_chat_message(f"当前天气: {self.weather}")
+        
+        elif cmd == "tp" or cmd == "teleport":
+            if len(args) >= 4:
+                try:
+                    x = float(args[1])
+                    y = float(args[2])
+                    z = float(args[3])
+                    self.player_pos = [x, y, z]
+                    self.add_chat_message(f"已传送到 ({x}, {y}, {z})")
+                except:
+                    self.add_chat_message("用法: /tp <x> <y> <z>")
+        
+        elif cmd == "heal":
+            self.health = self.max_health
+            self.add_chat_message("已恢复全部生命值")
+        
+        elif cmd == "feed":
+            self.hunger = self.max_hunger
+            self.add_chat_message("已恢复全部饥饿值")
+        
+        elif cmd == "help":
+            help_text = [
+                "可用命令:",
+                "/gamemode <creative/survival> - 切换游戏模式",
+                "/give <物品> [数量] - 获得物品",
+                "/kill - 自杀",
+                "/time <day/night/add> - 设置时间",
+                "/weather <clear/rain/snow> - 设置天气",
+                "/tp <x> <y> <z> - 传送",
+                "/heal - 恢复生命",
+                "/feed - 恢复饥饿",
+                "/help - 显示帮助",
+                "/eggs - 显示彩蛋提示",
+                "/developer - 开发者彩蛋"
+            ]
+            for line in help_text:
+                self.add_chat_message(line)
+        
+        elif cmd == "eggs":
+            self.add_chat_message("=== 彩蛋列表 ===")
+            for egg_id, egg_data in self.eggs.items():
+                status = "✅" if egg_data["found"] else "❓"
+                self.add_chat_message(f"{status} {egg_data['hint']}")
+        
+        elif cmd == "developer":
+            if not self.eggs["developer"]["found"]:
+                self.eggs["developer"]["found"] = True
+                self.add_chat_message("🎉 恭喜解锁开发者彩蛋！")
+                self.add_chat_message("神秘信息: 42是宇宙的终极答案")
+                self.add_chat_message("你发现了隐藏的开发者命令！")
+            else:
+                self.add_chat_message("你已经解锁过这个彩蛋了！")
+        
+        elif cmd == "herobrine":
+            self.herobrine_active = True
+            self.herobrine_pos = [self.player_pos[0] + 10, 0, self.player_pos[2] + 10]
+            self.add_chat_message("⚠️ Herobrine已被召唤...")
+        
+        else:
+            self.add_chat_message("未知命令: " + cmd)
+    
+    def draw_command_input(self):
+        """绘制命令输入框"""
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+        glDisable(GL_DEPTH_TEST)
+        
+        input_width = 400
+        input_height = 30
+        input_x = SCREEN_WIDTH // 2 - input_width // 2
+        input_y = SCREEN_HEIGHT - 50
+        
+        input_bg = pygame.Surface((input_width, input_height), pygame.SRCALPHA)
+        input_bg.fill((0, 0, 0, 200))
+        pygame.draw.rect(input_bg, (50, 50, 50), (0, 0, input_width, input_height), 1)
+        self.screen.blit(input_bg, (input_x, input_y))
+        
+        cmd_text = self.font_main.render("/" + self.command_input, True, (255, 255, 255))
+        self.screen.blit(cmd_text, (input_x + 5, input_y + 5))
+        
+        glEnable(GL_DEPTH_TEST)
+    
     def draw_crafting_table(self):
         """绘制合成台界面（MC风格）"""
         glMatrixMode(GL_PROJECTION)
@@ -2829,9 +3308,18 @@ class GameMap3D:
             
             running = self.handle_input()
             
+            if self.show_command:
+                self.draw_3d_scene()
+                self.draw_command_input()
+                pygame.display.flip()
+                self.clock.tick(60)
+                continue
+            
             # 物理更新
-            # 应用重力
-            self.velocity[1] += self.gravity
+            if not self.flying:
+                self.velocity[1] += self.gravity
+            
+            self.handle_flying()
             
             # 更新位置
             self.player_pos[0] += self.velocity[0]
@@ -2889,6 +3377,12 @@ class GameMap3D:
             # 更新生物系统
             self.spawn_entity()
             self.update_entities()
+            
+            # 更新Herobrine彩蛋
+            self.update_herobrine()
+            
+            # 更新海浪效果
+            self.update_waves()
             
             # 更新相机
             self.update_camera()
