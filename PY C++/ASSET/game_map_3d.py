@@ -1956,7 +1956,68 @@ class GameMap3D:
             level_rect = level_text.get_rect(center=(center_x, exp_bar_y - 15))
             self.screen.blit(level_text, level_rect)
         
+        # 绘制十字准星
+        crosshair_size = 15
+        crosshair_thickness = 2
+        crosshair_color = (255, 255, 255)
+        
+        # 水平线
+        pygame.draw.line(self.screen, crosshair_color, 
+                        (center_x - crosshair_size, center_y), 
+                        (center_x + crosshair_size, center_y), 
+                        crosshair_thickness)
+        # 垂直线
+        pygame.draw.line(self.screen, crosshair_color, 
+                        (center_x, center_y - crosshair_size), 
+                        (center_x, center_y + crosshair_size), 
+                        crosshair_thickness)
+        
+        # 绘制聊天窗口
+        chat_width = 400
+        chat_height = 150
+        chat_x = 10
+        chat_y = SCREEN_HEIGHT - chat_height - 70
+        
+        chat_bg = pygame.Surface((chat_width, chat_height), pygame.SRCALPHA)
+        chat_bg.fill((0, 0, 0, 120))
+        self.screen.blit(chat_bg, (chat_x, chat_y))
+        
+        for i, msg in enumerate(self.chat_messages[-5:]):
+            msg_text = self.font_small.render(msg, True, (255, 255, 255))
+            self.screen.blit(msg_text, (chat_x + 5, chat_y + 5 + i * 25))
+        
+        # 绘制物品提示
+        if self.hovered_item and self.item_tooltip_timer > 0:
+            tooltip_text = self.font_small.render(self.hovered_item, True, (255, 255, 255))
+            tooltip_bg = pygame.Surface((tooltip_text.get_width() + 10, tooltip_text.get_height() + 6), pygame.SRCALPHA)
+            tooltip_bg.fill((0, 0, 0, 200))
+            
+            mx, my = pygame.mouse.get_pos()
+            tooltip_x = mx + 15
+            tooltip_y = my - tooltip_text.get_height() - 3
+            
+            if tooltip_x + tooltip_bg.get_width() > SCREEN_WIDTH:
+                tooltip_x = mx - tooltip_bg.get_width() - 15
+            
+            self.screen.blit(tooltip_bg, (tooltip_x, tooltip_y))
+            self.screen.blit(tooltip_text, (tooltip_x + 5, tooltip_y + 3))
+            
+            self.item_tooltip_timer -= 1
+        
         glEnable(GL_DEPTH_TEST)
+    
+    def add_chat_message(self, message):
+        """添加聊天消息"""
+        self.chat_messages.append(message)
+        if len(self.chat_messages) > self.max_chat_lines:
+            self.chat_messages.pop(0)
+    
+    def unlock_achievement(self, achievement_id):
+        """解锁成就"""
+        if achievement_id in self.achievements and not self.achievements[achievement_id]["unlocked"]:
+            self.achievements[achievement_id]["unlocked"] = True
+            achievement = self.achievements[achievement_id]
+            self.add_chat_message(f"[成就] {achievement['name']}: {achievement['description']}")
     
     def draw_pause_menu(self):
         """绘制暂停菜单（类似MC风格）"""
