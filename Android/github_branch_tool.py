@@ -52,6 +52,9 @@ class GitHubBranchTool:
                     self.github_token.set(config.get('github_token', ''))
                     self.github_user.set(config.get('github_user', ''))
                     self.repo_url.set(config.get('repo_url', ''))
+                    saved_folder = config.get('last_push_folder', '')
+                    if saved_folder and os.path.exists(saved_folder):
+                        self.push_folder_path.set(saved_folder)
         except:
             pass
 
@@ -59,14 +62,15 @@ class GitHubBranchTool:
         config = {
             'github_token': self.github_token.get(),
             'github_user': self.github_user.get(),
-            'repo_url': self.repo_url.get()
+            'repo_url': self.repo_url.get(),
+            'last_push_folder': self.push_folder_path.get()
         }
         try:
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2)
-            messagebox.showinfo("成功", "配置已保存!")
+            messagebox.showinfo("💾 成功", "配置已保存!\n\n下次打开程序时会自动恢复上次选择的文件夹哦！✨")
         except Exception as e:
-            messagebox.showerror("错误", f"保存配置失败: {str(e)}")
+            messagebox.showerror("❌ 错误", f"保存配置失败: {str(e)}")
 
     def create_widgets(self):
         status_bar = tk.Frame(self.master, bg="#16213e", height=30)
@@ -98,6 +102,48 @@ class GitHubBranchTool:
 
         left_frame = tk.Frame(push_frame, bg="#1a1a2e")
         left_frame.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+
+        folder_select_frame = tk.LabelFrame(left_frame, text="📂 选择要推送的文件夹",
+                                     font=("Microsoft YaHei", 11, "bold"),
+                                     bg="#16213e", fg="#00ff00", padx=10, pady=10)
+        folder_select_frame.pack(fill="x", pady=5)
+
+        tk.Label(folder_select_frame, text="目标文件夹:", font=("Microsoft YaHei", 10),
+                 bg="#16213e", fg="#ffffff").pack(anchor="w")
+
+        folder_entry_frame = tk.Frame(folder_select_frame, bg="#16213e")
+        folder_entry_frame.pack(fill="x", pady=3)
+
+        self.push_folder_path = tk.StringVar(value=os.getcwd())
+        self.folder_entry = tk.Entry(folder_entry_frame, textvariable=self.push_folder_path,
+                                     font=("Microsoft YaHei", 11), width=40,
+                                     bg="#0f3460", fg="#ffffff", insertbackground="white")
+        self.folder_entry.pack(side="left", fill="x", expand=True)
+        
+        tk.Button(folder_entry_frame, text="📁 浏览", command=self.browse_push_folder,
+                  bg="#3498db", fg="white", width=10).pack(side="left", padx=(5, 0))
+
+        recent_frame = tk.Frame(folder_select_frame, bg="#16213e")
+        recent_frame.pack(fill="x", pady=(5, 0))
+        
+        tk.Label(recent_frame, text="⚡ 快速选择:", font=("Microsoft YaHei", 9),
+                 bg="#16213e", fg="#f39c12").pack(side="left", padx=(0, 5))
+        
+        self.recent_folders = []
+        self.load_recent_folders()
+        
+        if self.recent_folders:
+            self.recent_folder_var = tk.StringVar()
+            recent_choices = ["选择最近..."] + self.recent_folders[:5]
+            self.recent_menu = ttk.Combobox(recent_frame, textvariable=self.recent_folder_var, 
+                                           values=recent_choices, width=40, state="readonly")
+            self.recent_menu.pack(side="left", fill="x", expand=True)
+            self.recent_menu.current(0)
+            self.recent_menu.bind("<<ComboboxSelected>>", self.on_recent_folder_selected)
+
+        tk.Label(folder_select_frame, text="💡 提示: 选择包含 .git 文件夹的项目目录",
+                 font=("Microsoft YaHei", 9),
+                 bg="#16213e", fg="#95a5a6").pack(anchor="w", pady=(5, 0))
 
         branch_frame = tk.LabelFrame(left_frame, text="📁 分支设置",
                                      font=("Microsoft YaHei", 11, "bold"),
@@ -407,7 +453,56 @@ class GitHubBranchTool:
         if path:
             self.local_path.set(path)
 
-    def run_git_command(self, *args, capture=True, check=True, timeout=60):
+    def browse_push_folder(self):
+        path = filedialog.askdirectory(title="选择要推送的文件夹")
+        if path:
+            self.push_folder_path.set(path)
+            if os.path.exists(os.path.join(path, '.git')):
+                messagebox.showinfo("✅ 验证成功", f"太棒了！找到 .git 文件夹\n\n{path}\n\n这个目录已经是一个Git仓库啦！🎉")
+                self.add_to_recent_folders(path)
+            else:
+                result = messagebox.askyesno("⚠️ 提示", 
+                    f"选中的文件夹似乎不是Git仓库（没有找到 .git 文件夹）\n\n路径: {path}\n\n是否继续？\n\n💡 如果这是新项目，可以先在'仓库管理'页面初始化Git仓库哦！")
+                if not result:
+                    self.push_folder_path.set(os.getcwd())
+
+    def load_recent_folders(self):
+        try:
+            config_file = os.path.join(os.path.expanduser("~"), ".github_tool_recent_folders.json")
+            if os.path.exists(config_file):
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    self.recent_folders = json.load(f)
+                    self.recent_folders = [f for f in self.recent_folders if os.path.exists(f)]
+        except:
+            self.recent_folders = []
+
+    def save_recent_folders(self):
+        try:
+            config_file = os.path.join(os.path.expanduser("~"), ".github_tool_recent_folders.json")
+            with open(config_file, 'w', encoding='utf-8') as f:
+                json.dump(self.recent_folders, f, indent=2)
+        except:
+            pass
+
+    def add_to_recent_folders(self, folder_path):
+        if folder_path in self.recent_folders:
+            self.recent_folders.remove(folder_path)
+        self.recent_folders.insert(0, folder_path)
+        self.recent_folders = self.recent_folders[:10]
+        self.save_recent_folders()
+
+    def on_recent_folder_selected(self, event):
+        selected = self.recent_folder_var.get()
+        if selected and selected != "选择最近...":
+            self.push_folder_path.set(selected)
+            if os.path.exists(os.path.join(selected, '.git')):
+                messagebox.showinfo("✅ 切换成功", f"已切换到最近使用的仓库！\n\n{selected}")
+            else:
+                messagebox.showwarning("⚠️ 警告", "这个文件夹可能不再存在或已经不是Git仓库了")
+
+    def run_git_command(self, *args, capture=True, check=True, timeout=60, cwd=None):
+        target_cwd = cwd or self.push_folder_path.get() or os.getcwd()
+        
         try:
             if capture:
                 result = subprocess.run(
@@ -416,7 +511,8 @@ class GitHubBranchTool:
                     text=True,
                     encoding='utf-8',
                     errors='replace',
-                    timeout=timeout
+                    timeout=timeout,
+                    cwd=target_cwd
                 )
                 if check and result.returncode != 0:
                     raise subprocess.CalledProcessError(
@@ -424,7 +520,7 @@ class GitHubBranchTool:
                     )
                 return result.stdout.strip(), result.stderr.strip(), result.returncode
             else:
-                result = subprocess.run(["git"] + list(args), check=True, timeout=timeout)
+                result = subprocess.run(["git"] + list(args), check=True, timeout=timeout, cwd=target_cwd)
                 return "", "", 0
         except subprocess.TimeoutExpired:
             raise Exception(f"Git命令超时 ({timeout}秒)")
@@ -436,23 +532,26 @@ class GitHubBranchTool:
     def update_status(self):
         self.status_text.delete(1.0, tk.END)
         try:
+            push_folder = self.push_folder_path.get()
+            self.status_text.insert(tk.END, f"📁 当前仓库: {push_folder}\n\n")
+            
             current_branch = self.run_git_command("rev-parse", "--abbrev-ref", "HEAD")[0]
             remote_info = self.run_git_command("remote", "-v")[0]
             status = self.run_git_command("status", "--porcelain")[0]
             commit = self.run_git_command("log", "--oneline", "-1")[0]
 
-            self.status_text.insert(tk.END, f"当前分支: {current_branch}\n")
-            self.status_text.insert(tk.END, f"最近提交: {commit}\n")
-            self.status_text.insert(tk.END, f"\n远程仓库:\n{remote_info}\n")
-            self.status_text.insert(tk.END, f"\n工作区状态:\n")
+            self.status_text.insert(tk.END, f"🌿 当前分支: {current_branch}\n")
+            self.status_text.insert(tk.END, f"📜 最近提交: {commit}\n")
+            self.status_text.insert(tk.END, f"\n🌐 远程仓库:\n{remote_info}\n")
+            self.status_text.insert(tk.END, f"\n📊 工作区状态:\n")
             if status:
                 self.status_text.insert(tk.END, status)
             else:
                 self.status_text.insert(tk.END, "  ✅ 工作区干净")
             
-            self.git_status_label.config(text=f"当前分支: {current_branch}")
+            self.git_status_label.config(text=f"📁 {push_folder} → {current_branch}")
         except Exception as e:
-            self.status_text.insert(tk.END, f"获取状态失败: {str(e)}")
+            self.status_text.insert(tk.END, f"❌ 获取状态失败: {str(e)}\n\n💡 请确认选择的文件夹是有效的Git仓库")
             self.git_status_label.config(text="未检测到Git仓库")
 
     def refresh_all(self):
@@ -512,12 +611,27 @@ class GitHubBranchTool:
         tag = self.custom_tag.get().strip()
         tag_msg = self.tag_message.get().strip() or f"Release {tag}"
         commit_msg = self.commit_message.get().strip() or "Update"
+        push_folder = self.push_folder_path.get().strip()
 
         if not branch:
             messagebox.showwarning("提示", "请输入目标分支")
             return
 
-        self.push_btn.config(state="disabled", text="推送中...")
+        if not push_folder:
+            messagebox.showwarning("提示", "请选择要推送的文件夹")
+            return
+
+        if not os.path.exists(push_folder):
+            messagebox.showerror("错误", f"文件夹不存在: {push_folder}")
+            return
+
+        if not os.path.exists(os.path.join(push_folder, '.git')):
+            result = messagebox.askyesno("⚠️ 警告", 
+                f"选择的文件夹似乎不是Git仓库:\n\n{push_folder}\n\n这可能会导致推送失败！\n\n是否强制继续？")
+            if not result:
+                return
+
+        self.push_btn.config(state="disabled", text="🚀 推送中...")
         self.progress_bar.config(value=0)
 
         def worker():
@@ -527,13 +641,13 @@ class GitHubBranchTool:
 
                 step += 1
                 self.progress_bar.config(value=int(step/steps*100))
-                self.progress_label.config(text="正在检查Git状态...", fg="#3498db")
-                self.status_label.config(text="正在检查Git状态...")
+                self.progress_label.config(text=f"正在检查 {push_folder} 的Git状态...", fg="#3498db")
+                self.status_label.config(text=f"正在检查Git状态...")
                 self.master.update()
 
                 remote_output, _, rc = self.run_git_command("remote", "-v")
                 if rc != 0 or not remote_output:
-                    raise Exception("未配置远程仓库")
+                    raise Exception(f"在文件夹 {push_folder} 中未找到远程仓库配置\n\n请先添加远程仓库（使用'仓库管理'页面）")
                 remote_name = remote_output.split()[0]
 
                 if self.include_all_files.get():
@@ -602,7 +716,7 @@ class GitHubBranchTool:
                 self.status_label.config(text="推送完成")
                 self.master.update()
 
-                history_entry = f"{branch} | {tag if tag else '无标签'} | {commit_msg}"
+                history_entry = f"{push_folder} → {branch} | {tag if tag else '无标签'} | {commit_msg}"
                 self.push_history.insert(0, history_entry)
                 if len(self.push_history) > 10:
                     self.push_history.pop()
@@ -611,7 +725,15 @@ class GitHubBranchTool:
                 for entry in self.push_history:
                     self.history_listbox.insert(tk.END, entry)
 
-                messagebox.showinfo("成功", f"✅ 推送成功!\n\n分支: {branch}\n标签: {tag or '无'}\n提交: {commit_msg}")
+                messagebox.showinfo("🎉 成功", 
+                    f"太棒了！推送成功啦！🎊\n\n"
+                    f"📁 文件夹: {push_folder}\n"
+                    f"🌿 分支: {branch}\n"
+                    f"🏷️ 标签: {tag or '无'}\n"
+                    f"📝 提交: {commit_msg}\n\n"
+                    f"快去GitHub看看你的代码吧！✨")
+                
+                self.add_to_recent_folders(push_folder)
 
             except Exception as e:
                 self.progress_label.config(text=f"❌ {str(e)}", fg="#e74c3c")
