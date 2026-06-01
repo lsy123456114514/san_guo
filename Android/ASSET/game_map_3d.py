@@ -236,7 +236,12 @@ class GameMap3D:
         self.show_command = False
         self.command_history = []
         
-        # 彩蛋系统（100个彩蛋！）
+        # 自动存档系统
+        self.auto_save_interval = 300  # 每5分钟自动存档（300秒）
+        self.auto_save_timer = 0
+        self.last_auto_save_time = time.time()
+        
+        # 彩蛋系统（150个彩蛋！）
         self.eggs = {
             "notch": {"found": False, "hint": "找到Notch的头像"},
             "herobrine": {"found": False, "hint": "在夜晚遇到Herobrine"},
@@ -352,7 +357,81 @@ class GameMap3D:
             "easter_egg": {"found": False, "hint": "找到复活节彩蛋"},
             "birthday": {"found": False, "hint": "庆祝生日"},
             "anniversary": {"found": False, "hint": "庆祝一周年"},
-            "secret_command": {"found": False, "hint": "发现隐藏命令"}
+            "secret_command": {"found": False, "hint": "发现隐藏命令"},
+            "secret_room": {"found": False, "hint": "找到一个秘密房间"},
+            "hidden_treasure": {"found": False, "hint": "找到隐藏的宝藏"},
+            "mysterious_cave": {"found": False, "hint": "发现一个神秘洞穴"},
+            "ancient_ruins": {"found": False, "hint": "探索古代遗迹"},
+            "floating_island": {"found": False, "hint": "找到一个浮空岛"},
+            "underwater_base": {"found": False, "hint": "建造一个水下基地"},
+            "sky_base": {"found": False, "hint": "建造一个天空基地"},
+            "underground_bunker": {"found": False, "hint": "建造一个地下 bunker"},
+            "tree_house": {"found": False, "hint": "建造一个树屋"},
+            "desert_base": {"found": False, "hint": "在沙漠建造基地"},
+            "ice_base": {"found": False, "hint": "在冰原建造基地"},
+            "jungle_base": {"found": False, "hint": "在丛林建造基地"},
+            "mountain_base": {"found": False, "hint": "在山脉建造基地"},
+            "volcano_base": {"found": False, "hint": "在火山建造基地"},
+            "portal_base": {"found": False, "hint": "建造传送门基地"},
+            "nether_fortress": {"found": False, "hint": "找到地狱堡垒"},
+            "bastion_remnant": {"found": False, "hint": "找到荒漠前哨"},
+            "end_city": {"found": False, "hint": "找到末地城"},
+            "deep_dark": {"found": False, "hint": "探索深暗之域"},
+            "mangrove_swamp": {"found": False, "hint": "探索红树林沼泽"},
+            "cherry_grove": {"found": False, "hint": "找到樱花林"},
+            "suspicious_sand": {"found": False, "hint": "挖掘可疑沙子"},
+            " Suspicious_gravel": {"found": False, "hint": "挖掘可疑砂砾"},
+            "ancient_city": {"found": False, "hint": "进入远古城市"},
+            "warden": {"found": False, "hint": "遭遇监守者"},
+            "allay": {"found": False, "hint": "找到一只同伴"},
+            "axolotl": {"found": False, "hint": "找到一只美西螈"},
+            "glow_squid": {"found": False, "hint": "找到一只发光鱿鱼"},
+            "goat": {"found": False, "hint": "找到一只山羊"},
+            "frog": {"found": False, "hint": "找到一只青蛙"},
+            "tadpole": {"found": False, "hint": "找到一只蝌蚪"},
+            "sniffer": {"found": False, "hint": "找到一只嗅探兽"},
+            "camel": {"found": False, "hint": "找到一只骆驼"},
+            "horse_armor": {"found": False, "hint": "制作马铠"},
+            "horse_bridge": {"found": False, "hint": "骑马跑1000格"},
+            "boat_base": {"found": False, "hint": "建造船坞"},
+            "minecart_base": {"found": False, "hint": "建造矿车轨道"},
+            "railway": {"found": False, "hint": "建造铁路"},
+            "hopper_minecart": {"found": False, "hint": "制作漏斗矿车"},
+            "command_block": {"found": False, "hint": "获得命令方块"},
+            "structure_block": {"found": False, "hint": "获得结构方块"},
+            "debug_stick": {"found": False, "hint": "获得调试棒"},
+            "knowledge_book": {"found": False, "hint": "获得知识之书"},
+            "spawner": {"found": False, "hint": "找到刷怪笼"},
+            "dragon_egg": {"found": False, "hint": "获得龙蛋"},
+            "nether_star": {"found": False, "hint": "获得下界之星"},
+            "elytra": {"found": False, "hint": "获得鞘翅"},
+            "shulker_box": {"found": False, "hint": "获得潜影盒"},
+            "totem_undying": {"found": False, "hint": "获得不死图腾"},
+            "heart_of_the_sea": {"found": False, "hint": "获得海洋之心"},
+            "trident": {"found": False, "hint": "获得三叉戟"},
+            "crossbow": {"found": False, "hint": "制作弩"},
+            "shield": {"found": False, "hint": "制作盾牌"},
+            "turtle_helmet": {"found": False, "hint": "制作海龟壳"},
+            "棱彩染料": {"found": False, "hint": "收集所有棱彩染料"},
+            "马匹速度": {"found": False, "hint": "驯服最快的马"},
+            "马匹跳跃": {"found": False, "hint": "驯服跳得最高的马"},
+            "骆驼冲刺": {"found": False, "hint": "骑骆驼冲刺"},
+            "蜜蜂授粉": {"found": False, "hint": "给花朵授粉"},
+            "蜜蜂蜂蜜": {"found": False, "hint": "收集蜂蜜"},
+            "村民职业": {"found": False, "hint": "让村民获得所有职业"},
+            "僵尸围城": {"found": False, "hint": "在僵尸围城中幸存"},
+            "凋灵围城": {"found": False, "hint": "在凋灵围城中幸存"},
+            "激流三叉戟": {"found": False, "hint": "用三叉戟激活激流"},
+            "闪电苦力怕": {"found": False, "hint": "让苦力怕被闪电击中"},
+            "高压爬行者": {"found": False, "hint": "击杀高压爬行者"},
+            "闪电指令": {"found": False, "hint": "使用闪电指令"},
+            "猪灵交易": {"found": False, "hint": "与猪灵交易"},
+            "猪灵布林": {"found": False, "hint": "给猪灵金锭让它变敌意"},
+            "下界要塞": {"found": False, "hint": "找到下界要塞"},
+            "灵魂沙峡谷": {"found": False, "hint": "探索灵魂沙峡谷"},
+            "玄武岩三角洲": {"found": False, "hint": "探索玄武岩三角洲"},
+            "诡异森林": {"found": False, "hint": "探索诡异森林"},
+            "绯红森林": {"found": False, "hint": "探索绯红森林"}
         }
         self.herobrine_active = False
         self.herobrine_pos = None
@@ -363,10 +442,16 @@ class GameMap3D:
         self.wave_timer = 0
         
         # 天气系统
-        self.weather = "clear"  # clear, rain, snow
+        self.weather = "clear"  # clear, rain, snow, thunder
         self.weather_timer = 0
         self.rain_particles = []
         self.snow_particles = []
+        self.thunder_timer = 0
+        self.is_thundering = False
+        
+        # 粒子效果系统
+        self.effect_particles = []  # 特效粒子（爆炸、附魔等）
+        self.dust_particles = []    # 尘埃粒子
         
         # 生物系统
         self.entities = []  # 存储所有实体
@@ -549,7 +634,6 @@ class GameMap3D:
                 self.inventory = mc_world.get("inventory", [])
                 self.world_seed = mc_world.get("world_seed", 0)
                 
-                # 加载MC状态
                 self.health = mc_world.get("health", 20)
                 self.hunger = mc_world.get("hunger", 20)
                 self.oxygen = mc_world.get("oxygen", 10)
@@ -559,9 +643,9 @@ class GameMap3D:
                 
                 self.update_camera()
                 self.validate_all()
-                print(f"加载MC世界数据成功: {len(self.placed_blocks)} 个方块")
+                print(f"[调试] 加载MC世界数据成功: {len(self.placed_blocks)} 个方块, 位置: {self.player_pos}")
         except Exception as e:
-            print(f"加载MC世界数据失败: {e}")
+            print(f"[错误] 加载MC世界数据失败: {e}")
             self.validate_all()
     
     def save_mc_world_data(self):
@@ -587,9 +671,9 @@ class GameMap3D:
             
             data[MC_WORLD_KEY] = mc_world
             save()
-            print(f"保存MC世界数据成功: {len(self.placed_blocks)} 个方块")
+            print(f"[调试] 保存MC世界数据成功: {len(self.placed_blocks)} 个方块, 位置: {self.player_pos}")
         except Exception as e:
-            print(f"保存MC世界数据失败: {e}")
+            print(f"[错误] 保存MC世界数据失败: {e}")
     
     def generate_locations(self, count):
         """生成地图地点"""
@@ -1025,6 +1109,11 @@ class GameMap3D:
             for follower in self.followers:
                 self.draw_follower(follower)
             
+            # 绘制粒子效果
+            self.draw_effect_particles()
+            self.draw_dust_particles()
+            
+            # 绘制海浪和天气
             self.draw_waves()
             self.draw_weather()
             
@@ -1212,24 +1301,28 @@ class GameMap3D:
     
     def get_sky_color(self):
         """根据时间获取天空颜色"""
-        if self.is_day:
-            t = self.day_time / 12000
-            if t < 0.2:
-                return (0.3 + t * 0.5, 0.4 + t * 0.4, 0.8 + t * 0.2)
-            elif t > 0.8:
-                t2 = (t - 0.8) * 5
-                return (0.8 - t2 * 0.5, 0.8 - t2 * 0.4, 1.0 - t2 * 0.2)
+        try:
+            if self.is_day:
+                t = self.day_time / 12000
+                if t < 0.2:
+                    return (0.3 + t * 0.5, 0.4 + t * 0.4, 0.8 + t * 0.2)
+                elif t > 0.8:
+                    t2 = (t - 0.8) * 5
+                    return (0.8 - t2 * 0.5, 0.8 - t2 * 0.4, 1.0 - t2 * 0.2)
+                else:
+                    return (0.8, 0.8, 1.0)
             else:
-                return (0.8, 0.8, 1.0)
-        else:
-            t = (self.day_time - 12000) / 12000
-            if t < 0.2:
-                return (0.2 - t * 0.15, 0.25 - t * 0.15, 0.4 - t * 0.2)
-            elif t > 0.8:
-                t2 = (t - 0.8) * 5
-                return (0.05 + t2 * 0.25, 0.1 + t2 * 0.15, 0.2 + t2 * 0.2)
-            else:
-                return (0.05, 0.1, 0.2)
+                t = (self.day_time - 12000) / 12000
+                if t < 0.2:
+                    return (0.2 - t * 0.15, 0.25 - t * 0.15, 0.4 - t * 0.2)
+                elif t > 0.8:
+                    t2 = (t - 0.8) * 5
+                    return (0.05 + t2 * 0.25, 0.1 + t2 * 0.15, 0.2 + t2 * 0.2)
+                else:
+                    return (0.05, 0.1, 0.2)
+        except Exception as e:
+            print(f"[错误] 获取天空颜色失败: {e}")
+            return (0.5, 0.7, 1.0)  # 默认天空颜色
     
     def draw_sun_moon(self):
         """绘制太阳和月亮"""
@@ -1270,54 +1363,70 @@ class GameMap3D:
             glPopMatrix()
             glEnable(GL_LIGHTING)
         except Exception as e:
-            pass
+            print(f"绘制太阳月亮错误: {e}")
     
     def update_weather(self):
         """更新天气系统"""
-        self.weather_timer += 1
-        
-        if self.weather_timer > 3000:
-            self.weather_timer = 0
-            rand = random.random()
-            if rand < 0.3:
-                self.weather = "rain"
-            elif rand < 0.4:
-                self.weather = "snow"
-            else:
-                self.weather = "clear"
-        
-        if self.weather == "rain":
-            for _ in range(5):
-                if len(self.rain_particles) < 500:
-                    self.rain_particles.append({
-                        "x": random.uniform(self.player_pos[0] - 100, self.player_pos[0] + 100),
-                        "y": 50 + random.uniform(0, 20),
-                        "z": random.uniform(self.player_pos[2] - 100, self.player_pos[2] + 100),
-                        "speed": random.uniform(8, 12)
-                    })
+        try:
+            self.weather_timer += 1
             
-            self.rain_particles = [p for p in self.rain_particles if p["y"] > -5]
-            for p in self.rain_particles:
-                p["y"] -= p["speed"] * 0.1
-                p["x"] += 0.5
-        
-        elif self.weather == "snow":
-            for _ in range(3):
-                if len(self.snow_particles) < 300:
-                    self.snow_particles.append({
-                        "x": random.uniform(self.player_pos[0] - 100, self.player_pos[0] + 100),
-                        "y": 50 + random.uniform(0, 20),
-                        "z": random.uniform(self.player_pos[2] - 100, self.player_pos[2] + 100),
-                        "speed": random.uniform(2, 4),
-                        "drift_x": random.uniform(-1, 1),
-                        "drift_z": random.uniform(-1, 1)
-                    })
+            if self.weather_timer > 3000:
+                self.weather_timer = 0
+                rand = random.random()
+                if rand < 0.2:
+                    self.weather = "rain"
+                elif rand < 0.3:
+                    self.weather = "snow"
+                elif rand < 0.35:
+                    self.weather = "thunder"
+                else:
+                    self.weather = "clear"
             
-            self.snow_particles = [p for p in self.snow_particles if p["y"] > -5]
-            for p in self.snow_particles:
-                p["y"] -= p["speed"] * 0.05
-                p["x"] += p["drift_x"] * 0.1
-                p["z"] += p["drift_z"] * 0.1
+            # 雷暴闪电
+            if self.weather == "thunder":
+                self.thunder_timer += 1
+                if self.thunder_timer > 200:
+                    self.is_thundering = random.random() < 0.3
+                    self.thunder_timer = 0
+                    if self.is_thundering:
+                        self.add_chat_message("⚡ 闪电！")
+            
+            if self.weather == "rain":
+                for _ in range(5):
+                    if len(self.rain_particles) < 500:
+                        particle = {
+                            "x": random.uniform(self.player_pos[0] - 100, self.player_pos[0] + 100),
+                            "y": 50 + random.uniform(0, 20),
+                            "z": random.uniform(self.player_pos[2] - 100, self.player_pos[2] + 100),
+                            "speed": random.uniform(8, 12)
+                        }
+                        self.rain_particles.append(particle)
+                
+                self.rain_particles = [p for p in self.rain_particles if p.get("y", -10) > -5]
+                for p in self.rain_particles:
+                    p["y"] = p.get("y", 0) - p.get("speed", 10) * 0.1
+                    p["x"] = p.get("x", 0) + 0.5
+            
+            elif self.weather == "snow":
+                for _ in range(3):
+                    if len(self.snow_particles) < 300:
+                        particle = {
+                            "x": random.uniform(self.player_pos[0] - 100, self.player_pos[0] + 100),
+                            "y": 50 + random.uniform(0, 20),
+                            "z": random.uniform(self.player_pos[2] - 100, self.player_pos[2] + 100),
+                            "speed": random.uniform(2, 4),
+                            "drift_x": random.uniform(-1, 1),
+                            "drift_z": random.uniform(-1, 1)
+                        }
+                        self.snow_particles.append(particle)
+                
+                self.snow_particles = [p for p in self.snow_particles if p.get("y", -10) > -5]
+                for p in self.snow_particles:
+                    p["y"] = p.get("y", 0) - p.get("speed", 3) * 0.05
+                    p["x"] = p.get("x", 0) + p.get("drift_x", 0) * 0.1
+                    p["z"] = p.get("z", 0) + p.get("drift_z", 0) * 0.1
+        except Exception as e:
+            print(f"更新天气错误: {e}")
     
     def draw_weather(self):
         """绘制天气效果"""
@@ -1345,7 +1454,119 @@ class GameMap3D:
             
             glEnable(GL_LIGHTING)
         except Exception as e:
-            pass
+            print(f"绘制天气错误: {e}")
+    
+    def spawn_effect_particle(self, x, y, z, effect_type="explosion"):
+        """生成特效粒子"""
+        try:
+            colors = {
+                "explosion": [(1.0, 0.5, 0.0), (1.0, 0.2, 0.0), (1.0, 1.0, 0.0)],
+                "enchant": [(0.5, 0.0, 1.0), (0.0, 0.5, 1.0), (1.0, 0.0, 1.0)],
+                "heal": [(0.0, 1.0, 0.0), (0.5, 1.0, 0.5), (0.0, 0.8, 0.0)],
+                "magic": [(0.8, 0.0, 0.8), (0.0, 0.8, 0.8), (0.8, 0.8, 0.0)],
+                "fire": [(1.0, 0.3, 0.0), (1.0, 0.5, 0.0), (0.8, 0.0, 0.0)]
+            }
+            
+            color = random.choice(colors.get(effect_type, colors["explosion"]))
+            
+            for _ in range(20):
+                particle = {
+                    "x": x + random.uniform(-1, 1),
+                    "y": y + random.uniform(0, 2),
+                    "z": z + random.uniform(-1, 1),
+                    "vx": random.uniform(-0.5, 0.5),
+                    "vy": random.uniform(0.5, 2.0),
+                    "vz": random.uniform(-0.5, 0.5),
+                    "life": 60,
+                    "max_life": 60,
+                    "color": color,
+                    "size": random.uniform(0.1, 0.3)
+                }
+                self.effect_particles.append(particle)
+        except Exception as e:
+            print(f"[错误] 生成特效粒子失败: {e}")
+    
+    def spawn_dust_particle(self, x, y, z):
+        """生成尘埃粒子"""
+        try:
+            for _ in range(10):
+                particle = {
+                    "x": x + random.uniform(-0.5, 0.5),
+                    "y": y + random.uniform(0, 1),
+                    "z": z + random.uniform(-0.5, 0.5),
+                    "vx": random.uniform(-0.1, 0.1),
+                    "vy": random.uniform(0.1, 0.3),
+                    "vz": random.uniform(-0.1, 0.1),
+                    "life": 30,
+                    "max_life": 30,
+                    "size": random.uniform(0.05, 0.15)
+                }
+                self.dust_particles.append(particle)
+        except Exception as e:
+            print(f"[错误] 生成尘埃粒子失败: {e}")
+    
+    def update_effect_particles(self):
+        """更新特效粒子"""
+        try:
+            for particle in list(self.effect_particles):
+                particle["x"] += particle["vx"]
+                particle["y"] += particle["vy"]
+                particle["z"] += particle["vz"]
+                particle["vy"] -= 0.05  # 重力
+                particle["life"] -= 1
+                
+                if particle["life"] <= 0:
+                    self.effect_particles.remove(particle)
+        except Exception as e:
+            print(f"[错误] 更新特效粒子失败: {e}")
+    
+    def update_dust_particles(self):
+        """更新尘埃粒子"""
+        try:
+            for particle in list(self.dust_particles):
+                particle["x"] += particle["vx"]
+                particle["y"] += particle["vy"]
+                particle["z"] += particle["vz"]
+                particle["life"] -= 1
+                
+                if particle["life"] <= 0:
+                    self.dust_particles.remove(particle)
+        except Exception as e:
+            print(f"[错误] 更新尘埃粒子失败: {e}")
+    
+    def draw_effect_particles(self):
+        """绘制特效粒子"""
+        try:
+            glDisable(GL_LIGHTING)
+            glPointSize(3.0)
+            
+            glBegin(GL_POINTS)
+            for particle in self.effect_particles:
+                alpha = particle["life"] / particle["max_life"]
+                glColor4f(particle["color"][0], particle["color"][1], particle["color"][2], alpha)
+                glVertex3f(particle["x"], particle["y"], particle["z"])
+            glEnd()
+            
+            glEnable(GL_LIGHTING)
+        except Exception as e:
+            print(f"[错误] 绘制特效粒子失败: {e}")
+    
+    def draw_dust_particles(self):
+        """绘制尘埃粒子"""
+        try:
+            glDisable(GL_LIGHTING)
+            glPointSize(2.0)
+            
+            glBegin(GL_POINTS)
+            for particle in self.dust_particles:
+                alpha = particle["life"] / particle["max_life"]
+                glColor4f(0.8, 0.7, 0.6, alpha * 0.5)
+                glVertex3f(particle["x"], particle["y"], particle["z"])
+            glEnd()
+            
+            glEnable(GL_LIGHTING)
+        except Exception as e:
+            print(f"[错误] 绘制尘埃粒子失败: {e}")
     
     def spawn_entity(self):
         """生成生物"""
@@ -1440,7 +1661,7 @@ class GameMap3D:
             
             glEnable(GL_LIGHTING)
         except Exception as e:
-            pass
+            print(f"绘制实体错误: {e}")
     
     def draw_herobrine(self):
         """绘制Herobrine（彩蛋）"""
@@ -1567,7 +1788,7 @@ class GameMap3D:
             
             glEnable(GL_LIGHTING)
         except Exception as e:
-            pass
+            print(f"绘制海浪错误: {e}")
     
     def draw_tree(self, x, z):
         """绘制树木"""
@@ -2252,6 +2473,7 @@ class GameMap3D:
         crosshair_size = 15
         crosshair_thickness = 2
         crosshair_color = (255, 255, 255)
+        center_y = SCREEN_HEIGHT // 2
         
         # 水平线
         pygame.draw.line(self.screen, crosshair_color, 
@@ -2310,6 +2532,120 @@ class GameMap3D:
             self.achievements[achievement_id]["unlocked"] = True
             achievement = self.achievements[achievement_id]
             self.add_chat_message(f"[成就] {achievement['name']}: {achievement['description']}")
+    
+    def check_egg_triggers(self):
+        """检测彩蛋触发条件"""
+        try:
+            # 检测放置方块彩蛋
+            if len(self.placed_blocks) >= 1 and not self.eggs.get("first_block", {}).get("found", False):
+                self.eggs["first_block"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 放置第一个方块！")
+            
+            if len(self.placed_blocks) >= 100 and not self.eggs.get("100_blocks", {}).get("found", False):
+                self.eggs["100_blocks"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 放置100个方块！")
+            
+            # 检测合成彩蛋
+            if self.stats["items_crafted"] >= 1 and not self.eggs.get("first_craft", {}).get("found", False):
+                self.eggs["first_craft"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 完成第一次合成！")
+            
+            # 检测击杀彩蛋
+            if self.stats["mobs_killed"] >= 1 and not self.eggs.get("first_kill", {}).get("found", False):
+                self.eggs["first_kill"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 杀死第一个怪物！")
+            
+            if self.stats["mobs_killed"] >= 100 and not self.eggs.get("100_kills", {}).get("found", False):
+                self.eggs["100_kills"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 杀死100个怪物！")
+            
+            # 检测昼夜彩蛋
+            if self.stats["days_passed"] >= 1 and not self.eggs.get("day_night", {}).get("found", False):
+                self.eggs["day_night"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 度过一个完整的昼夜循环！")
+            
+            # 检测高度彩蛋
+            if self.player_pos[1] <= -50 and not self.eggs.get("underground", {}).get("found", False):
+                self.eggs["underground"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 深入地下50格！")
+            
+            if self.player_pos[1] >= 50 and not self.eggs.get("high_altitude", {}).get("found", False):
+                self.eggs["high_altitude"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 到达高空50格！")
+            
+            # 检测天气彩蛋
+            if self.weather == "rain" and not self.eggs.get("rain", {}).get("found", False):
+                self.eggs["rain"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 在雨中待5分钟！")
+            
+            if self.weather == "snow" and not self.eggs.get("snow", {}).get("found", False):
+                self.eggs["snow"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 在雪中待5分钟！")
+            
+            # 检测Herobrine彩蛋
+            if self.herobrine_active and not self.eggs.get("herobrine", {}).get("found", False):
+                self.eggs["herobrine"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 在夜晚遇到Herobrine！")
+            
+            # 检测创造模式飞行彩蛋
+            if self.game_mode == "creative" and not self.eggs.get("fly_creative", {}).get("found", False):
+                total_distance = abs(self.player_pos[0]) + abs(self.player_pos[1]) + abs(self.player_pos[2])
+                if total_distance >= 100:
+                    self.eggs["fly_creative"]["found"] = True
+                    self.add_chat_message("🎉 解锁彩蛋: 在创造模式飞行100格！")
+            
+            # 检测游泳彩蛋
+            if self.player_pos[1] < 0 and not self.eggs.get("swim", {}).get("found", False):
+                self.eggs["swim"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 游泳100格！")
+            
+            # 检测跳跃彩蛋
+            if not hasattr(self, 'jump_count'):
+                self.jump_count = 0
+            
+            if self.velocity[1] > 0:
+                self.jump_count += 1
+                if self.jump_count >= 100 and not self.eggs.get("jump_100", {}).get("found", False):
+                    self.eggs["jump_100"]["found"] = True
+                    self.add_chat_message("🎉 解锁彩蛋: 跳跃100次！")
+            
+            # 检测潜行彩蛋
+            if self.is_sneaking and not self.eggs.get("sneak", {}).get("found", False):
+                self.eggs["sneak"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 潜行100格！")
+            
+            # 检测冲刺彩蛋
+            if self.is_sprinting and not self.eggs.get("sprint", {}).get("found", False):
+                self.eggs["sprint"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 冲刺100格！")
+            
+            # 检测工具制作彩蛋
+            if self.eggs.get("pickaxe", {}).get("found", False):
+                self.eggs["pickaxe"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 制作一把镐子！")
+            
+            if self.eggs.get("axe", {}).get("found", False):
+                self.eggs["axe"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 制作一把斧头！")
+            
+            if self.eggs.get("shovel", {}).get("found", False):
+                self.eggs["shovel"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 制作一把铲子！")
+            
+            if self.eggs.get("hoe", {}).get("found", False):
+                self.eggs["hoe"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 制作一把锄头！")
+            
+            if self.eggs.get("sword", {}).get("found", False):
+                self.eggs["sword"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 制作一把剑！")
+            
+            if self.eggs.get("bow", {}).get("found", False):
+                self.eggs["bow"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 制作一把弓！")
+            
+        except Exception as e:
+            print(f"[错误] 检测彩蛋触发失败: {e}")
     
     def draw_pause_menu(self):
         """绘制暂停菜单（类似MC风格）"""
@@ -3374,6 +3710,10 @@ class GameMap3D:
             # 更新天气系统
             self.update_weather()
             
+            # 更新粒子系统
+            self.update_effect_particles()
+            self.update_dust_particles()
+            
             # 更新生物系统
             self.spawn_entity()
             self.update_entities()
@@ -3381,11 +3721,21 @@ class GameMap3D:
             # 更新Herobrine彩蛋
             self.update_herobrine()
             
+            # 检测彩蛋触发
+            self.check_egg_triggers()
+            
             # 更新海浪效果
             self.update_waves()
             
             # 更新相机
             self.update_camera()
+            
+            # 自动存档
+            current_time = time.time()
+            if current_time - self.last_auto_save_time >= self.auto_save_interval:
+                self.save_mc_world_data()
+                self.last_auto_save_time = current_time
+                self.add_chat_message("游戏已自动保存")
             
             # 更新跟随者
             self.update_followers()

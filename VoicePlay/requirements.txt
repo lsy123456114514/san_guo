@@ -1,16 +1,12 @@
-# VoicePlay 依赖列表
-
-# 核心依赖
-numpy>=1.24.0
-librosa>=0.10.0
-sounddevice>=0.5.0
+# VoicePlay 核心依赖（最小化版本）
+# 这些是基本运行所必需的库
+numpy>=1.20.0
+librosa>=0.8.0
+sounddevice>=0.4.0
 pygame>=2.0.0
-matplotlib>=3.7.0
-scipy>=1.10.0
+scipy>=1.6.0
 
-# GUI依赖
-pillow>=10.0.0
-
-# 可选依赖
-pycaw>=2022.0.2  # Windows音频控制
-psutil>=5.9.0    # 系统信息
+# 可选依赖（用于高级功能）
+# matplotlib>=3.5.0     # 可视化（可选）
+# SpeechRecognition>=3.8.0  # 语音识别（可选）
+# pillow>=10.0.0      # 图像处理（可选）
