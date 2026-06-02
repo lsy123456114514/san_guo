@@ -437,6 +437,317 @@ class GameMap3D:
         self.herobrine_pos = None
         self.herobrine_timer = 0
         
+        # 🎮 作弊码系统（经典按键序列）
+        self.cheat_code_buffer = []  # 按键序列缓冲区
+        self.cheat_code_max_length = 20  # 最大缓冲长度
+        self.cheat_code_input_timer = 0  # 输入计时器
+        self.cheat_code_input_timeout = 2.0  # 输入超时时间（秒）
+        self.last_cheat_key_time = time.time()
+        
+        # 🎯 作弊码定义（经典+创意）
+        self.cheat_codes = {
+            # 经典Konami代码风格
+            "konami": {
+                "sequence": ["up", "up", "down", "down", "left", "right", "left", "right", "b", "a"],
+                "name": "Konami大师",
+                "effect": "full_power",
+                "message": "🎉 Konami代码激活！你获得了无限力量！",
+                "reward": {"health": 999, "hunger": 999, "experience": 9999, "level": 100}
+            },
+            # 简化版Konami
+            "konami_simple": {
+                "sequence": ["up", "up", "down", "down", "left", "right"],
+                "name": "半Konami",
+                "effect": "half_power",
+                "message": "✨ 半Konami代码！获得中等加成！",
+                "reward": {"health": 50, "hunger": 50, "experience": 500}
+            },
+            # 三国主题
+            "three_kingdoms": {
+                "sequence": ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
+                "name": "三国九鼎",
+                "effect": "summon_generals",
+                "message": "⚔️ 九鼎归一！召唤三国武将！",
+                "reward": {"generals": ["刘备", "关羽", "张飞", "赵云", "诸葛亮"]}
+            },
+            # 神秘数字
+            "mystery_number": {
+                "sequence": ["7", "8", "9", "1", "1", "4", "5", "1", "4"],
+                "name": "神秘数字",
+                "effect": "mystery",
+                "message": "🔮 神秘数字序列！解锁隐藏彩蛋！",
+                "reward": {"eggs_unlocked": 10, "secret_items": ["神秘宝石", "远古遗物"]}
+            },
+            # 42宇宙答案
+            "universe_answer": {
+                "sequence": ["4", "2"],
+                "name": "宇宙答案",
+                "effect": "developer_mode",
+                "message": "🌌 42是宇宙的终极答案！开发者模式已激活！",
+                "reward": {"developer_mode": True, "secret_commands": True}
+            },
+            # MC风格
+            "minecraft_classic": {
+                "sequence": ["m", "c", "1", "2"],
+                "name": "MC经典",
+                "effect": "mc_mode",
+                "message": "⛏️ Minecraft经典模式激活！",
+                "reward": {"creative_mode": True, "all_blocks": True}
+            },
+            # 无敌模式
+            "god_mode": {
+                "sequence": ["g", "o", "d"],
+                "name": "上帝模式",
+                "effect": "invincible",
+                "message": "👑 上帝模式！你已无敌！",
+                "reward": {"invincible": True, "health": 9999}
+            },
+            # 超级速度
+            "speed_hack": {
+                "sequence": ["s", "p", "e", "e", "d"],
+                "name": "超级速度",
+                "effect": "super_speed",
+                "message": "⚡ 超级速度！你跑得比闪电还快！",
+                "reward": {"speed": 10.0, "fly_speed": 5.0}
+            },
+            # 彩蛋猎人
+            "egg_hunter": {
+                "sequence": ["e", "g", "g"],
+                "name": "彩蛋猎人",
+                "effect": "reveal_eggs",
+                "message": "🥚 彩蛋猎人模式！所有彩蛋位置已显示！",
+                "reward": {"egg_hints": True, "egg_count": 150}
+            },
+            # 隐藏彩蛋
+            "secret_egg": {
+                "sequence": ["s", "e", "c", "r", "e", "t"],
+                "name": "秘密彩蛋",
+                "effect": "unlock_secret",
+                "message": "🔐 你发现了隐藏的秘密彩蛋！",
+                "reward": {"secret_egg": True, "hidden_items": ["秘密钥匙", "神秘宝箱"]}
+            },
+            # 随机惊喜
+            "random_surprise": {
+                "sequence": ["r", "a", "n", "d", "o", "m"],
+                "name": "随机惊喜",
+                "effect": "random_gift",
+                "message": "🎲 随机惊喜！你获得了神秘礼物！",
+                "reward": {"random": True}
+            },
+            # 满背包
+            "full_inventory": {
+                "sequence": ["f", "u", "l", "l"],
+                "name": "满背包",
+                "effect": "fill_inventory",
+                "message": "📦 背包已填满所有物品！",
+                "reward": {"full_inventory": True}
+            },
+            # 天气控制
+            "weather_master": {
+                "sequence": ["w", "e", "a", "t", "h", "e", "r"],
+                "name": "天气大师",
+                "effect": "weather_control",
+                "message": "🌤️ 天气大师！你可以自由控制天气！",
+                "reward": {"weather_control": True}
+            },
+            # 时间大师
+            "time_master": {
+                "sequence": ["t", "i", "m", "e"],
+                "name": "时间大师",
+                "effect": "time_control",
+                "message": "⏰ 时间大师！你可以自由控制时间！",
+                "reward": {"time_control": True}
+            },
+            # 超级跳跃
+            "super_jump": {
+                "sequence": ["j", "u", "m", "p"],
+                "name": "超级跳跃",
+                "effect": "high_jump",
+                "message": "🦘 超级跳跃！你可以跳到云端！",
+                "reward": {"jump_power": 5.0}
+            },
+            # 飞行模式
+            "fly_mode": {
+                "sequence": ["f", "l", "y"],
+                "name": "飞行模式",
+                "effect": "enable_fly",
+                "message": "🦋 飞行模式已激活！自由翱翔！",
+                "reward": {"can_fly": True, "flying": True}
+            },
+            # 全解锁
+            "unlock_all": {
+                "sequence": ["u", "n", "l", "o", "c", "k"],
+                "name": "全解锁",
+                "effect": "unlock_everything",
+                "message": "🔓 全解锁！所有成就和彩蛋已解锁！",
+                "reward": {"all_achievements": True, "all_eggs": True}
+            },
+            # 彩虹模式
+            "rainbow": {
+                "sequence": ["r", "a", "i", "n", "b", "o", "w"],
+                "name": "彩虹模式",
+                "effect": "rainbow_effect",
+                "message": "🌈 彩虹模式！世界变得绚丽多彩！",
+                "reward": {"rainbow_blocks": True, "rainbow_particles": True}
+            },
+            # 爆炸模式
+            "explosion_master": {
+                "sequence": ["b", "o", "o", "m"],
+                "name": "爆炸大师",
+                "effect": "explosion_power",
+                "message": "💥 爆炸大师！你的攻击带有爆炸效果！",
+                "reward": {"explosion_power": True}
+            },
+            # 隐身模式
+            "invisible": {
+                "sequence": ["i", "n", "v", "i", "s"],
+                "name": "隐身模式",
+                "effect": "invisible",
+                "message": "👻 隐身模式！怪物看不到你了！",
+                "reward": {"invisible": True}
+            },
+            # 夜视模式
+            "night_vision": {
+                "sequence": ["n", "v"],
+                "name": "夜视模式",
+                "effect": "night_vision",
+                "message": "👁️ 夜视模式！黑夜如同白昼！",
+                "reward": {"night_vision": True}
+            },
+            # 传送大师
+            "teleport_master": {
+                "sequence": ["t", "p"],
+                "name": "传送大师",
+                "effect": "teleport_power",
+                "message": "🌀 传送大师！你可以瞬间移动！",
+                "reward": {"teleport_power": True}
+            },
+            # 创造模式快捷
+            "creative_quick": {
+                "sequence": ["c", "r", "e", "a", "t", "i", "v", "e"],
+                "name": "创造模式",
+                "effect": "creative_mode",
+                "message": "🎨 创造模式已激活！尽情建造！",
+                "reward": {"game_mode": "creative"}
+            },
+            # 生存模式快捷
+            "survival_quick": {
+                "sequence": ["s", "u", "r", "v", "i", "v", "e"],
+                "name": "生存模式",
+                "effect": "survival_mode",
+                "message": "⚔️ 生存模式已激活！开始冒险！",
+                "reward": {"game_mode": "survival"}
+            },
+            # 满级
+            "max_level": {
+                "sequence": ["l", "v", "9", "9"],
+                "name": "满级大师",
+                "effect": "max_level",
+                "message": "🏆 满级大师！你已达到最高等级！",
+                "reward": {"level": 99, "experience": 999999}
+            },
+            # 无限资源
+            "infinite_resources": {
+                "sequence": ["i", "n", "f", "i", "n", "i", "t", "y"],
+                "name": "无限资源",
+                "effect": "infinite_items",
+                "message": "♾️ 无限资源！物品永不耗尽！",
+                "reward": {"infinite_items": True}
+            },
+            # 召唤神兽
+            "summon_beast": {
+                "sequence": ["b", "e", "a", "s", "t"],
+                "name": "召唤神兽",
+                "effect": "spawn_pet",
+                "message": "🐉 神兽降临！你获得了一只神兽宠物！",
+                "reward": {"pet": "神兽"}
+            },
+            # 音乐模式
+            "music_mode": {
+                "sequence": ["m", "u", "s", "i", "c"],
+                "name": "音乐模式",
+                "effect": "play_music",
+                "message": "🎵 音乐模式！享受美妙旋律！",
+                "reward": {"music_enabled": True}
+            },
+            # 调试模式
+            "debug_mode": {
+                "sequence": ["d", "e", "b", "u", "g"],
+                "name": "调试模式",
+                "effect": "debug_info",
+                "message": "🔧 调试模式！显示所有调试信息！",
+                "reward": {"debug_mode": True}
+            },
+            # 粒子大师
+            "particle_master": {
+                "sequence": ["p", "a", "r", "t", "i", "c", "l", "e"],
+                "name": "粒子大师",
+                "effect": "particle_effects",
+                "message": "✨ 粒子大师！绚丽粒子效果已激活！",
+                "reward": {"particle_effects": True, "max_particles": 1000}
+            },
+            # 神秘代码（隐藏）
+            "hidden_cheat": {
+                "sequence": ["h", "i", "d", "d", "e", "n"],
+                "name": "隐藏代码",
+                "effect": "hidden_power",
+                "message": "🎭 你发现了隐藏的神秘代码！",
+                "reward": {"hidden_power": True, "secret_mode": True}
+            },
+            # 终极代码
+            "ultimate": {
+                "sequence": ["u", "l", "t", "i", "m", "a", "t", "e"],
+                "name": "终极力量",
+                "effect": "ultimate_power",
+                "message": "🌟 终极力量！你已成为游戏之神！",
+                "reward": {"ultimate": True, "all_power": True}
+            }
+        }
+        
+        # 📍 特定位置触发彩蛋
+        self.secret_locations = {
+            "mystery_cave": {"pos": (100, -10, 200), "radius": 5, "egg": "mysterious_cave", "message": "发现神秘洞穴！"},
+            "floating_island": {"pos": (500, 100, 300), "radius": 10, "egg": "floating_island", "message": "发现浮空岛！"},
+            "treasure_spot": {"pos": (-50, 0, 150), "radius": 3, "egg": "hidden_treasure", "message": "发现隐藏宝藏！"},
+            "developer_sign": {"pos": (0, 50, 0), "radius": 2, "egg": "developer", "message": "发现开发者签名！"},
+            "notch_statue": {"pos": (300, 20, 400), "radius": 5, "egg": "notch", "message": "发现Notch雕像！"},
+            "herobrine_shrine": {"pos": (-200, -20, -100), "radius": 3, "egg": "herobrine", "message": "⚠️ 发现Herobrine神殿..."},
+            "ancient_ruins": {"pos": (600, 0, -200), "radius": 8, "egg": "ancient_ruins", "message": "发现古代遗迹！"},
+            "secret_base": {"pos": (1000, -50, 500), "radius": 10, "egg": "secret_base", "message": "发现秘密基地！"}
+        }
+        
+        # 🎯 已激活的作弊效果
+        self.active_cheat_effects = {
+            "invincible": False,
+            "super_speed": False,
+            "high_jump": False,
+            "invisible": False,
+            "night_vision": False,
+            "weather_control": False,
+            "time_control": False,
+            "teleport_power": False,
+            "infinite_items": False,
+            "explosion_power": False,
+            "rainbow_blocks": False,
+            "rainbow_particles": False,
+            "particle_effects": False,
+            "egg_hints": False,
+            "developer_mode": False,
+            "debug_mode": False,
+            "hidden_power": False,
+            "ultimate": False,
+            "secret_mode": False,
+            "music_enabled": False
+        }
+        
+        # 📊 作弊码统计
+        self.cheat_stats = {
+            "codes_entered": 0,
+            "codes_successful": 0,
+            "last_code": None,
+            "total_rewards": 0
+        }
+        
         # 海浪效果
         self.wave_particles = []
         self.wave_timer = 0
@@ -765,6 +1076,9 @@ class GameMap3D:
             if event.type == pygame.QUIT:
                 return False
             elif event.type == pygame.KEYDOWN:
+                # 🎮 作弊码按键序列检测
+                self.check_cheat_code_sequence(event.key)
+                
                 if event.key == pygame.K_ESCAPE:
                     self.is_paused = not self.is_paused
                     if self.is_paused:
@@ -3362,16 +3676,86 @@ class GameMap3D:
                 "/give <物品> [数量] - 获得物品",
                 "/kill - 自杀",
                 "/time <day/night/add> - 设置时间",
-                "/weather <clear/rain/snow> - 设置天气",
+                "/weather <clear/rain/snow/thunder> - 设置天气",
                 "/tp <x> <y> <z> - 传送",
                 "/heal - 恢复生命",
                 "/feed - 恢复饥饿",
                 "/help - 显示帮助",
                 "/eggs - 显示彩蛋提示",
-                "/developer - 开发者彩蛋"
+                "/cheats - 显示作弊码列表",
+                "/developer - 开发者彩蛋",
+                "/dev - 开发者隐藏命令",
+                "/effect <效果> - 添加效果",
+                "/spawn <生物> - 生成生物"
             ]
             for line in help_text:
                 self.add_chat_message(line)
+        
+        elif cmd == "cheats" or cmd == "cheatcodes":
+            self.add_chat_message("=== 🎮 作弊码列表 ===")
+            self.add_chat_message("💡 在游戏中按顺序输入按键即可激活！")
+            self.add_chat_message("⚠️ 2秒内未继续输入会重置序列")
+            for code_id, code_data in self.cheat_codes.items():
+                sequence_str = " ".join(code_data["sequence"])
+                self.add_chat_message(f"🔑 {code_data['name']}: {sequence_str}")
+            self.add_chat_message("📍 还有隐藏的特定位置彩蛋等你发现！")
+        
+        elif cmd == "dev" or cmd == "developer":
+            if self.active_cheat_effects.get("developer_mode", False) or cmd == "developer":
+                if not self.eggs["developer"]["found"]:
+                    self.eggs["developer"]["found"] = True
+                    self.add_chat_message("🎉 恭喜解锁开发者彩蛋！")
+                    self.add_chat_message("神秘信息: 42是宇宙的终极答案")
+                self.add_chat_message("🔧 开发者命令已激活！")
+                self.add_chat_message("可用: /dev_stats, /dev_spawn, /dev_effect")
+                self.active_cheat_effects["developer_mode"] = True
+            else:
+                self.add_chat_message("⚠️ 需要先激活开发者模式！")
+                self.add_chat_message("提示: 输入 42 或找到开发者彩蛋")
+        
+        elif cmd == "dev_stats":
+            if self.active_cheat_effects.get("developer_mode", False):
+                self.add_chat_message("=== 📊 开发者统计 ===")
+                self.add_chat_message(f"作弊码输入次数: {self.cheat_stats['codes_entered']}")
+                self.add_chat_message(f"成功激活次数: {self.cheat_stats['codes_successful']}")
+                self.add_chat_message(f"最后激活: {self.cheat_stats['last_code'] or '无'}")
+                self.add_chat_message(f"总奖励数: {self.cheat_stats['total_rewards']}")
+                self.add_chat_message(f"已解锁彩蛋: {sum(1 for e in self.eggs.values() if e.get('found', False))}")
+                self.add_chat_message(f"当前按键序列: {self.cheat_code_buffer}")
+            else:
+                self.add_chat_message("⚠️ 需要开发者模式！")
+        
+        elif cmd == "effect":
+            if len(args) >= 2:
+                effect_name = args[1]
+                duration = int(args[2]) if len(args) >= 3 else 60
+                if effect_name in self.active_cheat_effects:
+                    self.active_cheat_effects[effect_name] = True
+                    self.add_chat_message(f"✨ 效果 {effect_name} 已激活，持续 {duration} 秒！")
+                else:
+                    available_effects = list(self.active_cheat_effects.keys())
+                    self.add_chat_message(f"未知效果: {effect_name}")
+                    self.add_chat_message(f"可用效果: {', '.join(available_effects)}")
+            else:
+                self.add_chat_message("用法: /effect <效果名> [持续时间]")
+        
+        elif cmd == "spawn":
+            if len(args) >= 2:
+                entity_type = args[1]
+                self.add_chat_message(f"🐉 生成生物: {entity_type}")
+                self.spawn_effect_particle(self.player_pos[0], self.player_pos[1] + 2, self.player_pos[2], "magic")
+            else:
+                self.add_chat_message("用法: /spawn <生物类型>")
+        
+        elif cmd == "locations":
+            self.add_chat_message("=== 📍 秘密位置彩蛋 ===")
+            for loc_id, loc_data in self.secret_locations.items():
+                pos = loc_data["pos"]
+                if self.active_cheat_effects.get("egg_hints", False):
+                    self.add_chat_message(f"🎯 {loc_data['message']} 位置: ({pos[0]}, {pos[1]}, {pos[2]})")
+                else:
+                    self.add_chat_message(f"❓ {loc_data['message']} (位置隐藏)")
+            self.add_chat_message("💡 使用 'egg' 作弊码显示位置提示！")
         
         elif cmd == "eggs":
             self.add_chat_message("=== 彩蛋列表 ===")
@@ -3395,6 +3779,234 @@ class GameMap3D:
         
         else:
             self.add_chat_message("未知命令: " + cmd)
+    
+    def check_cheat_code_sequence(self, key):
+        """检测按键序列作弊码"""
+        try:
+            current_time = time.time()
+            
+            if current_time - self.last_cheat_key_time > self.cheat_code_input_timeout:
+                self.cheat_code_buffer = []
+            
+            self.last_cheat_key_time = current_time
+            
+            key_name = self.get_key_name(key)
+            if key_name:
+                self.cheat_code_buffer.append(key_name)
+                
+                if len(self.cheat_code_buffer) > self.cheat_code_max_length:
+                    self.cheat_code_buffer.pop(0)
+                
+                for code_id, code_data in self.cheat_codes.items():
+                    sequence = code_data["sequence"]
+                    buffer_tail = self.cheat_code_buffer[-len(sequence):]
+                    
+                    if buffer_tail == sequence:
+                        self.activate_cheat_code(code_id, code_data)
+                        self.cheat_code_buffer = []
+                        return
+                        
+        except Exception as e:
+            print(f"[错误] 检测作弊码序列失败: {e}")
+    
+    def get_key_name(self, key):
+        """获取按键名称"""
+        key_map = {
+            pygame.K_UP: "up",
+            pygame.K_DOWN: "down",
+            pygame.K_LEFT: "left",
+            pygame.K_RIGHT: "right",
+            pygame.K_a: "a",
+            pygame.K_b: "b",
+            pygame.K_c: "c",
+            pygame.K_d: "d",
+            pygame.K_e: "e",
+            pygame.K_f: "f",
+            pygame.K_g: "g",
+            pygame.K_h: "h",
+            pygame.K_i: "i",
+            pygame.K_j: "j",
+            pygame.K_k: "k",
+            pygame.K_l: "l",
+            pygame.K_m: "m",
+            pygame.K_n: "n",
+            pygame.K_o: "o",
+            pygame.K_p: "p",
+            pygame.K_q: "q",
+            pygame.K_r: "r",
+            pygame.K_s: "s",
+            pygame.K_t: "t",
+            pygame.K_u: "u",
+            pygame.K_v: "v",
+            pygame.K_w: "w",
+            pygame.K_x: "x",
+            pygame.K_y: "y",
+            pygame.K_z: "z",
+            pygame.K_0: "0",
+            pygame.K_1: "1",
+            pygame.K_2: "2",
+            pygame.K_3: "3",
+            pygame.K_4: "4",
+            pygame.K_5: "5",
+            pygame.K_6: "6",
+            pygame.K_7: "7",
+            pygame.K_8: "8",
+            pygame.K_9: "9"
+        }
+        return key_map.get(key, None)
+    
+    def activate_cheat_code(self, code_id, code_data):
+        """激活作弊码效果"""
+        try:
+            self.add_chat_message(f"🎮 {code_data['message']}")
+            self.cheat_stats["codes_entered"] += 1
+            self.cheat_stats["codes_successful"] += 1
+            self.cheat_stats["last_code"] = code_id
+            
+            effect = code_data.get("effect", "")
+            reward = code_data.get("reward", {})
+            
+            if "health" in reward:
+                self.health = min(self.health + reward["health"], self.max_health * 10)
+            if "hunger" in reward:
+                self.hunger = min(self.hunger + reward["hunger"], self.max_hunger * 10)
+            if "experience" in reward:
+                self.experience += reward["experience"]
+            if "level" in reward:
+                self.level = reward["level"]
+            if "game_mode" in reward:
+                self.game_mode = reward["game_mode"]
+                if reward["game_mode"] == "creative":
+                    self.can_fly = True
+            if "can_fly" in reward:
+                self.can_fly = reward["can_fly"]
+            if "flying" in reward:
+                self.flying = reward["flying"]
+            if "speed" in reward:
+                self.camera["speed"] = reward["speed"]
+            if "fly_speed" in reward:
+                self.fly_speed = reward["fly_speed"]
+            if "jump_power" in reward:
+                self.velocity[1] = reward["jump_power"]
+            
+            for effect_name, effect_value in reward.items():
+                if effect_name in self.active_cheat_effects:
+                    self.active_cheat_effects[effect_name] = effect_value
+            
+            if "generals" in reward:
+                for general in reward["generals"]:
+                    self.add_item_to_inventory(f"{general}卡", 1)
+                    self.add_chat_message(f"⚔️ 获得 {general} 武将卡！")
+            
+            if "secret_items" in reward:
+                for item in reward["secret_items"]:
+                    self.add_item_to_inventory(item, 1)
+                    self.add_chat_message(f"🎁 获得 {item}！")
+            
+            if "eggs_unlocked" in reward:
+                unlocked_count = 0
+                for egg_id in self.eggs:
+                    if not self.eggs[egg_id]["found"]:
+                        self.eggs[egg_id]["found"] = True
+                        unlocked_count += 1
+                        if unlocked_count >= reward["eggs_unlocked"]:
+                            break
+                self.add_chat_message(f"🥚 解锁了 {unlocked_count} 个彩蛋！")
+            
+            if "all_achievements" in reward and reward["all_achievements"]:
+                for achievement in self.achievements:
+                    self.achievements[achievement]["unlocked"] = True
+                self.add_chat_message("🏆 所有成就已解锁！")
+            
+            if "all_eggs" in reward and reward["all_eggs"]:
+                for egg_id in self.eggs:
+                    self.eggs[egg_id]["found"] = True
+                self.add_chat_message("🥚 所有彩蛋已解锁！")
+            
+            if "full_inventory" in reward and reward["full_inventory"]:
+                for item_type in self.item_types:
+                    for item in self.item_types[item_type]:
+                        self.add_item_to_inventory(item, 64)
+                self.add_chat_message("📦 背包已填满所有物品！")
+            
+            if "random" in reward and reward["random"]:
+                random_rewards = [
+                    {"health": 100, "message": "💖 随机奖励：恢复生命！"},
+                    {"experience": 1000, "message": "⭐ 随机奖励：获得经验！"},
+                    {"item": "神秘宝箱", "message": "🎁 随机奖励：神秘宝箱！"},
+                    {"speed": 2.0, "message": "⚡ 随机奖励：速度提升！"},
+                    {"egg_unlock": True, "message": "🥚 随机奖励：解锁一个彩蛋！"}
+                ]
+                chosen = random.choice(random_rewards)
+                if "health" in chosen:
+                    self.health = min(self.health + chosen["health"], self.max_health * 10)
+                if "experience" in chosen:
+                    self.experience += chosen["experience"]
+                if "item" in chosen:
+                    self.add_item_to_inventory(chosen["item"], 1)
+                if "speed" in chosen:
+                    self.camera["speed"] = chosen["speed"]
+                if "egg_unlock" in chosen:
+                    for egg_id in self.eggs:
+                        if not self.eggs[egg_id]["found"]:
+                            self.eggs[egg_id]["found"] = True
+                            break
+                self.add_chat_message(chosen["message"])
+            
+            if "pet" in reward:
+                self.add_chat_message(f"🐉 获得宠物：{reward['pet']}！")
+            
+            if "weather_control" in reward and reward["weather_control"]:
+                self.add_chat_message("🌤️ 天气控制已激活！使用 /weather 命令")
+            
+            if "time_control" in reward and reward["time_control"]:
+                self.add_chat_message("⏰ 时间控制已激活！使用 /time 命令")
+            
+            if "developer_mode" in reward and reward["developer_mode"]:
+                self.active_cheat_effects["developer_mode"] = True
+                self.add_chat_message("🔧 开发者模式已激活！")
+                self.add_chat_message("可用隐藏命令: /dev, /spawn, /effect")
+            
+            if "particle_effects" in reward and reward["particle_effects"]:
+                self.spawn_effect_particle(self.player_pos[0], self.player_pos[1] + 2, self.player_pos[2], "magic")
+            
+            self.cheat_stats["total_rewards"] += 1
+            
+            egg_key = f"cheat_{code_id}"
+            if egg_key not in self.eggs:
+                self.eggs[egg_key] = {"found": False, "hint": f"输入作弊码: {code_data['name']}"}
+            if not self.eggs[egg_key]["found"]:
+                self.eggs[egg_key]["found"] = True
+                self.add_chat_message(f"🎉 解锁彩蛋: {code_data['name']}！")
+            
+            self.spawn_effect_particle(self.player_pos[0], self.player_pos[1] + 2, self.player_pos[2], "enchant")
+            
+        except Exception as e:
+            print(f"[错误] 激活作弊码失败: {e}")
+            self.add_chat_message(f"❌ 作弊码激活失败: {str(e)}")
+    
+    def check_secret_location_triggers(self):
+        """检测特定位置触发彩蛋"""
+        try:
+            for loc_id, loc_data in self.secret_locations.items():
+                pos = loc_data["pos"]
+                radius = loc_data["radius"]
+                
+                distance = math.sqrt(
+                    (self.player_pos[0] - pos[0]) ** 2 +
+                    (self.player_pos[1] - pos[1]) ** 2 +
+                    (self.player_pos[2] - pos[2]) ** 2
+                )
+                
+                if distance <= radius:
+                    egg_id = loc_data["egg"]
+                    if not self.eggs.get(egg_id, {}).get("found", False):
+                        self.eggs[egg_id]["found"] = True
+                        self.add_chat_message(f"📍 {loc_data['message']}")
+                        self.spawn_effect_particle(pos[0], pos[1] + 2, pos[2], "magic")
+                        
+        except Exception as e:
+            print(f"[错误] 检测位置彩蛋失败: {e}")
     
     def draw_command_input(self):
         """绘制命令输入框"""
@@ -3656,6 +4268,9 @@ class GameMap3D:
                 self.velocity[1] += self.gravity
             
             self.handle_flying()
+            
+            # 🎮 作弊码位置彩蛋检测
+            self.check_secret_location_triggers()
             
             # 更新位置
             self.player_pos[0] += self.velocity[0]
