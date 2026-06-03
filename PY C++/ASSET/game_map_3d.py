@@ -82,7 +82,7 @@ class GameMap3D:
         self.pause_menu_options = ["继续游戏", "设置", "保存并退出", "返回主菜单"]
         
         # 快捷栏（类似MC）
-        self.hotbar = [None] * 9
+        self.hotbar = ["泥土", "石头", "木头", "草地", "沙子", "水", "玻璃", "砖块", None]
         self.hotbar_selected = 0
         
         # 十字准星
@@ -2171,6 +2171,7 @@ class GameMap3D:
         
         # 屏幕中心下方位置
         center_x = SCREEN_WIDTH // 2
+        center_y = SCREEN_HEIGHT // 2
         bottom_y = SCREEN_HEIGHT - 100
         
         # 绘制生命值（红色心形）
@@ -3397,11 +3398,13 @@ class GameMap3D:
             self.draw_mc_hud()
             self.draw_hotbar()
             
+            # 刷新显示
+            pygame.display.flip()
+            
             # 限制帧率
             self.clock.tick(60)
         
         self.save_mc_world_data()
-        pygame.quit()
 
 def main():
     """3D地图主函数"""

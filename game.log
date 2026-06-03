@@ -1,0 +1,28 @@
+2026-06-03 13:32:49,190 - INFO - 当前平台: windows
+2026-06-03 13:32:49,190 - INFO - 尝试加载字体列表: ['Microsoft YaHei', 'Microsoft YaHei', 'Microsoft YaHei UI', 'SimHei', 'SimSun', 'KaiTi', 'FangSong', 'Segoe UI', 'Arial', 'Tahoma', None]
+2026-06-03 13:32:49,193 - INFO - 成功使用字体: Microsoft YaHei
+2026-06-03 13:32:54,222 - INFO - 当前平台: windows
+2026-06-03 13:32:54,222 - INFO - 尝试加载字体列表: ['Microsoft YaHei', 'Microsoft YaHei', 'Microsoft YaHei UI', 'SimHei', 'SimSun', 'KaiTi', 'FangSong', 'Segoe UI', 'Arial', 'Tahoma', None]
+2026-06-03 13:32:54,225 - INFO - 成功使用字体: Microsoft YaHei
+2026-06-03 13:32:54,230 - INFO - 当前平台: windows
+2026-06-03 13:32:54,231 - INFO - 尝试加载字体列表: ['Microsoft YaHei', 'Microsoft YaHei', 'Microsoft YaHei UI', 'SimHei', 'SimSun', 'KaiTi', 'FangSong', 'Segoe UI', 'Arial', 'Tahoma', None]
+2026-06-03 13:32:54,233 - INFO - 成功使用字体: Microsoft YaHei
+2026-06-03 13:32:58,636 - ERROR - 保存存档失败: [Errno 13] Permission denied: 'e:\\san_guo\\PY C++\\ASSET\\save.json'
+2026-06-03 13:33:01,397 - INFO - No OpenGL_accelerate module loaded: No module named 'OpenGL_accelerate'
+2026-06-03 13:33:04,895 - ERROR - 启动模块 game_map_3d.py 失败：name 'center_y' is not defined
+2026-06-03 13:33:04,895 - ERROR - 详细错误信息：
+2026-06-03 13:33:04,959 - ERROR - Traceback (most recent call last):
+  File "e:\san_guo\PY C++\ASSET\game_main_menu.py", line 1284, in run_module
+    map_3d_main()
+    ~~~~~~~~~~~^^
+  File "e:\san_guo\PY C++\ASSET\game_map_3d.py", line 3409, in main
+    game_map_3d.main()
+    ~~~~~~~~~~~~~~~~^^
+  File "e:\san_guo\PY C++\ASSET\game_map_3d.py", line 3397, in main
+    self.draw_mc_hud()
+    ~~~~~~~~~~~~~~~~^^
+  File "e:\san_guo\PY C++\ASSET\game_map_3d.py", line 2258, in draw_mc_hud
+    (center_x - crosshair_size, center_y),
+                                ^^^^^^^^
+NameError: name 'center_y' is not defined
+
