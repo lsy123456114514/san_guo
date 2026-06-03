@@ -178,6 +178,7 @@ def main_game():
                         screen = pygame.display.set_mode((800, 600))
             
             # 更新全局屏幕尺寸变量
+            global SCREEN_WIDTH, SCREEN_HEIGHT
             SCREEN_WIDTH = screen.get_width()
             SCREEN_HEIGHT = screen.get_height()
             

@@ -2,11 +2,11 @@
   "username": "",
   "password": "",
   "resources": {
-    "水": 0,
-    "煤炭": 0,
-    "木头": 0,
-    "食物": 0,
-    "金元宝": 0,
+    "水": 60348,
+    "煤炭": 30174,
+    "木头": 48278,
+    "食物": 42243,
+    "金元宝": 12069,
     "时间卡": 0,
     "宠物食物": 0,
     "普通子弹": 0,
@@ -54,7 +54,8 @@
   "achievements": {
     "unlocked": [],
     "progress": {},
-    "claimed_rewards": []
+    "claimed_rewards": [],
+    "completed": []
   },
   "tech_tree": {
     "unlocked": [
@@ -96,7 +97,7 @@
       "base_time": 60
     }
   },
-  "last_login": 1779859489,
+  "last_login": 1780462970,
   "last_auto_save": 0,
   "resource_bonus": 1.0,
   "passive_income": {
@@ -270,5 +271,30 @@
       "achievements": [],
       "pvp": []
     }
+  },
+  "mc_world": {
+    "placed_blocks": [],
+    "hotbar": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "hotbar_selected": 0,
+    "player_pos": [
+      0,
+      0,
+      0
+    ],
+    "camera_yaw": 0,
+    "camera_pitch": -20,
+    "camera_mode": "first",
+    "inventory": [],
+    "world_seed": 0
   }
 }

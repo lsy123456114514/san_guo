@@ -69,6 +69,13 @@ class GameMap3D:
         self.message = None
         self.message_timer = 0
         
+        # NPC系统
+        self.npcs = []
+        self.show_npc_dialog = False
+        self.current_npc = None
+        self.npc_dialog_text = ""
+        self.npc_dialog_options = []
+        
         # 物理参数
         self.velocity = [0, 0, 0]  # x, y, z 方向速度
         self.gravity = -0.2  # 重力加速度
@@ -399,6 +406,13 @@ class GameMap3D:
             return False
         
         try:
+            # 保存当前显示尺寸，以便退出时恢复
+            current_surface = pygame.display.get_surface()
+            if current_surface:
+                self.original_display_size = current_surface.get_size()
+            else:
+                self.original_display_size = (SCREEN_WIDTH, SCREEN_HEIGHT)
+            
             # 初始化pygame
             pygame.init()
             
@@ -448,6 +462,9 @@ class GameMap3D:
             
             # 生成树木
             self.generate_trees()
+            
+            # 生成NPC
+            self.generate_npcs()
             
             return True
         except Exception as e:
@@ -772,7 +789,16 @@ class GameMap3D:
                         self.message = "鼠标已锁定，按Tab键解锁"
                         self.message_timer = 3000
                     else:
-                        self.place_block()
+                        mx, my = pygame.mouse.get_pos()
+                        clicked_npc = self.check_npc_click(mx, my)
+                        if clicked_npc:
+                            self.current_npc = clicked_npc
+                            self.show_npc_dialog = True
+                            self.is_mouse_locked = False
+                            pygame.mouse.set_visible(True)
+                            pygame.event.set_grab(False)
+                        else:
+                            self.place_block()
                 elif event.button == 3:
                     if self.is_mouse_locked:
                         self.break_block()
@@ -1652,6 +1678,7 @@ class GameMap3D:
         try:
             x, z = loc["x"], loc["y"]
             loc_type = loc.get("type", "村庄")
+            loc_name = loc.get("name", loc_type)
             
             glPushMatrix()
             glTranslatef(x, 0, z)
@@ -1740,21 +1767,451 @@ class GameMap3D:
             glVertex3f(0, base_height + wall_height + roof_height, 0)
             glEnd()
             
+            if loc_type == "关隘":
+                glColor3f(0.5, 0.5, 0.5)
+                tower_height = 8
+                tower_width = 3
+                glPushMatrix()
+                glTranslatef(-base_width/2 - 2, base_height + wall_height, -base_depth/2 - 2)
+                self.draw_cube(tower_width, tower_height, tower_width)
+                glTranslatef(base_width + 4, 0, 0)
+                self.draw_cube(tower_width, tower_height, tower_width)
+                glPopMatrix()
+                
+                glColor3f(1.0, 0.0, 0.0)
+                glPushMatrix()
+                glTranslatef(0, base_height + wall_height + roof_height + 2, 0)
+                self.draw_cube(1, 4, 1)
+                glTranslatef(0, 3, 0)
+                self.draw_cube(2, 1, 2)
+                glPopMatrix()
+            
+            elif loc_type == "军营":
+                glColor3f(0.3, 0.3, 0.3)
+                tent_count = 3
+                for i in range(tent_count):
+                    glPushMatrix()
+                    glTranslatef(-4 + i * 4, base_height, 0)
+                    glColor3f(0.8, 0.1, 0.1)
+                    glBegin(GL_TRIANGLES)
+                    glVertex3f(-3, 0, -3)
+                    glVertex3f(0, 4, 0)
+                    glVertex3f(3, 0, -3)
+                    glVertex3f(3, 0, -3)
+                    glVertex3f(0, 4, 0)
+                    glVertex3f(3, 0, 3)
+                    glVertex3f(3, 0, 3)
+                    glVertex3f(0, 4, 0)
+                    glVertex3f(-3, 0, 3)
+                    glVertex3f(-3, 0, 3)
+                    glVertex3f(0, 4, 0)
+                    glVertex3f(-3, 0, -3)
+                    glEnd()
+                    glPopMatrix()
+                
+                glColor3f(0.8, 0.8, 0.0)
+                glPushMatrix()
+                glTranslatef(0, base_height + wall_height + roof_height + 1, 0)
+                self.draw_cube(0.5, 6, 0.5)
+                glTranslatef(0, 5, 0)
+                self.draw_cube(3, 0.5, 1)
+                glPopMatrix()
+            
+            elif loc_type == "村庄":
+                glColor3f(0.6, 0.4, 0.2)
+                for i in range(2):
+                    glPushMatrix()
+                    glTranslatef(-3 + i * 6, base_height + wall_height + roof_height + 1, 0)
+                    self.draw_cube(1, 2, 1)
+                    glTranslatef(0, 1.5, 0)
+                    glColor3f(0.3, 0.3, 0.3)
+                    self.draw_cube(0.5, 1, 0.5)
+                    glPopMatrix()
+                
+                glColor3f(0.3, 0.5, 0.3)
+                for i in range(4):
+                    glPushMatrix()
+                    glTranslatef(-5 + i * 3, base_height - 0.5, -5 + (i % 2) * 5)
+                    self.draw_cube(0.5, 3, 0.5)
+                    glColor3f(0.4, 0.6, 0.4)
+                    glTranslatef(0, 1.5, 0)
+                    self.draw_cube(1.5, 2, 1.5)
+                    glPopMatrix()
+            
+            elif loc_type == "矿山":
+                glColor3f(0.4, 0.4, 0.4)
+                ore_colors = [(1.0, 0.5, 0.5), (0.5, 0.5, 1.0), (1.0, 1.0, 0.5), (0.8, 0.6, 0.4)]
+                for i in range(6):
+                    glPushMatrix()
+                    glTranslatef(-4 + (i % 3) * 4, base_height + 2 + (i // 3) * 3, -3)
+                    glColor3f(ore_colors[i % len(ore_colors)])
+                    self.draw_cube(1.5, 1.5, 0.5)
+                    glPopMatrix()
+                
+                glColor3f(0.2, 0.2, 0.2)
+                glPushMatrix()
+                glTranslatef(0, base_height, 3)
+                self.draw_cube(4, 6, 2)
+                glColor3f(0.3, 0.3, 0.3)
+                glTranslatef(0, -1, 0.5)
+                self.draw_cube(2, 8, 1)
+                glPopMatrix()
+            
+            elif loc_type == "港口":
+                glColor3f(0.6, 0.4, 0.3)
+                glPushMatrix()
+                glTranslatef(0, base_height - 1, base_depth/2 + 5)
+                self.draw_cube(base_width + 4, 1, 6)
+                glPopMatrix()
+                
+                glColor3f(0.8, 0.2, 0.2)
+                glPushMatrix()
+                glTranslatef(3, base_height - 2, base_depth/2 + 10)
+                self.draw_cube(6, 2, 12)
+                glColor3f(0.6, 0.4, 0.2)
+                glTranslatef(0, 1.5, 0)
+                self.draw_cube(5, 1, 10)
+                glPopMatrix()
+                
+                glColor3f(0.5, 0.5, 0.8)
+                glPushMatrix()
+                glTranslatef(-4, base_height - 3, base_depth/2 + 8)
+                for i in range(3):
+                    glTranslatef(0, 0, 3)
+                    self.draw_cube(2, 3, 2)
+                glPopMatrix()
+            
             loc["collision_box"] = {
                 "min_x": x - base_width/2,
                 "max_x": x + base_width/2,
                 "min_y": 0,
-                "max_y": base_height + wall_height + roof_height,
+                "max_y": base_height + wall_height + roof_height + 10,
                 "min_z": z - base_depth/2,
                 "max_z": z + base_depth/2
             }
-            loc["height"] = base_height + wall_height + roof_height
+            loc["height"] = base_height + wall_height + roof_height + 10
             loc["enterable"] = True
             
             glEnable(GL_LIGHTING)
             glPopMatrix()
+            
+            glPushMatrix()
+            glLoadIdentity()
+            glMatrixMode(GL_PROJECTION)
+            glPushMatrix()
+            glLoadIdentity()
+            glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
+            
+            screen_x, screen_y = self.world_to_screen(x, base_height + wall_height + roof_height + 5, z)
+            if 0 < screen_x < SCREEN_WIDTH and 0 < screen_y < SCREEN_HEIGHT:
+                glColor3f(1.0, 1.0, 1.0)
+                text_surf = self.font_small.render(loc_name, True, (255, 255, 255))
+                text_rect = text_surf.get_rect(center=(screen_x, screen_y))
+                bg_rect = pygame.Rect(text_rect.x - 5, text_rect.y - 3, text_rect.width + 10, text_rect.height + 6)
+                
+                glColor4f(0.0, 0.0, 0.0, 0.7)
+                glBegin(GL_QUADS)
+                glVertex2f(bg_rect.left, bg_rect.top)
+                glVertex2f(bg_rect.right, bg_rect.top)
+                glVertex2f(bg_rect.right, bg_rect.bottom)
+                glVertex2f(bg_rect.left, bg_rect.bottom)
+                glEnd()
+                
+                self.screen.blit(text_surf, text_rect)
+            
+            glPopMatrix()
+            glMatrixMode(GL_MODELVIEW)
+            glPopMatrix()
+            
         except Exception as e:
             print(f"绘制地点错误: {e}")
+    
+    def world_to_screen(self, x, y, z):
+        """将世界坐标转换为屏幕坐标"""
+        try:
+            modelview = glGetDoublev(GL_MODELVIEW_MATRIX)
+            projection = glGetDoublev(GL_PROJECTION_MATRIX)
+            viewport = glGetIntegerv(GL_VIEWPORT)
+            
+            result = gluProject(x, y, z, modelview, projection, viewport)
+            return result[0], SCREEN_HEIGHT - result[1]
+        except:
+            return -1000, -1000
+    
+    def generate_npcs(self):
+        """生成NPC"""
+        self.npcs = []
+        
+        npc_types = [
+            {"name": "铁匠", "role": "equipment", "color": (0.8, 0.6, 0.4), "dialog": "欢迎来到我的铁匠铺！需要打造什么装备吗？"},
+            {"name": "商人", "role": "shop", "color": (0.4, 0.6, 0.8), "dialog": "欢迎光临！看看有什么需要的？"},
+            {"name": "药师", "role": "alchemy", "color": (0.6, 0.8, 0.4), "dialog": "需要治疗药水吗？我这里应有尽有！"},
+            {"name": "仓库管理员", "role": "warehouse", "color": (0.7, 0.7, 0.7), "dialog": "需要存放或领取物品吗？"},
+            {"name": "任务发布者", "role": "quest", "color": (0.8, 0.4, 0.6), "dialog": "冒险者，我有一些任务需要你完成！"},
+            {"name": "竞技场管理员", "role": "pvp", "color": (0.9, 0.3, 0.3), "dialog": "想要测试你的实力吗？来竞技场吧！"},
+            {"name": "宠物商人", "role": "pet", "color": (0.5, 0.8, 0.6), "dialog": "可爱的宠物等待着它们的主人！"},
+            {"name": "时装设计师", "role": "fashion", "color": (0.8, 0.5, 0.8), "dialog": "想要换个新造型吗？我来帮你！"},
+        ]
+        
+        if self.locations:
+            main_city = self.locations[0]
+            city_x, city_z = main_city["x"], main_city["y"]
+            
+            positions = [
+                (city_x - 8, city_z - 8),
+                (city_x + 8, city_z - 8),
+                (city_x - 8, city_z + 8),
+                (city_x + 8, city_z + 8),
+                (city_x, city_z - 6),
+                (city_x, city_z + 6),
+                (city_x - 6, city_z),
+                (city_x + 6, city_z),
+            ]
+            
+            for i, pos in enumerate(positions[:len(npc_types)]):
+                npc_data = npc_types[i]
+                self.npcs.append({
+                    "id": i,
+                    "name": npc_data["name"],
+                    "role": npc_data["role"],
+                    "color": npc_data["color"],
+                    "dialog": npc_data["dialog"],
+                    "x": pos[0],
+                    "y": 0,
+                    "z": pos[1],
+                    "interaction_radius": 3.0,
+                })
+    
+    def draw_npc(self, npc):
+        """绘制单个NPC"""
+        try:
+            x, y, z = npc["x"], npc["y"], npc["z"]
+            color = npc["color"]
+            
+            glPushMatrix()
+            glTranslatef(x, y, z)
+            glDisable(GL_LIGHTING)
+            
+            body_height = 2.0
+            body_width = 0.6
+            head_radius = 0.5
+            
+            glColor3f(*color)
+            
+            glPushMatrix()
+            glTranslatef(0, body_height + head_radius, 0)
+            glutSolidSphere(head_radius, 16, 16)
+            glPopMatrix()
+            
+            glColor3f(color[0] * 0.8, color[1] * 0.8, color[2] * 0.8)
+            glPushMatrix()
+            glTranslatef(0, body_height / 2, 0)
+            self.draw_cube(body_width, body_height, body_width)
+            glPopMatrix()
+            
+            glEnable(GL_LIGHTING)
+            glPopMatrix()
+            
+            screen_x, screen_y = self.world_to_screen(x, y + body_height + head_radius + 0.5, z)
+            if 0 < screen_x < SCREEN_WIDTH and 0 < screen_y < SCREEN_HEIGHT:
+                text_surf = self.font_small.render(npc["name"], True, (255, 255, 255))
+                text_rect = text_surf.get_rect(center=(screen_x, screen_y))
+                bg_rect = pygame.Rect(text_rect.x - 5, text_rect.y - 3, text_rect.width + 10, text_rect.height + 6)
+                
+                glColor4f(0.0, 0.0, 0.0, 0.7)
+                glBegin(GL_QUADS)
+                glVertex2f(bg_rect.left, bg_rect.top)
+                glVertex2f(bg_rect.right, bg_rect.top)
+                glVertex2f(bg_rect.right, bg_rect.bottom)
+                glVertex2f(bg_rect.left, bg_rect.bottom)
+                glEnd()
+                
+                self.screen.blit(text_surf, text_rect)
+        except Exception as e:
+            print(f"绘制NPC错误: {e}")
+    
+    def draw_npcs(self):
+        """绘制所有NPC"""
+        for npc in self.npcs:
+            self.draw_npc(npc)
+    
+    def check_npc_click(self, mouse_x, mouse_y):
+        """检查是否点击了NPC"""
+        for npc in self.npcs:
+            screen_x, screen_y = self.world_to_screen(npc["x"], npc["y"] + 1.5, npc["z"])
+            distance = ((mouse_x - screen_x) ** 2 + (mouse_y - screen_y) ** 2) ** 0.5
+            
+            if distance < 30:
+                player_dist = ((self.player_pos[0] - npc["x"]) ** 2 + 
+                              (self.player_pos[2] - npc["z"]) ** 2) ** 0.5
+                
+                if player_dist <= npc["interaction_radius"]:
+                    return npc
+        
+        return None
+    
+    def draw_npc_dialog(self):
+        """绘制NPC对话界面"""
+        if not self.show_npc_dialog or not self.current_npc:
+            return
+        
+        dialog_width = 500
+        dialog_height = 300
+        dialog_x = (SCREEN_WIDTH - dialog_width) // 2
+        dialog_y = SCREEN_HEIGHT - dialog_height - 50
+        
+        bg_surface = pygame.Surface((dialog_width, dialog_height), pygame.SRCALPHA)
+        bg_surface.fill((0, 0, 0, 200))
+        pygame.draw.rect(bg_surface, (255, 215, 0), (0, 0, dialog_width, dialog_height), 3)
+        self.screen.blit(bg_surface, (dialog_x, dialog_y))
+        
+        title_text = self.font_main.render(self.current_npc["name"], True, (255, 215, 0))
+        title_rect = title_text.get_rect(center=(SCREEN_WIDTH // 2, dialog_y + 30))
+        self.screen.blit(title_text, title_rect)
+        
+        dialog_lines = self.wrap_text(self.current_npc["dialog"], self.font_small, dialog_width - 40)
+        y_offset = dialog_y + 70
+        for line in dialog_lines:
+            line_surf = self.font_small.render(line, True, (255, 255, 255))
+            line_rect = line_surf.get_rect(center=(SCREEN_WIDTH // 2, y_offset))
+            self.screen.blit(line_surf, line_rect)
+            y_offset += 30
+        
+        y_offset += 20
+        menu_options = self.get_npc_menu_options(self.current_npc["role"])
+        
+        button_width = 200
+        button_height = 40
+        button_spacing = 15
+        start_x = (SCREEN_WIDTH - button_width) // 2
+        
+        for i, option in enumerate(menu_options):
+            btn_y = y_offset + i * (button_height + button_spacing)
+            
+            pygame.draw.rect(self.screen, (50, 50, 80), (start_x, btn_y, button_width, button_height))
+            pygame.draw.rect(self.screen, (255, 215, 0), (start_x, btn_y, button_width, button_height), 2)
+            
+            option_text = self.font_small.render(option["text"], True, (255, 255, 255))
+            option_rect = option_text.get_rect(center=(SCREEN_WIDTH // 2, btn_y + button_height // 2))
+            self.screen.blit(option_text, option_rect)
+    
+    def wrap_text(self, text, font, max_width):
+        """自动换行文本"""
+        words = text.split(' ')
+        lines = []
+        current_line = []
+        
+        for word in words:
+            test_line = ' '.join(current_line + [word])
+            test_width, _ = font.size(test_line)
+            
+            if test_width <= max_width:
+                current_line.append(word)
+            else:
+                lines.append(' '.join(current_line))
+                current_line = [word]
+        
+        if current_line:
+            lines.append(' '.join(current_line))
+        
+        return lines
+    
+    def get_npc_menu_options(self, role):
+        """获取NPC对应的菜单选项"""
+        options = {
+            "equipment": [
+                {"text": "装备商店", "action": "equipment_shop"},
+                {"text": "装备强化", "action": "equipment_enhance"},
+                {"text": "装备分解", "action": "equipment_disassemble"},
+                {"text": "关闭", "action": "close"},
+            ],
+            "shop": [
+                {"text": "道具商店", "action": "item_shop"},
+                {"text": "材料商店", "action": "material_shop"},
+                {"text": "稀有物品", "action": "rare_items"},
+                {"text": "关闭", "action": "close"},
+            ],
+            "alchemy": [
+                {"text": "制作药水", "action": "make_potion"},
+                {"text": "材料合成", "action": "material_craft"},
+                {"text": "草药采集", "action": "herb_collect"},
+                {"text": "关闭", "action": "close"},
+            ],
+            "warehouse": [
+                {"text": "存放物品", "action": "store_item"},
+                {"text": "领取物品", "action": "retrieve_item"},
+                {"text": "查看仓库", "action": "view_warehouse"},
+                {"text": "关闭", "action": "close"},
+            ],
+            "quest": [
+                {"text": "查看任务", "action": "view_quests"},
+                {"text": "接取任务", "action": "accept_quest"},
+                {"text": "提交任务", "action": "complete_quest"},
+                {"text": "关闭", "action": "close"},
+            ],
+            "pvp": [
+                {"text": "竞技场挑战", "action": "arena_challenge"},
+                {"text": "排行榜", "action": "arena_ranking"},
+                {"text": "荣誉商店", "action": "honor_shop"},
+                {"text": "关闭", "action": "close"},
+            ],
+            "pet": [
+                {"text": "购买宠物", "action": "buy_pet"},
+                {"text": "宠物训练", "action": "train_pet"},
+                {"text": "宠物进化", "action": "evolve_pet"},
+                {"text": "关闭", "action": "close"},
+            ],
+            "fashion": [
+                {"text": "时装商店", "action": "fashion_shop"},
+                {"text": "染色服务", "action": "dye_service"},
+                {"text": "时装合成", "action": "fashion_craft"},
+                {"text": "关闭", "action": "close"},
+            ],
+        }
+        
+        return options.get(role, [{"text": "关闭", "action": "close"}])
+    
+    def handle_npc_dialog_input(self):
+        """处理NPC对话界面输入"""
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return "quit"
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self.show_npc_dialog = False
+                    self.current_npc = None
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+                    mx, my = event.pos
+                    
+                    dialog_width = 500
+                    dialog_height = 300
+                    dialog_x = (SCREEN_WIDTH - dialog_width) // 2
+                    dialog_y = SCREEN_HEIGHT - dialog_height - 50
+                    
+                    if dialog_x <= mx <= dialog_x + dialog_width and dialog_y <= my <= dialog_y + dialog_height:
+                        y_offset = dialog_y + 120
+                        button_height = 40
+                        button_spacing = 15
+                        button_width = 200
+                        start_x = (SCREEN_WIDTH - button_width) // 2
+                        
+                        options = self.get_npc_menu_options(self.current_npc["role"])
+                        
+                        for i, option in enumerate(options):
+                            btn_y = y_offset + i * (button_height + button_spacing)
+                            if start_x <= mx <= start_x + button_width and btn_y <= my <= btn_y + button_height:
+                                if option["action"] == "close":
+                                    self.show_npc_dialog = False
+                                    self.current_npc = None
+                                else:
+                                    self.message = f"功能开发中: {option['text']}"
+                                    self.message_timer = 2000
+                                    self.show_npc_dialog = False
+                                    self.current_npc = None
+                                break
+        
+        return None
     
     def draw_cube(self, width, height, depth):
         """绘制立方体"""
@@ -2171,6 +2628,7 @@ class GameMap3D:
         
         # 屏幕中心下方位置
         center_x = SCREEN_WIDTH // 2
+        center_y = SCREEN_HEIGHT // 2
         bottom_y = SCREEN_HEIGHT - 100
         
         # 绘制生命值（红色心形）
@@ -3264,6 +3722,14 @@ class GameMap3D:
         self.message_timer = 2000
         self.check_crafting()
     
+    def cleanup_and_exit(self):
+        """清理并退出，确保恢复显示模式"""
+        self.save_mc_world_data()
+        if hasattr(self, 'original_display_size'):
+            pygame.display.set_mode(self.original_display_size)
+        else:
+            pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    
     def main(self):
         """主循环"""
         if not self.initialize():
@@ -3276,6 +3742,7 @@ class GameMap3D:
                 if result == "quit":
                     running = False
                 elif result == "main_menu":
+                    self.cleanup_and_exit()
                     return "main_menu"
                 
                 self.draw_3d_scene()
@@ -3302,6 +3769,18 @@ class GameMap3D:
                 
                 self.draw_3d_scene()
                 self.draw_crafting_table()
+                pygame.display.flip()
+                self.clock.tick(60)
+                continue
+            
+            if self.show_npc_dialog:
+                result = self.handle_npc_dialog_input()
+                if result == "quit":
+                    running = False
+                
+                self.draw_3d_scene()
+                self.draw_npcs()
+                self.draw_npc_dialog()
                 pygame.display.flip()
                 self.clock.tick(60)
                 continue
@@ -3393,15 +3872,20 @@ class GameMap3D:
             # 绘制3D场景
             self.draw_3d_scene()
             
+            # 绘制NPC
+            self.draw_npcs()
+            
             # 绘制HUD
             self.draw_mc_hud()
             self.draw_hotbar()
             
+            # 刷新显示
+            pygame.display.flip()
+            
             # 限制帧率
             self.clock.tick(60)
         
-        self.save_mc_world_data()
-        pygame.quit()
+        self.cleanup_and_exit()
 
 def main():
     """3D地图主函数"""

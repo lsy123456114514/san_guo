@@ -672,9 +672,20 @@ class GitHubBranchTool:
                 self.master.update()
 
                 branches_output, _, _ = self.run_git_command("branch", "-a")
-                local_exists = f"\n{branch}\n" in branches_output or f"* {branch}\n" in branches_output
+                local_exists = branch in branches_output
+                remote_exists = f"remotes/{remote_name}/{branch}" in branches_output
 
-                if not local_exists:
+                if local_exists:
+                    self.progress_label.config(text=f"分支 {branch} 已存在，正在切换...", fg="#3498db")
+                    self.status_label.config(text=f"正在切换到分支 {branch}...")
+                    self.master.update()
+                    self.run_git_command("checkout", branch)
+                elif remote_exists:
+                    self.progress_label.config(text=f"远程分支存在，正在跟踪...", fg="#f39c12")
+                    self.status_label.config(text=f"正在跟踪远程分支 {branch}...")
+                    self.master.update()
+                    self.run_git_command("checkout", "--track", f"{remote_name}/{branch}")
+                else:
                     self.progress_label.config(text=f"分支 {branch} 不存在，正在创建...", fg="#f39c12")
                     self.status_label.config(text=f"正在创建分支 {branch}...")
                     self.master.update()

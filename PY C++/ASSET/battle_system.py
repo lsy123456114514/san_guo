@@ -1989,8 +1989,6 @@ def main():
                     if event.type == pygame.MOUSEBUTTONDOWN:
                         if return_btn.rect.collidepoint(mx, my):
                             running = False
-                            # 退出战斗时更新统计
-                            update_battle_stats(win, player_heroes, enemy_heroes)
 
             pygame.display.flip()
             clock.tick(60)

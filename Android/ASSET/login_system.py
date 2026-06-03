@@ -8,7 +8,7 @@ from ASSET import safe_exit
 
 def hide_file(filepath):
     """隐藏文件（仅Windows）"""
-    if platform.system() == "Windows" and os.path.exists(filepath):
+    if platform.system() == "Windows" and filepath and os.path.exists(filepath):
         try:
             import ctypes
             ctypes.windll.kernel32.SetFileAttributesW(filepath, 0x02)

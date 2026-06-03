@@ -7,13 +7,11 @@ def hide_file(filepath):
     """隐藏文件（仅Windows）"""
     if platform.system() == "Windows":
         try:
-            # 先确保文件存在
+            if not filepath or not isinstance(filepath, str):
+                return
             if not os.path.exists(filepath):
                 return
-            # 先确保有普通权限（移除隐藏），再设置隐藏
             import ctypes
-            # 0x02 = FILE_ATTRIBUTE_HIDDEN
-            # 0x80 = FILE_ATTRIBUTE_NORMAL
             ctypes.windll.kernel32.SetFileAttributesW(filepath, 0x80)
             ctypes.windll.kernel32.SetFileAttributesW(filepath, 0x02)
         except Exception:
