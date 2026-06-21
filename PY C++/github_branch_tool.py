@@ -323,10 +323,16 @@ class GitHubBranchTool:
         else:
             self.git_status_icon.config(text="❌", fg="#ff0000")
 
-    def run_git_command(self, *args, capture=True, check=True, timeout=60, cwd=None):
+    def run_git_command(self, *args, capture=True, check=True, timeout=60, cwd=None, token=None):
         try:
             if cwd is None:
                 cwd = self.local_path.get()
+            
+            env = os.environ.copy()
+            if token:
+                env['GIT_ASKPASS'] = ''
+                env['GIT_USERNAME'] = 'oauth2'
+                env['GIT_PASSWORD'] = token
             
             if capture:
                 result = subprocess.run(
@@ -336,7 +342,8 @@ class GitHubBranchTool:
                     encoding='utf-8',
                     errors='replace',
                     timeout=timeout,
-                    cwd=cwd
+                    cwd=cwd,
+                    env=env
                 )
                 if check and result.returncode != 0:
                     error_msg = result.stderr.strip() if result.stderr else "未知错误"
@@ -345,7 +352,7 @@ class GitHubBranchTool:
                     )
                 return result.stdout.strip(), result.stderr.strip(), result.returncode
             else:
-                result = subprocess.run(["git"] + list(args), check=True, timeout=timeout, cwd=cwd)
+                result = subprocess.run(["git"] + list(args), check=True, timeout=timeout, cwd=cwd, env=env)
                 return "", "", 0
         except subprocess.TimeoutExpired:
             raise Exception(f"Git命令超时 ({timeout}秒)")
@@ -427,11 +434,7 @@ class GitHubBranchTool:
                 remote_url = remote_url_output.strip()
 
                 token = self.github_token.get()
-                if token and remote_url.startswith("https://"):
-                    import urllib.parse
-                    encoded_token = urllib.parse.quote(token, safe='')
-                    auth_url = remote_url.replace("https://", f"https://{encoded_token}@")
-                    self.run_git_command("remote", "set-url", remote_name, auth_url)
+                use_token_auth = token and remote_url.startswith("https://")
 
                 if self.include_all_files.get():
                     step += 1
@@ -454,7 +457,7 @@ class GitHubBranchTool:
                 self.status_label.config(text="正在拉取最新代码...")
                 self.master.update()
                 try:
-                    self.run_git_command("pull", remote_name, branch)
+                    self.run_git_command("pull", remote_name, branch, token=token if use_token_auth else None)
                 except Exception as e:
                     pass
 
@@ -468,11 +471,8 @@ class GitHubBranchTool:
                 if self.force_push.get():
                     push_cmd.append("--force")
                 self.run_git_command("config", "http.sslVerify", "false")
-                self.run_git_command(*push_cmd)
+                self.run_git_command(*push_cmd, token=token if use_token_auth else None)
                 self.run_git_command("config", "--unset", "http.sslVerify")
-
-                if token and remote_url.startswith("https://"):
-                    self.run_git_command("remote", "set-url", remote_name, remote_url)
 
                 step += 1
                 self.progress_bar.config(value=100)
