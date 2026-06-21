@@ -460,7 +460,7 @@ class GitHubBranchTool:
             cmd_str = " ".join(["git"] + list(args))
             stderr_msg = str(e.stderr) if hasattr(e, 'stderr') else str(e)
             stdout_msg = str(e.stdout) if hasattr(e, 'stdout') else ""
-            error_detail = f"命令: {cmd_str}\n工作目录: {cwd}\n返回码: {e.returncode}\n\n标准输出:\n{stdout_msg}\n\n错误信息:\n{stderr_msg}"
+            error_detail = f"命令: git {' '.join(list(args))}\n工作目录: {cwd}\n返回码: {e.returncode}\n\n标准输出:\n{stdout_msg}\n\n错误信息:\n{stderr_msg}"
             raise Exception(f"Git命令执行失败:\n\n{error_detail}")
         except FileNotFoundError:
             raise Exception("Git未安装或不在PATH中")
@@ -695,8 +695,13 @@ class GitHubBranchTool:
                 self.status_label.config(text="正在检查分支...")
                 self.master.update()
 
-                branches_output, _, _ = self.run_git_command("branch", "-a")
-                local_exists = f"\n{branch}\n" in branches_output or f"* {branch}\n" in branches_output
+                branches_output, _, _ = self.run_git_command("branch")
+                local_exists = False
+                for line in branches_output.split('\n'):
+                    line = line.strip().replace('*', '').strip()
+                    if line == branch:
+                        local_exists = True
+                        break
 
                 if not local_exists:
                     self.progress_label.config(text=f"分支 {branch} 不存在，正在创建...", fg="#f39c12")
