@@ -203,6 +203,12 @@ class GitHubBranchTool:
                                    font=("Microsoft YaHei", 12, "bold"),
                                    height=2, cursor="hand2")
         self.push_btn.pack(fill="x", pady=2)
+        
+        tk.Button(btn_frame, text="🔗 测试HTTPS连接",
+                  command=self.test_https_connection,
+                  bg="#3498db", fg="white",
+                  font=("Microsoft YaHei", 10),
+                  cursor="hand2").pack(fill="x", pady=2)
 
         right_frame = tk.Frame(push_frame, bg="#1a1a2e")
         right_frame.pack(side="right", fill="both", expand=True, padx=10, pady=10)
@@ -406,9 +412,16 @@ class GitHubBranchTool:
         path = filedialog.askdirectory()
         if path:
             self.local_path.set(path)
+            # 选择文件夹后刷新状态
+            self.refresh_all()
+            self.update_status()
 
-    def run_git_command(self, *args, capture=True, check=True, timeout=60):
+    def run_git_command(self, *args, capture=True, check=True, timeout=60, cwd=None):
         try:
+            # 如果没有指定cwd，使用用户选择的路径
+            if cwd is None:
+                cwd = self.local_path.get()
+            
             if capture:
                 result = subprocess.run(
                     ["git"] + list(args),
@@ -416,15 +429,29 @@ class GitHubBranchTool:
                     text=True,
                     encoding='utf-8',
                     errors='replace',
-                    timeout=timeout
+                    timeout=timeout,
+                    cwd=cwd
                 )
                 if check and result.returncode != 0:
-                    raise subprocess.CalledProcessError(
-                        result.returncode, list(args), result.stdout, result.stderr
-                    )
+                    # 提供更详细的错误信息
+                    error_msg = result.stderr.strip() if result.stderr else "未知错误"
+                    if "authentication" in error_msg.lower() or "permission" in error_msg.lower():
+                        raise subprocess.CalledProcessError(
+                            result.returncode, list(args), result.stdout, 
+                            f"认证失败！请检查SSH密钥配置或仓库访问权限。\n\n详细错误: {error_msg}"
+                        )
+                    elif "could not resolve host" in error_msg.lower():
+                        raise subprocess.CalledProcessError(
+                            result.returncode, list(args), result.stdout,
+                            f"无法连接远程仓库！请检查网络连接和远程仓库地址。\n\n详细错误: {error_msg}"
+                        )
+                    else:
+                        raise subprocess.CalledProcessError(
+                            result.returncode, list(args), result.stdout, result.stderr
+                        )
                 return result.stdout.strip(), result.stderr.strip(), result.returncode
             else:
-                result = subprocess.run(["git"] + list(args), check=True, timeout=timeout)
+                result = subprocess.run(["git"] + list(args), check=True, timeout=timeout, cwd=cwd)
                 return "", "", 0
         except subprocess.TimeoutExpired:
             raise Exception(f"Git命令超时 ({timeout}秒)")
@@ -432,6 +459,8 @@ class GitHubBranchTool:
             raise Exception(f"Git命令执行失败: {e.stderr}")
         except FileNotFoundError:
             raise Exception("Git未安装或不在PATH中")
+        except Exception as e:
+            raise Exception(f"执行Git命令时发生错误: {str(e)}")
 
     def update_status(self):
         self.status_text.delete(1.0, tk.END)
@@ -493,6 +522,88 @@ class GitHubBranchTool:
 
         except Exception as e:
             self.branch_listbox.insert(tk.END, f"错误: {str(e)}")
+    
+    def _create_ssl_context(self):
+        """创建不验证SSL证书的上下文（解决Windows证书问题）"""
+        import ssl
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        return context
+
+    def test_https_connection(self):
+        """测试HTTPS连接（使用Personal Access Token）"""
+        def worker():
+            try:
+                token = self.github_token.get()
+                if not token:
+                    messagebox.showerror("错误", "请先在设置页面填写您的GitHub访问令牌(Personal Access Token)！")
+                    return
+                
+                self.progress_label.config(text="正在测试GitHub API连接...", fg="#3498db")
+                self.status_label.config(text="正在测试GitHub API连接...")
+                self.master.update()
+                
+                # 测试GitHub API连接
+                import urllib.request
+                req = urllib.request.Request(
+                    "https://api.github.com/user",
+                    headers={
+                        "Authorization": f"token {token}",
+                        "Accept": "application/vnd.github.v3+json",
+                        "User-Agent": "GitHub-Tool"
+                    }
+                )
+                ssl_context = self._create_ssl_context()
+                response = urllib.request.urlopen(req, context=ssl_context, timeout=15)
+                user_info = json.loads(response.read().decode())
+                username = user_info.get("login", "")
+                
+                self.progress_label.config(text="正在获取仓库信息...", fg="#3498db")
+                self.status_label.config(text="正在获取仓库信息...")
+                self.master.update()
+                
+                # 获取仓库列表
+                repo_req = urllib.request.Request(
+                    "https://api.github.com/user/repos?per_page=3",
+                    headers={
+                        "Authorization": f"token {token}",
+                        "Accept": "application/vnd.github.v3+json",
+                        "User-Agent": "GitHub-Tool"
+                    }
+                )
+                repo_response = urllib.request.urlopen(repo_req, context=ssl_context, timeout=15)
+                repos = json.loads(repo_response.read().decode())
+                
+                repo_names = [repo.get("name", "") for repo in repos[:3]]
+                
+                self.progress_label.config(text="✅ 测试完成", fg="#27ae60")
+                self.status_label.config(text="HTTPS连接测试成功")
+                
+                messagebox.showinfo("HTTPS连接成功", 
+                    f"✅ GitHub HTTPS连接测试成功！\n\n用户: {username}\n令牌有效，网络正常\n\n您的仓库示例:\n{chr(10).join(repo_names) if repo_names else '暂无仓库'}")
+                
+            except urllib.error.HTTPError as e:
+                error_code = e.code
+                if error_code == 401:
+                    messagebox.showerror("认证失败", 
+                        f"❌ 访问令牌无效！\n\nHTTP错误码: {error_code}\n\n请检查您的Personal Access Token是否正确。\n确保Token具有repo权限。")
+                elif error_code == 403:
+                    messagebox.showerror("访问被拒绝", 
+                        f"❌ 访问被拒绝！\n\nHTTP错误码: {error_code}\n\n可能是Token权限不足或请求次数超限。")
+                else:
+                    messagebox.showerror("HTTP错误", 
+                        f"❌ HTTP错误！\n\n错误码: {error_code}\n错误信息: {e.read().decode()}")
+            except urllib.error.URLError as e:
+                messagebox.showerror("网络错误", 
+                    f"❌ 网络连接失败！\n\n错误: {str(e)}\n\n请检查网络连接或尝试更换网络。")
+            except Exception as e:
+                messagebox.showerror("测试失败", f"❌ HTTPS连接测试失败！\n\n错误: {str(e)}")
+            finally:
+                self.progress_label.config(text="测试完成", fg="#27ae60")
+                self.status_label.config(text="就绪")
+        
+        threading.Thread(target=worker, daemon=True).start()
 
     def refresh_tags(self):
         self.tag_listbox.delete(0, tk.END)
@@ -535,6 +646,25 @@ class GitHubBranchTool:
                 if rc != 0 or not remote_output:
                     raise Exception("未配置远程仓库")
                 remote_name = remote_output.split()[0]
+                
+                # 获取远程URL
+                remote_url_output, _, _ = self.run_git_command("remote", "get-url", remote_name)
+                remote_url = remote_url_output.strip()
+                
+                # 获取Token用于HTTPS认证
+                token = self.github_token.get()
+                use_https_auth = token and remote_url.startswith("https://")
+                
+                if use_https_auth:
+                    # 使用HTTPS + Token认证，构建认证URL
+                    auth_url = remote_url.replace("https://", f"https://{token}@")
+                    step += 1
+                    self.progress_bar.config(value=int(step/steps*100))
+                    self.progress_label.config(text="正在配置HTTPS认证...", fg="#3498db")
+                    self.status_label.config(text="正在配置HTTPS认证...")
+                    self.master.update()
+                    # 更新远程URL为带Token的URL（临时）
+                    self.run_git_command("remote", "set-url", remote_name, auth_url)
 
                 if self.include_all_files.get():
                     step += 1
@@ -578,6 +708,10 @@ class GitHubBranchTool:
                 if self.force_push.get():
                     push_cmd.append("--force")
                 self.run_git_command(*push_cmd)
+                
+                # 如果使用了临时的认证URL，恢复原来的URL
+                if use_https_auth:
+                    self.run_git_command("remote", "set-url", remote_name, remote_url)
 
                 if tag and self.push_tags.get():
                     step += 1
@@ -951,7 +1085,8 @@ class GitHubBranchTool:
                     "User-Agent": "GitHub-Tool"
                 }
             )
-            response = urllib.request.urlopen(req, timeout=15)
+            ssl_context = self._create_ssl_context()
+            response = urllib.request.urlopen(req, context=ssl_context, timeout=15)
             user_info = json.loads(response.read().decode())
             username = user_info.get("login", "")
             

@@ -816,21 +816,27 @@ class DictionarySystem:
             font_size_small = 20
             font_size_large = 50
         
-        # 加载字体
-        font_name = get_system_font_name()
+        # 加载字体 - 优先使用内置字体
         try:
-            if font_name:
-                self.font_main = pygame.font.SysFont(font_name, font_size_main)
-                self.font_small = pygame.font.SysFont(font_name, font_size_small)
-                self.font_large = pygame.font.SysFont(font_name, font_size_large)
-            else:
+            from ASSET.font_manager import load_font
+            self.font_main = load_font(font_size_main)
+            self.font_small = load_font(font_size_small)
+            self.font_large = load_font(font_size_large)
+        except Exception:
+            font_name = get_system_font_name()
+            try:
+                if font_name:
+                    self.font_main = pygame.font.SysFont(font_name, font_size_main)
+                    self.font_small = pygame.font.SysFont(font_name, font_size_small)
+                    self.font_large = pygame.font.SysFont(font_name, font_size_large)
+                else:
+                    self.font_main = pygame.font.Font(None, font_size_main)
+                    self.font_small = pygame.font.Font(None, font_size_small)
+                    self.font_large = pygame.font.Font(None, font_size_large)
+            except Exception:
                 self.font_main = pygame.font.Font(None, font_size_main)
                 self.font_small = pygame.font.Font(None, font_size_small)
                 self.font_large = pygame.font.Font(None, font_size_large)
-        except Exception:
-            self.font_main = pygame.font.Font(None, font_size_main)
-            self.font_small = pygame.font.Font(None, font_size_small)
-            self.font_large = pygame.font.Font(None, font_size_large)
         
         return True
     
