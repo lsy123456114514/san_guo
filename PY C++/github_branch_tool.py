@@ -657,7 +657,10 @@ class GitHubBranchTool:
                 
                 if use_https_auth:
                     # 使用HTTPS + Token认证，构建认证URL
-                    auth_url = remote_url.replace("https://", f"https://{token}@")
+                    # 对Token进行URL编码，处理特殊字符
+                    import urllib.parse
+                    encoded_token = urllib.parse.quote(token, safe='')
+                    auth_url = remote_url.replace("https://", f"https://{encoded_token}@")
                     step += 1
                     self.progress_bar.config(value=int(step/steps*100))
                     self.progress_label.config(text="正在配置HTTPS认证...", fg="#3498db")
@@ -1000,7 +1003,10 @@ class GitHubBranchTool:
 
                 token = self.github_token.get()
                 if token and url.startswith("https://"):
-                    auth_url = url.replace("https://", f"https://{token}@")
+                    # 对Token进行URL编码，处理特殊字符
+                    import urllib.parse
+                    encoded_token = urllib.parse.quote(token, safe='')
+                    auth_url = url.replace("https://", f"https://{encoded_token}@")
                 else:
                     auth_url = url
 
