@@ -456,7 +456,12 @@ class GitHubBranchTool:
         except subprocess.TimeoutExpired:
             raise Exception(f"Git命令超时 ({timeout}秒)")
         except subprocess.CalledProcessError as e:
-            raise Exception(f"Git命令执行失败: {e.stderr}")
+            # 获取详细的错误信息
+            cmd_str = " ".join(["git"] + list(args))
+            stderr_msg = str(e.stderr) if hasattr(e, 'stderr') else str(e)
+            stdout_msg = str(e.stdout) if hasattr(e, 'stdout') else ""
+            error_detail = f"命令: {cmd_str}\n工作目录: {cwd}\n返回码: {e.returncode}\n\n标准输出:\n{stdout_msg}\n\n错误信息:\n{stderr_msg}"
+            raise Exception(f"Git命令执行失败:\n\n{error_detail}")
         except FileNotFoundError:
             raise Exception("Git未安装或不在PATH中")
         except Exception as e:
