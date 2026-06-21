@@ -7,13 +7,11 @@ def hide_file(filepath):
     """隐藏文件（仅Windows）"""
     if platform.system() == "Windows":
         try:
-            # 先确保文件存在
+            if not filepath or not isinstance(filepath, str):
+                return
             if not os.path.exists(filepath):
                 return
-            # 先确保有普通权限（移除隐藏），再设置隐藏
             import ctypes
-            # 0x02 = FILE_ATTRIBUTE_HIDDEN
-            # 0x80 = FILE_ATTRIBUTE_NORMAL
             ctypes.windll.kernel32.SetFileAttributesW(filepath, 0x80)
             ctypes.windll.kernel32.SetFileAttributesW(filepath, 0x02)
         except Exception:
@@ -187,8 +185,7 @@ SETTINGS = {
 }
 
 def get_system_font_name():
-    """跨系统中文字体适配（含安卓）"""
-    # 打开日志文件
+    """跨系统中文字体适配（含安卓）- 兜底方案"""
     try:
         log_file = open("debug.log", "a", encoding="utf-8")
         hide_file("debug.log")
@@ -197,15 +194,13 @@ def get_system_font_name():
     
     s = platform.system()
     if s == "Windows":
-        # 尝试多个Windows中文字体，按优先级排序
-        # 优先选择同时支持中文和emoji的字体
         font_list = [
-            "Microsoft YaHei",      # 微软雅黑，优先选择这个，它在Windows上更常用
-            "SimHei",               # 黑体
-            "Microsoft YaHei UI",  # 微软雅黑UI
-            "Segoe UI",             # Windows默认字体，支持emoji
-            "Arial",                # 通用字体
-            None                     # 默认字体
+            "Microsoft YaHei",
+            "SimHei",
+            "Microsoft YaHei UI",
+            "Segoe UI",
+            "Arial",
+            None
         ]
         for font_name in font_list:
             try:
@@ -214,21 +209,17 @@ def get_system_font_name():
                 else:
                     font = pygame.font.Font(None, 12)
                 
-                # 测试字体是否能正确渲染中文
                 test_text = "测试中文"
                 test_surface = font.render(test_text, True, (255, 255, 255))
                 if test_surface and test_surface.get_width() > 0:
-                    # 写入日志文件
                     if log_file:
                         log_file.write(f"选择字体: {font_name if font_name else '默认字体'}\n")
                         log_file.close()
                     return font_name
             except Exception as e:
-                # 写入日志文件
                 if log_file:
                     log_file.write(f"字体 {font_name} 失败: {e}\n")
                 continue
-        # 关闭日志文件
         if log_file:
             log_file.close()
         return None
@@ -241,12 +232,16 @@ def get_system_font_name():
         if log_file:
             log_file.write("选择字体: DroidSansFallback\n")
             log_file.close()
-        return "DroidSansFallback"  # 安卓默认中文字体
+        return "DroidSansFallback"
     
-    # 关闭日志文件
     if log_file:
         log_file.close()
     return None
+
+def get_font(size):
+    """获取字体，优先使用内置字体"""
+    from ASSET.font_manager import get_cached_font
+    return get_cached_font(size)
 
 def load_sound(file_name: str):
     """加载音效：无文件/静音则跳过"""

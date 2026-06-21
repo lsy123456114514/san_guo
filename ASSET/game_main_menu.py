@@ -486,7 +486,7 @@ def test_font_renderable(font, text="测试"):
         return False
 
 def init_fonts():
-    """初始化字体 - 增强兼容性版本"""
+    """初始化字体 - 增强兼容性版本，优先使用内置字体"""
     global FONT_MAIN, FONT_SMALL, FONT_BIG
 
     current_platform = get_platform()
@@ -498,6 +498,17 @@ def init_fonts():
         base_size = 40
         small_size = 28
         big_size = 60
+
+    # 优先尝试使用内置字体文件
+    try:
+        from ASSET.font_manager import load_font
+        FONT_MAIN = load_font(base_size)
+        FONT_SMALL = load_font(small_size)
+        FONT_BIG = load_font(big_size)
+        logger.info("成功加载内置字体")
+        return
+    except Exception as e:
+        logger.warning(f"加载内置字体失败，尝试系统字体: {e}")
 
     system_font = get_system_font_name()
     if system_font:

@@ -7,3 +7,7 @@ numpy
 requests
 pillow
 pyinstaller
+
+# 声纹识别依赖
+librosa
+sounddevice
