@@ -762,10 +762,14 @@ HERO_FACTIONS = {
 }
 
 # 选择武将函数
-def select_heroes(screen, font_title, font_normal, font_small):
+def select_heroes(screen, font_title, font_normal, font_small, clock=None):
     """选择上阵武将"""
     SCREEN_WIDTH = screen.get_width()
     SCREEN_HEIGHT = screen.get_height()
+    
+    # 如果没有传入clock，使用本地clock
+    if clock is None:
+        clock = pygame.time.Clock()
     
     # 获取可用武将
     available_heroes = list(data["heroes"].keys())
@@ -870,10 +874,14 @@ def select_heroes(screen, font_title, font_normal, font_small):
     return []
 
 # 选择宠物函数
-def select_pet(screen, font_title, font_normal, font_small):
+def select_pet(screen, font_title, font_normal, font_small, clock=None):
     """选择上阵宠物"""
     SCREEN_WIDTH = screen.get_width()
     SCREEN_HEIGHT = screen.get_height()
+    
+    # 如果没有传入clock，使用本地clock
+    if clock is None:
+        clock = pygame.time.Clock()
     
     # 获取可用宠物
     available_pets = []
