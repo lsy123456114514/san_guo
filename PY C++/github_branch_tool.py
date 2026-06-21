@@ -707,7 +707,12 @@ class GitHubBranchTool:
                 push_cmd = ["push", "-u", remote_name, branch]
                 if self.force_push.get():
                     push_cmd.append("--force")
+                
+                # 临时设置Git跳过SSL验证（解决Windows证书问题）
+                self.run_git_command("config", "http.sslVerify", "false")
                 self.run_git_command(*push_cmd)
+                # 恢复SSL验证设置
+                self.run_git_command("config", "--unset", "http.sslVerify")
                 
                 # 如果使用了临时的认证URL，恢复原来的URL
                 if use_https_auth:
@@ -728,7 +733,10 @@ class GitHubBranchTool:
                             raise Exception(f"标签 '{tag}' 已存在")
 
                     self.run_git_command("tag", "-a", tag, "-m", tag_msg)
+                    # 推送标签也需要跳过SSL验证
+                    self.run_git_command("config", "http.sslVerify", "false")
                     self.run_git_command("push", remote_name, "tag", tag)
+                    self.run_git_command("config", "--unset", "http.sslVerify")
 
                 step += 1
                 self.progress_bar.config(value=100)
@@ -861,7 +869,10 @@ class GitHubBranchTool:
             remote_name = remote_output.split()[0] if remote_output else "origin"
 
             current_branch = self.run_git_command("rev-parse", "--abbrev-ref", "HEAD")[0]
+            # 拉取也需要跳过SSL验证
+            self.run_git_command("config", "http.sslVerify", "false")
             self.run_git_command("pull", remote_name, current_branch)
+            self.run_git_command("config", "--unset", "http.sslVerify")
 
             self.status_label.config(text="拉取完成")
             messagebox.showinfo("成功", "拉取更新成功!")
@@ -993,7 +1004,10 @@ class GitHubBranchTool:
                 else:
                     auth_url = url
 
+                # 克隆也需要跳过SSL验证
+                self.run_git_command("config", "--global", "http.sslVerify", "false")
                 self.run_git_command("clone", auth_url, full_path)
+                self.run_git_command("config", "--global", "--unset", "http.sslVerify")
 
                 self.repo_log.insert(tk.END, "✅ 克隆成功!\n\n")
                 self.status_label.config(text="克隆完成")
