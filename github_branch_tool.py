@@ -407,8 +407,16 @@ class GitHubBranchTool:
         if path:
             self.local_path.set(path)
 
-    def run_git_command(self, *args, capture=True, check=True, timeout=60):
+    def run_git_command(self, *args, capture=True, check=True, timeout=120, use_token=False):
         try:
+            env = os.environ.copy()
+            if use_token:
+                token = self.github_token.get()
+                if token:
+                    env['GIT_ASKPASS'] = ''
+                    env['GIT_USERNAME'] = 'token'
+                    env['GIT_PASSWORD'] = token
+            
             if capture:
                 result = subprocess.run(
                     ["git"] + list(args),
@@ -416,22 +424,34 @@ class GitHubBranchTool:
                     text=True,
                     encoding='utf-8',
                     errors='replace',
-                    timeout=timeout
+                    timeout=timeout,
+                    env=env
                 )
                 if check and result.returncode != 0:
+                    stderr = result.stderr.strip()
+                    stdout = result.stdout.strip()
+                    error_msg = stderr if stderr else stdout
+                    if "Could not read from remote repository" in error_msg:
+                        error_msg += "\n\n可能的解决方案：\n1. 检查远程仓库URL是否正确\n2. 确保您有仓库的访问权限\n3. 尝试使用SSH密钥或Personal Access Token"
+                    elif "Failed to connect" in error_msg:
+                        error_msg += "\n\n可能的解决方案：\n1. 检查网络连接\n2. 检查防火墙设置\n3. 尝试使用VPN或更换网络"
+                    elif "authentication failed" in error_msg.lower() or "login failed" in error_msg.lower():
+                        error_msg += "\n\n可能的解决方案：\n1. 检查Personal Access Token是否正确\n2. 确保Token有repo权限\n3. 尝试重新生成Token"
                     raise subprocess.CalledProcessError(
-                        result.returncode, list(args), result.stdout, result.stderr
+                        result.returncode, list(args), stdout, error_msg
                     )
                 return result.stdout.strip(), result.stderr.strip(), result.returncode
             else:
-                result = subprocess.run(["git"] + list(args), check=True, timeout=timeout)
+                result = subprocess.run(["git"] + list(args), check=True, timeout=timeout, env=env)
                 return "", "", 0
         except subprocess.TimeoutExpired:
-            raise Exception(f"Git命令超时 ({timeout}秒)")
+            raise Exception(f"Git命令超时 ({timeout}秒)。请检查网络连接或增加超时时间。")
         except subprocess.CalledProcessError as e:
             raise Exception(f"Git命令执行失败: {e.stderr}")
         except FileNotFoundError:
-            raise Exception("Git未安装或不在PATH中")
+            raise Exception("Git未安装或不在PATH中，请先安装Git")
+        except Exception as e:
+            raise Exception(f"执行Git命令时发生错误: {str(e)}")
 
     def update_status(self):
         self.status_text.delete(1.0, tk.END)
@@ -577,7 +597,12 @@ class GitHubBranchTool:
                 push_cmd = ["push", "-u", remote_name, branch]
                 if self.force_push.get():
                     push_cmd.append("--force")
-                self.run_git_command(*push_cmd)
+                
+                token = self.github_token.get()
+                if token:
+                    self.run_git_command(*push_cmd, use_token=True)
+                else:
+                    self.run_git_command(*push_cmd)
 
                 if tag and self.push_tags.get():
                     step += 1
@@ -727,7 +752,12 @@ class GitHubBranchTool:
             remote_name = remote_output.split()[0] if remote_output else "origin"
 
             current_branch = self.run_git_command("rev-parse", "--abbrev-ref", "HEAD")[0]
-            self.run_git_command("pull", remote_name, current_branch)
+            
+            token = self.github_token.get()
+            if token:
+                self.run_git_command("pull", remote_name, current_branch, use_token=True)
+            else:
+                self.run_git_command("pull", remote_name, current_branch)
 
             self.status_label.config(text="拉取完成")
             messagebox.showinfo("成功", "拉取更新成功!")
