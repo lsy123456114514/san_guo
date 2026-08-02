@@ -175,8 +175,20 @@ def load_users():
 def save_users(users):
     """保存用户数据"""
     try:
-        with open(USERS_PATH, "w", encoding="utf-8") as f:
+        if os.path.exists(USERS_PATH):
+            backup_path = USERS_PATH + ".bak"
+            with open(USERS_PATH, "rb") as f_in:
+                with open(backup_path, "wb") as f_out:
+                    f_out.write(f_in.read())
+        
+        temp_path = USERS_PATH + ".tmp"
+        with open(temp_path, "w", encoding="utf-8") as f:
             json.dump(users, f, ensure_ascii=False, indent=2)
+        
+        if os.path.exists(USERS_PATH):
+            os.remove(USERS_PATH)
+        os.rename(temp_path, USERS_PATH)
+        
         hide_file(USERS_PATH)
     except Exception as e:
         import logging
@@ -485,8 +497,13 @@ def main():
             SCREEN_WIDTH = info.current_w
             SCREEN_HEIGHT = info.current_h
         else:
-            SCREEN_WIDTH = 600
-            SCREEN_HEIGHT = 400
+            info = pygame.display.Info()
+            screen_width_full = info.current_w
+            screen_height_full = info.current_h
+            SCREEN_WIDTH = int(screen_width_full * 0.75)
+            SCREEN_HEIGHT = int(screen_height_full * 0.75)
+            SCREEN_WIDTH = max(600, min(SCREEN_WIDTH, screen_width_full - 100))
+            SCREEN_HEIGHT = max(400, min(SCREEN_HEIGHT, screen_height_full - 100))
         
         screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption("登录系统")

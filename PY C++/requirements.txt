@@ -1,9 +1,9 @@
 # 三国霸业游戏依赖
 # 核心依赖
-pygame
+pygame-ce>=2.5.0
+requests>=2.31.0
+cryptography>=41.0.0
+pillow>=10.0.0
 
-# 可选依赖
-numpy
-requests
-pillow
-pyinstaller
+# 打包工具
+pyinstaller>=6.0.0

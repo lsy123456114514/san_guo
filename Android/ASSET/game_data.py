@@ -1,7 +1,21 @@
 import json
 import os
+import sys
 import platform
 import pygame
+from ASSET.hero_database import (
+    HERO_DATABASE, HERO_BONDS_EXPANDED, HERO_QUALITY as DB_HERO_QUALITY
+)
+from ASSET.log_system import info, warning, error, critical, sync_time, get_data_version
+from ASSET.data_validator import data_validator, type_safe
+
+def get_resource_path(relative_path):
+    """获取资源文件路径（支持PyInstaller打包）"""
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative_path)
 
 def hide_file(filepath):
     """隐藏文件（仅Windows）"""
@@ -62,7 +76,8 @@ GUNS = {
 }
 
 # 武将羁绊配置 - 三国历史特色
-HERO_BONDS = {
+# 基础6条羁绊（向后兼容），随后合并hero_database中的HERO_BONDS_EXPANDED（38条扩展羁绊）
+_BASE_HERO_BONDS = {
     "taoyuan": {
         "name": "桃园结义",
         "heroes": ["刘备", "关羽", "张飞"],
@@ -119,18 +134,27 @@ HERO_BONDS = {
     }
 }
 
-# 元素共鸣增强配置
+# 合并：以基础羁绊为底，再用扩展羁绊覆盖/追加（共38+条羁绊）
+HERO_BONDS = dict(_BASE_HERO_BONDS)
+HERO_BONDS.update(HERO_BONDS_EXPANDED)
+
+# 元素共鸣增强配置（key格式：中文_中文，与battle_system的synergy_key生成一致）
 ELEMENT_SYNERGIES = {
-    "fire_fire": {"type": "burn", "damage": 15, "turns": 3, "desc": "灼烧：每回合15伤害，持续3回合"},
-    "water_water": {"type": "heal", "amount": 20, "desc": "治愈：回复20生命"},
-    "wood_wood": {"type": "shield", "amount": 25, "desc": "护盾：获得25点护盾"},
-    "fire_water": {"type": "steam", "damage": 30, "desc": "蒸汽：对敌人造成30伤害"},
-    "wood_fire": {"type": "wildfire", "damage": 35, "aoe": True, "desc": "野火：35伤害，可攻击所有敌人"},
-    "water_fire": {"type": "steam", "damage": 30, "desc": "蒸汽：对敌人造成30伤害"},
-    "fire_wood": {"type": "wildfire", "damage": 35, "aoe": True, "desc": "野火：35伤害，可攻击所有敌人"},
-    "water_wood": {"type": "heal_shield", "heal": 15, "shield": 15, "desc": "生命之泉：回复15生命并获得15护盾"},
-    "fire_metal": {"type": "lava", "damage": 40, "desc": "熔岩：40伤害，附带灼烧"},
-    "water_metal": {"type": "frost", "damage": 25, "slow": 1, "desc": "寒冰：25伤害并减速1回合"}
+    "火_火": {"type": "burn", "damage": 15, "turns": 3, "desc": "灼烧：每回合15伤害，持续3回合"},
+    "水_水": {"type": "heal", "amount": 20, "desc": "治愈：回复20生命"},
+    "木_木": {"type": "shield", "amount": 25, "desc": "护盾：获得25点护盾"},
+    "火_水": {"type": "steam", "damage": 30, "desc": "蒸汽：对敌人造成30伤害"},
+    "木_火": {"type": "wildfire", "damage": 35, "aoe": True, "desc": "野火：35伤害，可攻击所有敌人"},
+    "水_火": {"type": "steam", "damage": 30, "desc": "蒸汽：对敌人造成30伤害"},
+    "火_木": {"type": "wildfire", "damage": 35, "aoe": True, "desc": "野火：35伤害，可攻击所有敌人"},
+    "水_木": {"type": "heal_shield", "heal": 15, "shield": 15, "desc": "生命之泉：回复15生命并获得15护盾"},
+    "火_金": {"type": "lava", "damage": 40, "desc": "熔岩：40伤害，附带灼烧"},
+    "水_金": {"type": "frost", "damage": 25, "slow": 1, "desc": "寒冰：25伤害并减速1回合"},
+    "雷_雷": {"type": "chain_thunder", "damage": 45, "desc": "连锁雷电：造成45伤害，可连锁攻击"},
+    "风_风": {"type": "tornado", "damage": 30, "aoe": True, "desc": "龙卷风：30伤害，可攻击所有敌人"},
+    "土_土": {"type": "earthquake", "damage": 35, "desc": "地震：造成35伤害"},
+    "雷_水": {"type": "electrocute", "damage": 40, "desc": "电击：40伤害，附带麻痹"},
+    "风_土": {"type": "sandstorm", "damage": 25, "aoe": True, "desc": "沙尘暴：25伤害，降低命中"},
 }
 
 # 元素弱点配置（玩家攻击敌人时）
@@ -157,8 +181,12 @@ if 'ANDROID_DATA' in os.environ:
     from android.storage import app_storage_path
     SAVE_PATH = os.path.join(app_storage_path(), "save.json")
 else:
-    SAVE_PATH = os.path.join(os.path.dirname(__file__), "save.json")
-SOUND_DIR = os.path.join(os.path.dirname(__file__), "sounds")
+    try:
+        exe_dir = os.path.dirname(sys.executable)
+        SAVE_PATH = os.path.join(exe_dir, "save.json")
+    except:
+        SAVE_PATH = os.path.join(os.path.dirname(__file__), "save.json")
+SOUND_DIR = get_resource_path("sounds")
 
 # 全局设置
 SETTINGS = {
@@ -260,132 +288,101 @@ def load_sound(file_name: str):
     except Exception:
         return None
 
+def safe_get(data_dict, keys, default=None):
+    """安全获取嵌套数据，避免KeyError"""
+    if not isinstance(data_dict, dict):
+        return default
+    result = data_dict
+    for key in keys:
+        if isinstance(result, dict) and key in result:
+            result = result[key]
+        else:
+            return default
+    return result
+
+def ensure_keys(data_dict, required_keys, default_values=None):
+    """确保数据字典包含必要的键"""
+    if default_values is None:
+        default_values = {}
+    for key in required_keys:
+        if key not in data_dict:
+            data_dict[key] = default_values.get(key, None)
+    return data_dict
+
+def log_error(message, error=None):
+    """记录错误日志"""
+    error(message, error)
+
 # 元素类型
 ELEMENTS = ["火", "水", "土", "风", "雷"]
 
-# 武将技能
-HERO_SKILLS = {
-    "赵云": {
-        "name": "龙胆亮枪",
-        "damage": 30,
-        "element": "风",
-        "description": "快速刺击，带有风元素伤害"
-    },
-    "关羽": {
-        "name": "青龙偃月",
-        "damage": 40,
-        "element": "火",
-        "description": "强力斩击，带有火元素伤害"
-    },
-    "张飞": {
-        "name": "丈八蛇矛",
-        "damage": 35,
-        "element": "土",
-        "description": "范围攻击，带有土元素伤害"
-    },
-    "诸葛亮": {
-        "name": "八阵图",
-        "damage": 45,
-        "element": "雷",
-        "description": "法术攻击，带有雷元素伤害"
-    },
-    "曹操": {
-        "name": "魏武挥鞭",
-        "damage": 38,
-        "element": "火",
-        "description": "统帅攻击，带有火元素伤害"
-    },
-    "吕布": {
-        "name": "方天画戟",
-        "damage": 50,
-        "element": "雷",
-        "description": "终极攻击，带有雷元素伤害"
-    },
-    "貂蝉": {
-        "name": "倾国倾城",
-        "damage": 25,
-        "element": "水",
-        "description": "魅惑攻击，带有水元素伤害"
-    },
-    "黄忠": {
-        "name": "百步穿杨",
-        "damage": 42,
-        "element": "风",
-        "description": "远程攻击，带有风元素伤害"
-    },
-    "马超": {
-        "name": "西凉铁骑",
-        "damage": 32,
-        "element": "土",
-        "description": "冲锋攻击，带有土元素伤害"
-    },
-    "周瑜": {
-        "name": "火烧赤壁",
-        "damage": 48,
-        "element": "火",
-        "description": "范围攻击，带有火元素伤害"
-    },
-    "刘备": {
-        "name": "仁义之剑",
-        "damage": 35,
-        "element": "风",
-        "description": "仁者无敌，带有风元素伤害"
-    },
-    "孙权": {
-        "name": "江东之盾",
-        "damage": 30,
-        "element": "水",
-        "description": "守护江东，带有水元素伤害"
-    },
-    "司马懿": {
-        "name": "空城计",
-        "damage": 45,
-        "element": "雷",
-        "description": "智谋无双，带有雷元素伤害"
-    },
-    "魏延": {
-        "name": "反骨之勇",
-        "damage": 40,
-        "element": "火",
-        "description": "勇猛无比，带有火元素伤害"
-    },
-    "庞统": {
-        "name": "连环计",
-        "damage": 42,
-        "element": "土",
-        "description": "计谋百出，带有土元素伤害"
-    },
-    "姜维": {
-        "name": "天水麒麟",
-        "damage": 38,
-        "element": "风",
-        "description": "麒麟之才，带有风元素伤害"
-    },
-    "许褚": {
-        "name": "虎痴之力",
-        "damage": 48,
-        "element": "土",
-        "description": "力大无穷，带有土元素伤害"
-    },
-    "典韦": {
-        "name": "古之恶来",
-        "damage": 50,
-        "element": "火",
-        "description": "恶来之勇，带有火元素伤害"
-    },
-    "张辽": {
-        "name": "威震逍遥津",
-        "damage": 45,
-        "element": "风",
-        "description": "威震八方，带有风元素伤害"
-    },
-    "甘宁": {
-        "name": "锦帆贼",
-        "damage": 40,
-        "element": "水",
-        "description": "水上霸主，带有水元素伤害"
-    }
+# 武将技能 - 从hero_database动态构建（覆盖全部135名武将的技能/终极技/被动）
+# 旧版仅20条静态数据，新版自动同步HERO_DATABASE的完整技能信息
+_BASE_HERO_SKILLS = {
+    "赵云": {"name": "龙胆亮枪", "damage": 30, "element": "风", "description": "快速刺击，带有风元素伤害"},
+    "关羽": {"name": "青龙偃月", "damage": 40, "element": "火", "description": "强力斩击，带有火元素伤害"},
+    "张飞": {"name": "丈八蛇矛", "damage": 35, "element": "土", "description": "范围攻击，带有土元素伤害"},
+    "诸葛亮": {"name": "八阵图", "damage": 45, "element": "雷", "description": "法术攻击，带有雷元素伤害"},
+    "曹操": {"name": "魏武挥鞭", "damage": 38, "element": "火", "description": "统帅攻击，带有火元素伤害"},
+    "吕布": {"name": "方天画戟", "damage": 50, "element": "雷", "description": "终极攻击，带有雷元素伤害"},
+    "貂蝉": {"name": "倾国倾城", "damage": 25, "element": "水", "description": "魅惑攻击，带有水元素伤害"},
+    "黄忠": {"name": "百步穿杨", "damage": 42, "element": "风", "description": "远程攻击，带有风元素伤害"},
+    "马超": {"name": "西凉铁骑", "damage": 32, "element": "土", "description": "冲锋攻击，带有土元素伤害"},
+    "周瑜": {"name": "火烧赤壁", "damage": 48, "element": "火", "description": "范围攻击，带有火元素伤害"},
+    "刘备": {"name": "仁义之剑", "damage": 35, "element": "风", "description": "仁者无敌，带有风元素伤害"},
+    "孙权": {"name": "江东之盾", "damage": 30, "element": "水", "description": "守护江东，带有水元素伤害"},
+    "司马懿": {"name": "空城计", "damage": 45, "element": "雷", "description": "智谋无双，带有雷元素伤害"},
+    "魏延": {"name": "反骨之勇", "damage": 40, "element": "火", "description": "勇猛无比，带有火元素伤害"},
+    "庞统": {"name": "连环计", "damage": 42, "element": "土", "description": "计谋百出，带有土元素伤害"},
+    "姜维": {"name": "天水麒麟", "damage": 38, "element": "风", "description": "麒麟之才，带有风元素伤害"},
+    "许褚": {"name": "虎痴之力", "damage": 48, "element": "土", "description": "力大无穷，带有土元素伤害"},
+    "典韦": {"name": "古之恶来", "damage": 50, "element": "火", "description": "恶来之勇，带有火元素伤害"},
+    "张辽": {"name": "威震逍遥津", "damage": 45, "element": "风", "description": "威震八方，带有风元素伤害"},
+    "甘宁": {"name": "锦帆贼", "damage": 40, "element": "水", "description": "水上霸主，带有水元素伤害"}
 }
+
+def _build_hero_skills():
+    """从HERO_DATABASE构建完整的武将技能表
+    每条记录格式：{name, damage, element, description, type, ultimate, passive}
+    兼容旧版仅含name/damage/element/description的调用方
+    """
+    result = {}
+    for hero_name, info in HERO_DATABASE.items():
+        skill = info.get("skill", {})
+        ultimate = info.get("ultimate", {})
+        passive = info.get("passive", {})
+        element = skill.get("element", info.get("element", "土"))
+        result[hero_name] = {
+            "name": skill.get("name", "普通攻击"),
+            "damage": skill.get("damage", 25),
+            "element": element,
+            "description": skill.get("description", f"{hero_name}的技能攻击，带有{element}元素伤害"),
+            "type": skill.get("type", "normal"),
+            # 扩展字段（向后兼容，旧代码不会读取这些字段）
+            "ultimate_name": ultimate.get("name", ""),
+            "ultimate_damage": ultimate.get("damage", 100),
+            "ultimate_element": ultimate.get("element", element),
+            "ultimate_type": ultimate.get("type", "normal"),
+            "ultimate_description": ultimate.get("description", ""),
+            "passive_name": passive.get("name", ""),
+            "passive_description": passive.get("description", ""),
+            "faction": info.get("faction", "qun"),
+            "quality": info.get("quality", "common"),
+        }
+    # 用旧版静态数据覆盖（确保旧版技能描述风格仍可用于这20个核心武将）
+    for h, s in _BASE_HERO_SKILLS.items():
+        if h in result:
+            # 保留旧版技能名/描述风格，但补充扩展字段
+            base = result[h]
+            base["name"] = s["name"]
+            base["damage"] = s["damage"]
+            base["element"] = s["element"]
+            base["description"] = s["description"]
+        else:
+            result[h] = dict(s)
+    return result
+
+HERO_SKILLS = _build_hero_skills()
 
 # 装备技能对应关系
 EQUIP_SKILLS = {
@@ -1220,6 +1217,7 @@ TALENT_TREE = {
 default_save = {
     "username": "",
     "password": "",
+    "data_version": get_data_version(),
     "resources": {r:0 for r in RESOURCES},
     "normal_dungeon": 1,
     "infinite_dungeon": 1,
@@ -1253,10 +1251,6 @@ default_save = {
             "end": "2026-11-05",
             "reward": "金元宝*200, 南瓜灯*50, 万圣节皮肤*1"
         }
-    },
-    "achievements": {
-        "completed": [],
-        "progress": {}
     },
     "tech_tree": {
         "unlocked": ["resource", "occupation", "combat", "defense", "special"]
@@ -1475,6 +1469,280 @@ def calculate_passive_income():
     data['last_login'] = current_time
     save()
 
+def _migrate_equipment_data(data):
+    from ASSET.hero_database import EQUIPMENT_DATABASE
+    if 'equips' in data:
+        for equip_type, value in list(data['equips'].items()):
+            if isinstance(value, int):
+                count = value
+                data['equips'][equip_type] = []
+                equip_names = [name for name, info in EQUIPMENT_DATABASE.items() if info.get('type') == equip_type]
+                if equip_names:
+                    for i in range(count):
+                        data['equips'][equip_type].append(equip_names[i % len(equip_names)])
+
+
+def _load_custom_heroes(data):
+    from ASSET.hero_database import HERO_DATABASE
+    if 'custom_heroes' in data and isinstance(data['custom_heroes'], dict):
+        for hero_name, hero_data in data['custom_heroes'].items():
+            if hero_name not in HERO_DATABASE:
+                HERO_DATABASE[hero_name] = hero_data
+                info(f"加载自定义武将: {hero_name}")
+
+
+def _migrate_data(data):
+    """
+    数据版本迁移主函数
+    
+    版本迁移链: v0 -> v1 -> v2 -> v3(当前)
+    
+    v0: 原始格式 - equips为整数数量, 没有hero_levels/equip_levels
+    v1: 添加custom_heroes, hero_advancement, territory字段
+    v2: custom_heroes结构规范化 - 添加base_attributes, skills, passive_skills, ultimate_skill
+    v3: 当前版本 - 添加season字段
+    """
+    current_version = get_data_version()
+    save_version = data.get('data_version', 0)
+    
+    if save_version == current_version:
+        return
+    
+    info(f"数据版本迁移: v{save_version} -> v{current_version}")
+    
+    migrations = {
+        0: _migrate_from_v0,
+        1: _migrate_from_v1,
+        2: _migrate_from_v2,
+    }
+    
+    for version in range(save_version, current_version):
+        if version in migrations:
+            try:
+                migrations[version](data)
+                data['data_version'] = version + 1
+                info(f"数据迁移 v{version} -> v{version + 1} 完成")
+            except Exception as e:
+                error(f"数据迁移 v{version} -> v{version + 1} 失败: {e}")
+    
+    data['data_version'] = current_version
+
+
+def _migrate_from_v0(data):
+    """
+    从v0迁移到v1:
+    - equips: 将整数数量转换为空列表(旧格式直接存储数量)
+    - 添加hero_levels字段
+    - 添加equip_levels字段
+    """
+    if 'equips' in data:
+        for equip_type, value in list(data['equips'].items()):
+            if isinstance(value, int):
+                data['equips'][equip_type] = []
+    
+    if 'hero_levels' not in data:
+        data['hero_levels'] = {}
+    
+    if 'equip_levels' not in data:
+        data['equip_levels'] = {"weapon": 1, "armor": 1, "horse": 1, "book": 1}
+
+
+def _migrate_from_v1(data):
+    """
+    从v1迁移到v2:
+    - 添加custom_heroes字段(存储自定义武将数据)
+    - 添加hero_advancement字段(武将进阶系统)
+    - 添加territory字段(领地系统)
+    """
+    if 'custom_heroes' not in data:
+        data['custom_heroes'] = {}
+    
+    if 'hero_advancement' not in data:
+        data['hero_advancement'] = {
+            "advanced_heroes": {},
+            "awakened_heroes": [],
+            "skill_enhancements": {}
+        }
+    
+    if 'territory' not in data:
+        data['territory'] = {
+            "owned_territories": [],
+            "territory_levels": {},
+            "resource_production": {},
+            "garrisons": {},
+            "last_collection_time": 0,
+            "total_power": 0
+        }
+
+
+def _migrate_from_v2(data):
+    """
+    从v2迁移到v3:
+    - 规范化custom_heroes结构:
+      - 添加base_attributes(包含hp/attack/defense/speed)
+      - 添加skills列表
+      - 添加passive_skills列表
+      - 添加ultimate_skill字段
+    - 添加season字段(赛季系统)
+    """
+    if 'custom_heroes' in data and isinstance(data['custom_heroes'], dict):
+        updated_count = 0
+        for hero_name, hero_data in data['custom_heroes'].items():
+            needs_update = False
+            
+            if 'base_attributes' not in hero_data:
+                if 'hp' in hero_data:
+                    hero_data['base_attributes'] = {
+                        'hp': hero_data.get('hp', 100),
+                        'attack': hero_data.get('attack', 10),
+                        'defense': hero_data.get('defense', 10),
+                        'speed': hero_data.get('speed', 10)
+                    }
+                    needs_update = True
+            
+            if 'skills' not in hero_data:
+                hero_data['skills'] = []
+                needs_update = True
+            
+            if 'passive_skills' not in hero_data:
+                hero_data['passive_skills'] = []
+                needs_update = True
+            
+            if 'ultimate_skill' not in hero_data:
+                hero_data['ultimate_skill'] = None
+                needs_update = True
+            
+            if needs_update:
+                updated_count += 1
+        
+        if updated_count > 0:
+            info(f"已更新 {updated_count} 个自定义武将的数据结构")
+    
+    if 'season' not in data:
+        data['season'] = {
+            "current_season": 1,
+            "season_start_time": 0,
+            "season_duration": 604800,
+            "season_points": 0,
+            "season_rank": 0,
+            "season_rewards_claimed": [],
+            "historical_best_rank": 0
+        }
+
+
+def _ensure_data_integrity(data):
+    data['resources'] = safe_get(data, ['resources'], {})
+    for resource in RESOURCES:
+        if resource not in data['resources']:
+            data['resources'][resource] = 0
+
+    nested_keys = [
+        'achievements', 'tech_tree', 'buildings', 'talents', 'tasks', 'rankings',
+        'checkin', 'time_tasks', 'weather', 'event_system', 'story_progress',
+        'battle_stats', 'daily_reward', 'task_chains', 'hero_collection',
+        'territory', 'season', 'guild', 'hero_advancement', 'dungeon', 'mc_world',
+        'hero_levels', 'hero_guns', 'equip_levels'
+    ]
+    
+    for key in nested_keys:
+        if key not in data:
+            data[key] = default_save.get(key, {})
+
+    ensure_keys(data, ['achievements', 'unlocked'], [])
+    ensure_keys(data, ['achievements', 'progress'], {})
+    ensure_keys(data, ['achievements', 'claimed_rewards'], [])
+    
+    ensure_keys(data, ['tasks', 'daily'], default_save['tasks']['daily'])
+    ensure_keys(data, ['tasks', 'weekly'], default_save['tasks']['weekly'])
+    
+    ensure_keys(data, ['season'], default_save['season'])
+    if 'season_start_time' not in data['season'] or data['season']['season_start_time'] == 0:
+        data['season']['season_start_time'] = int(time.time())
+    
+    ensure_keys(data, ['settings'], SETTINGS.copy())
+    
+    mc_keys = ['placed_blocks', 'hotbar', 'hotbar_selected', 'player_pos', 
+               'camera_yaw', 'camera_pitch', 'camera_mode', 'inventory', 'world_seed']
+    for key in mc_keys:
+        ensure_keys(data, ['mc_world', key], default_save['mc_world'].get(key))
+    
+    weather_keys = ['current_season', 'current_time_of_day', 'game_time', 'time_speed']
+    for key in weather_keys:
+        ensure_keys(data, ['weather', key], default_save['weather'].get(key))
+
+    ensure_keys(data, ['last_login'], 0)
+    ensure_keys(data, ['last_auto_save'], 0)
+    ensure_keys(data, ['resource_bonus'], 1.0)
+    ensure_keys(data, ['passive_income'], default_save['passive_income'])
+    ensure_keys(data, ['unlocked_income_slots'], 1)
+    ensure_keys(data, ['total_play_time'], 0)
+    ensure_keys(data, ['unlocked_features'], [])
+    ensure_keys(data, ['prestige_level'], 0)
+
+def _backup_save():
+    """创建存档备份"""
+    try:
+        if os.path.exists(SAVE_PATH):
+            backup_path = SAVE_PATH + ".bak"
+            with open(SAVE_PATH, "rb") as f_in:
+                with open(backup_path, "wb") as f_out:
+                    f_out.write(f_in.read())
+            info("存档备份成功")
+            return True
+    except Exception as e:
+        error(f"存档备份失败: {e}")
+    return False
+
+
+def _restore_from_backup():
+    """从备份恢复存档"""
+    backup_path = SAVE_PATH + ".bak"
+    if os.path.exists(backup_path):
+        try:
+            with open(backup_path, "r", encoding="utf-8") as f:
+                backup_data = json.load(f)
+            return backup_data
+        except Exception as e:
+            error(f"从备份恢复失败: {e}")
+    return None
+
+
+def save():
+    """保存存档"""
+    try:
+        _backup_save()
+        
+        data['data_version'] = get_data_version()
+        
+        temp_path = SAVE_PATH + ".tmp"
+        with open(temp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        
+        if os.path.exists(SAVE_PATH):
+            os.remove(SAVE_PATH)
+        os.rename(temp_path, SAVE_PATH)
+        
+        hide_file(SAVE_PATH)
+        info("存档保存成功")
+        return True
+    except Exception as e:
+        error(f"保存存档失败: {e}")
+        return False
+
+
+def auto_save(force=False):
+    """自动保存功能"""
+    current_time = int(time.time())
+    ensure_keys(data, ['last_auto_save'], 0)
+    
+    if force or current_time - data['last_auto_save'] > 300:
+        if save():
+            data['last_auto_save'] = current_time
+            info("自动保存成功")
+            return True
+    return False
+
+
 def load():
     """加载存档"""
     global data
@@ -1483,177 +1751,54 @@ def load():
             with open(SAVE_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
             
-            # 检查并添加缺失的键
-            if 'achievements' not in data:
-                data['achievements'] = {
-                    "completed": [],
-                    "progress": {}
-                }
+            _migrate_data(data)
+            _ensure_data_integrity(data)
+            _migrate_equipment_data(data)
+            _load_custom_heroes(data)
             
-            # 确保achievements中的子键存在
-            if 'completed' not in data['achievements']:
-                data['achievements']['completed'] = []
-            if 'progress' not in data['achievements']:
-                data['achievements']['progress'] = {}
-            
-            # 检查并添加被动收入相关键
-            if 'last_login' not in data:
-                data['last_login'] = 0
-            if 'resource_bonus' not in data:
-                data['resource_bonus'] = 1.0
-            if 'passive_income' not in data:
-                data['passive_income'] = default_save['passive_income']
-            
-            # 检查并添加天气系统相关键
-            if 'weather' not in data:
-                data['weather'] = default_save['weather']
-            # 检查天气系统中的新字段
-            weather_keys = ['current_season', 'current_time_of_day', 'game_time', 'time_speed']
-            for key in weather_keys:
-                if key not in data['weather']:
-                    data['weather'][key] = default_save['weather'][key]
-            if 'unlocked_income_slots' not in data:
-                data['unlocked_income_slots'] = 1
-            
-            # 检查并添加事件系统相关键
-            if 'event_system' not in data:
-                data['event_system'] = default_save['event_system']
-            if 'story_progress' not in data:
-                data['story_progress'] = default_save['story_progress']
-            if 'battle_stats' not in data:
-                data['battle_stats'] = default_save['battle_stats']
-            
-            # 检查并添加科技树相关键
-            if 'tech_tree' not in data:
-                data['tech_tree'] = default_save['tech_tree']
-            if 'total_play_time' not in data:
-                data['total_play_time'] = 0
-            
-            # 检查并添加成长系统相关键
-            if 'hero_levels' not in data:
-                data['hero_levels'] = {}
-            if 'hero_guns' not in data:
-                data['hero_guns'] = {}
-            if 'equip_levels' not in data:
-                data['equip_levels'] = default_save['equip_levels']
-            if 'unlocked_features' not in data:
-                data['unlocked_features'] = []
-            if 'prestige_level' not in data:
-                data['prestige_level'] = 0
-            
-            # 检查并添加任务系统相关键
-            if 'tasks' not in data:
-                data['tasks'] = default_save['tasks']
-            else:
-                if 'daily' not in data['tasks']:
-                    data['tasks']['daily'] = default_save['tasks']['daily']
-                if 'weekly' not in data['tasks']:
-                    data['tasks']['weekly'] = default_save['tasks']['weekly']
-            
-            # 检查并添加排行榜系统相关键
-            if 'rankings' not in data:
-                data['rankings'] = default_save['rankings']
-            
-            # 检查并添加每日签到系统相关键
-            if 'checkin' not in data:
-                data['checkin'] = default_save['checkin']
-            
-            # 检查并添加缺失的资源
-            for resource in RESOURCES:
-                if resource not in data['resources']:
-                    data['resources'][resource] = 0
-            
-            # 检查并添加自动保存相关键
-            if 'last_auto_save' not in data:
-                data['last_auto_save'] = 0
-            
-            # 确保设置存在
-            if 'settings' not in data:
-                data['settings'] = SETTINGS.copy()
-            
-            # 检查并添加每日签到系统相关键
-            if 'daily_reward' not in data:
-                data['daily_reward'] = default_save['daily_reward']
-            
-            # 检查并添加成就系统相关键（新格式）
-            if 'achievements' not in data:
-                data['achievements'] = default_save['achievements']
-            else:
-                if 'unlocked' not in data['achievements']:
-                    data['achievements']['unlocked'] = []
-                if 'progress' not in data['achievements']:
-                    data['achievements']['progress'] = {}
-                if 'claimed_rewards' not in data['achievements']:
-                    data['achievements']['claimed_rewards'] = []
-            
-            # 检查并添加任务链系统相关键
-            if 'task_chains' not in data:
-                data['task_chains'] = default_save['task_chains']
-            
-            # 检查并添加武将图鉴系统相关键
-            if 'hero_collection' not in data:
-                data['hero_collection'] = default_save['hero_collection']
-            
-            # 检查并添加领土系统相关键
-            if 'territory' not in data:
-                data['territory'] = default_save['territory']
-            
-            # 检查并添加赛季系统相关键
-            if 'season' not in data:
-                data['season'] = default_save['season']
-                data['season']['season_start_time'] = int(time.time())
-            
-            # 检查并添加公会系统相关键
-            if 'guild' not in data:
-                data['guild'] = default_save['guild']
-            
-            # 检查并添加武将进阶系统相关键
-            if 'hero_advancement' not in data:
-                data['hero_advancement'] = default_save['hero_advancement']
-            
-            # 检查并添加副本系统相关键
-            if 'dungeon' not in data:
-                data['dungeon'] = default_save['dungeon']
-            
-            if 'mc_world' not in data:
-                data['mc_world'] = default_save['mc_world']
-            else:
-                mc_keys = ['placed_blocks', 'hotbar', 'hotbar_selected', 'player_pos', 'camera_yaw', 'camera_pitch', 'camera_mode', 'inventory', 'world_seed']
-                for key in mc_keys:
-                    if key not in data['mc_world']:
-                        data['mc_world'][key] = default_save['mc_world'][key]
+            data_validator.validate_data(data)
             
             calculate_passive_income()
+            
+            info("存档加载成功")
+            return True
 
-        except Exception as e:
-            import logging
-            logging.error(f"加载存档失败: {e}")
+        except json.JSONDecodeError as e:
+            error(f"存档格式错误: {e}")
+            warning("尝试从备份恢复...")
+            
+            backup_data = _restore_from_backup()
+            if backup_data:
+                try:
+                    data = backup_data
+                    _migrate_data(data)
+                    _ensure_data_integrity(data)
+                    _migrate_equipment_data(data)
+                    _load_custom_heroes(data)
+                    data_validator.validate_data(data)
+                    calculate_passive_income()
+                    info("从备份恢复成功")
+                    return True
+                except Exception as e2:
+                    error(f"备份恢复也失败: {e2}")
+            
+            warning("使用默认存档")
             data = default_save.copy()
             calculate_passive_income()
-
-def save():
-    """保存存档"""
-    try:
-        with open(SAVE_PATH, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        hide_file(SAVE_PATH)
-    except Exception as e:
-        import logging
-        logging.error(f"保存存档失败: {e}")
-
-def auto_save():
-    """自动保存功能"""
-    # 每5分钟自动保存一次
-    import time
-    current_time = int(time.time())
-    if 'last_auto_save' not in data:
-        data['last_auto_save'] = 0
-    
-    if current_time - data['last_auto_save'] > 300:  # 5分钟
-        save()
-        data['last_auto_save'] = current_time
+            return False
+            
+        except Exception as e:
+            error(f"加载存档失败: {e}")
+            warning("使用默认存档")
+            data = default_save.copy()
+            calculate_passive_income()
+            return False
+    else:
+        info("存档文件不存在，使用默认存档")
+        data = default_save.copy()
+        calculate_passive_income()
         return True
-    return False
+
 
 # 初始化加载存档
 load()

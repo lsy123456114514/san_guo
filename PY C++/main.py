@@ -5,19 +5,67 @@ import sys
 import json
 import platform
 
+# PyInstaller打包后的资源路径处理
+def get_resource_path(relative_path):
+    """获取资源文件路径（支持PyInstaller打包）"""
+    try:
+        # PyInstaller打包后的临时目录
+        base_path = sys._MEIPASS
+    except Exception:
+        # 正常运行时的路径
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative_path)
+
 os.environ['SDL_VIDEO_CENTERED'] = '1'
 os.environ['SDL_VIDEO_WINDOW_POS'] = 'center'
 import pygame
 
-def get_safe_resolution(screen_width, screen_height, min_width=640, min_height=360, ratio=0.8):
-    """获取安全的窗口尺寸，确保不超出屏幕"""
+# 添加ASSET路径
+sys.path.append(get_resource_path('ASSET'))
+
+# 导入配置管理器
+from ASSET.config_manager import config_manager
+
+def get_safe_resolution(screen_width, screen_height, min_width=640, min_height=400, ratio=0.75):
+    """获取安全的窗口尺寸，确保不超出屏幕，留足够边距"""
+    # 计算建议尺寸（屏幕的75%，留25%边距）
     safe_width = int(screen_width * ratio)
     safe_height = int(screen_height * ratio)
+    
+    # 确保不小于最小值
     safe_width = max(min_width, safe_width)
     safe_height = max(min_height, safe_height)
-    safe_width = min(safe_width, screen_width - 50)
-    safe_height = min(safe_height, screen_height - 50)
+    
+    # 确保不超过屏幕（留至少100像素边距）
+    safe_width = min(safe_width, screen_width - 100)
+    safe_height = min(safe_height, screen_height - 100)
+    
+    # 确保宽高比合理（4:3 ~ 16:9）
+    aspect_ratio = safe_width / safe_height
+    if aspect_ratio < 4/3:
+        safe_width = int(safe_height * 4/3)
+    elif aspect_ratio > 16/9:
+        safe_height = int(safe_width * 9/16)
+    
     return safe_width, safe_height
+
+def validate_resolution(configured_width, configured_height):
+    """验证并修正配置的分辨率，确保不会超出屏幕"""
+    pygame.init()
+    info = pygame.display.Info()
+    screen_width_full = info.current_w
+    screen_height_full = info.current_h
+    
+    # 如果配置的分辨率超过屏幕，自动调整
+    if configured_width > screen_width_full - 50 or configured_height > screen_height_full - 50:
+        print(f"配置分辨率 {configured_width}x{configured_height} 超过屏幕 {screen_width_full}x{screen_height_full}，自动调整...")
+        return get_safe_resolution(screen_width_full, screen_height_full)
+    
+    # 确保最小值
+    configured_width = max(640, configured_width)
+    configured_height = max(360, configured_height)
+    
+    return configured_width, configured_height
 
 def hide_file(filepath):
     """隐藏文件（仅Windows）"""
@@ -29,13 +77,13 @@ def hide_file(filepath):
             pass
 
 # 导入反反编译保护模块
-sys.path.append(os.path.join(os.path.dirname(__file__), 'ASSET'))
+sys.path.append(get_resource_path('ASSET'))
 from ASSET.anti_decompile import protect_function, anti_decompile
 
 # 安卓路径适配
 if 'ANDROID_DATA' in os.environ:
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    sys.path.append(os.path.join(os.path.dirname(__file__), 'ASSET'))
+    sys.path.append(get_resource_path('ASSET'))
     # 安卓全屏
     pygame.init()
     info = pygame.display.Info()
@@ -48,19 +96,11 @@ else:
     screen_width_full = info.current_w
     screen_height_full = info.current_h
     
-    # 从设置中读取分辨率
-    sys.path.append(os.path.join(os.path.dirname(__file__), 'ASSET'))
-    from ASSET.game_data import SETTINGS
-    resolution = SETTINGS['graphics']['resolution']
-    try:
-        SCREEN_WIDTH, SCREEN_HEIGHT = map(int, resolution.split('x'))
-    except ValueError:
-        # 默认分辨率：屏幕的 4/5，但不超过屏幕
-        SCREEN_WIDTH, SCREEN_HEIGHT = get_safe_resolution(screen_width_full, screen_height_full)
-    
-    # 确保窗口不超出屏幕
-    SCREEN_WIDTH = min(SCREEN_WIDTH, screen_width_full - 100)
-    SCREEN_HEIGHT = min(SCREEN_HEIGHT, screen_height_full - 100)
+    # 使用配置管理器获取安全的分辨率（适配小屏幕）
+    SCREEN_WIDTH, SCREEN_HEIGHT = config_manager.get_safe_resolution(
+        screen_width_full, screen_height_full
+    )
+    print(f"使用分辨率: {SCREEN_WIDTH}x{SCREEN_HEIGHT}")
 
 # 全局初始化
 pygame.mixer.init()
@@ -72,7 +112,7 @@ pygame.display.set_caption("游戏主程序")
 clock = pygame.time.Clock()
 
 # 登录状态文件路径
-LOGIN_STATE_PATH = os.path.join(os.path.dirname(__file__), "ASSET", "login_state.json")
+LOGIN_STATE_PATH = get_resource_path("ASSET/login_state.json")
 
 # 保存登录状态
 def save_login_state(username, user_data):
@@ -127,10 +167,12 @@ from ASSET.game_main_menu import startup_animation
 
 @protect_function
 def main_game():
+    global SCREEN_WIDTH, SCREEN_HEIGHT
+    
     # 每次启动都显示词典系统（伪装界面），自适应窗口大小
     info = pygame.display.Info()
     screen_w, screen_h = info.current_w, info.current_h
-    width, height = get_safe_resolution(screen_w, screen_h, 800, 600)
+    width, height = get_safe_resolution(screen_w, screen_h, 600, 400)
     screen = pygame.display.set_mode((width, height))
     pygame.display.set_caption("英语词典")
 
@@ -157,13 +199,14 @@ def main_game():
             data.update(saved_user_data)
             data["username"] = saved_username
             
-            # 重新设置屏幕
+            # 使用安全的屏幕尺寸
+            info = pygame.display.Info()
+            screen_w, screen_h = info.current_w, info.current_h
+            width, height = get_safe_resolution(screen_w, screen_h, 600, 400)
+            
             if 'ANDROID_DATA' in os.environ:
                 # Android设备使用全屏
-                info = pygame.display.Info()
-                screen_width = info.current_w
-                screen_height = info.current_h
-                screen = pygame.display.set_mode((screen_width, screen_height))
+                screen = pygame.display.set_mode((screen_w, screen_h))
             else:
                 # PC设备根据设置
                 resolution = data['settings']['graphics']['resolution']
@@ -172,41 +215,52 @@ def main_game():
                     screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
                 else:
                     try:
-                        width, height = map(int, resolution.split('x'))
+                        cfg_width, cfg_height = map(int, resolution.split('x'))
+                        width, height = get_safe_resolution(cfg_width, cfg_height, 600, 400)
                         screen = pygame.display.set_mode((width, height))
                     except ValueError:
-                        screen = pygame.display.set_mode((800, 600))
+                        screen = pygame.display.set_mode((width, height))
             
             # 更新全局屏幕尺寸变量
-            global SCREEN_WIDTH, SCREEN_HEIGHT
             SCREEN_WIDTH = screen.get_width()
             SCREEN_HEIGHT = screen.get_height()
             
             # 确保时钟初始化
             clock = pygame.time.Clock()
             
-            # 导入game_main_menu模块中的全局变量
-            from ASSET.game_main_menu import screen as menu_screen, clock as menu_clock
             # 更新game_main_menu模块的全局变量
             import ASSET.game_main_menu
             ASSET.game_main_menu.screen = screen
             ASSET.game_main_menu.clock = clock
+            ASSET.game_main_menu.SCREEN_WIDTH = SCREEN_WIDTH
+            ASSET.game_main_menu.SCREEN_HEIGHT = SCREEN_HEIGHT
             
             # 运行启动动画
-            startup_animation()
+            try:
+                startup_animation()
+            except Exception as e:
+                print(f"启动动画失败: {e}")
             
             # 显示游戏主程序
             pygame.display.set_caption("游戏主程序")
             
             # 运行主菜单
-            menu_main()
+            try:
+                menu_main()
+            except Exception as e:
+                print(f"主菜单运行失败: {e}")
+                import traceback
+                traceback.print_exc()
             
             # 保存用户进度
             save_user_progress(saved_username, data)
             # 保留登录状态，不清除
         else:
             # 没有保存的登录状态，运行启动动画
-            startup_animation()
+            try:
+                startup_animation()
+            except Exception as e:
+                print(f"启动动画失败: {e}")
             
             # 显示登录界面
             success, username, user_data = login_main()
@@ -220,11 +274,46 @@ def main_game():
                 # 保存登录状态
                 save_login_state(username, user_data)
                 
+                # 使用安全的屏幕尺寸
+                info = pygame.display.Info()
+                screen_w, screen_h = info.current_w, info.current_h
+                width, height = get_safe_resolution(screen_w, screen_h, 600, 400)
+                
+                if 'ANDROID_DATA' in os.environ:
+                    screen = pygame.display.set_mode((screen_w, screen_h))
+                else:
+                    resolution = data['settings']['graphics']['resolution']
+                    fullscreen = data['settings']['graphics']['fullscreen']
+                    if fullscreen:
+                        screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+                    else:
+                        try:
+                            cfg_width, cfg_height = map(int, resolution.split('x'))
+                            width, height = get_safe_resolution(cfg_width, cfg_height, 600, 400)
+                            screen = pygame.display.set_mode((width, height))
+                        except ValueError:
+                            screen = pygame.display.set_mode((width, height))
+                
+                # 更新全局变量
+                SCREEN_WIDTH = screen.get_width()
+                SCREEN_HEIGHT = screen.get_height()
+                
+                import ASSET.game_main_menu
+                ASSET.game_main_menu.screen = screen
+                ASSET.game_main_menu.clock = pygame.time.Clock()
+                ASSET.game_main_menu.SCREEN_WIDTH = SCREEN_WIDTH
+                ASSET.game_main_menu.SCREEN_HEIGHT = SCREEN_HEIGHT
+                
                 # 显示游戏主程序
                 pygame.display.set_caption("游戏主程序")
                 
                 # 运行主菜单
-                menu_main()
+                try:
+                    menu_main()
+                except Exception as e:
+                    print(f"主菜单运行失败: {e}")
+                    import traceback
+                    traceback.print_exc()
                 
                 # 保存用户进度
                 save_user_progress(username, data)

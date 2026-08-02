@@ -1,5 +1,21 @@
 import time
+import os
+import pygame
+import sys
 from ASSET.game_data import data, save
+from ASSET.dictionary_system import get_system_font_name
+
+COLORS = {
+    "bg_dark": (10, 10, 25),
+    "bg_light": (20, 20, 45),
+    "accent_gold": (255, 215, 0),
+    "accent_red": (255, 100, 100),
+    "accent_blue": (100, 150, 255),
+    "accent_green": (100, 255, 150),
+    "text_white": (255, 255, 255),
+    "text_gray": (150, 150, 150),
+    "border": (80, 80, 120)
+}
 
 class AchievementSystem:
     """成就系统 - 给予玩家成就感和目标感"""
@@ -376,3 +392,185 @@ class AchievementSystem:
     def get_achievement_by_id(self, achievement_id):
         """根据ID获取成就"""
         return next((a for a in self.achievements if a["id"] == achievement_id), None)
+
+
+def draw_gradient_background(screen, color1, color2):
+    """绘制渐变背景"""
+    height = screen.get_height()
+    for y in range(height):
+        ratio = y / height
+        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
+        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
+        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
+        pygame.draw.line(screen, (r, g, b), (0, y), (screen.get_width(), y))
+
+
+class Button:
+    """简单按钮类"""
+    def __init__(self, text, x, y, width, height, font, normal_color=(100, 100, 150), hover_color=(120, 120, 180), text_color=(255, 255, 255)):
+        self.text = text
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.font = font
+        self.normal_color = normal_color
+        self.hover_color = hover_color
+        self.text_color = text_color
+        self.hovered = False
+    
+    def draw(self, screen):
+        color = self.hover_color if self.hovered else self.normal_color
+        pygame.draw.rect(screen, color, (self.x, self.y, self.width, self.height), border_radius=8)
+        pygame.draw.rect(screen, COLORS["accent_gold"], (self.x, self.y, self.width, self.height), 2, border_radius=8)
+        
+        text_surf = self.font.render(self.text, True, self.text_color)
+        text_rect = text_surf.get_rect(center=(self.x + self.width//2, self.y + self.height//2))
+        screen.blit(text_surf, text_rect)
+    
+    def check_click(self, mouse_pos):
+        mx, my = mouse_pos
+        return self.x <= mx <= self.x + self.width and self.y <= my <= self.y + self.height
+
+
+def main():
+    """成就系统主界面"""
+    try:
+        if not pygame.get_init():
+            pygame.init()
+        
+        resolution = data['settings']['graphics']['resolution']
+        try:
+            width, height = map(int, resolution.split('x'))
+        except ValueError:
+            width, height = 800, 600
+        
+        screen = pygame.display.set_mode((width, height))
+        pygame.display.set_caption("🏆 成就系统")
+        clock = pygame.time.Clock()
+        
+        font_name = get_system_font_name()
+        try:
+            FONT_MAIN = pygame.font.SysFont(font_name, 28)
+            FONT_SMALL = pygame.font.SysFont(font_name, 22)
+            FONT_BIG = pygame.font.SysFont(font_name, 36)
+        except Exception:
+            FONT_MAIN = pygame.font.Font(None, 28)
+            FONT_SMALL = pygame.font.Font(None, 22)
+            FONT_BIG = pygame.font.Font(None, 36)
+        
+        achievement_system = AchievementSystem()
+        
+        running = True
+        selected_tab = "all"
+        scroll_y = 0
+        
+        while running:
+            mx, my = pygame.mouse.get_pos()
+            
+            draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+            
+            title_surf = FONT_BIG.render("🏆 成就系统", True, COLORS["accent_gold"])
+            title_rect = title_surf.get_rect(center=(width // 2, 40))
+            screen.blit(title_surf, title_rect)
+            
+            tabs = [("全部", "all"), ("战斗", "battle"), ("收集", "collection"), ("签到", "checkin"), ("进阶", "advanced")]
+            tab_width = 120
+            tab_height = 40
+            tab_start_x = (width - len(tabs) * tab_width) // 2
+            
+            for i, (tab_name, tab_code) in enumerate(tabs):
+                tab_x = tab_start_x + i * tab_width
+                tab_y = 80
+                color = COLORS["accent_gold"] if selected_tab == tab_code else COLORS["border"]
+                pygame.draw.rect(screen, color, (tab_x, tab_y, tab_width, tab_height), border_radius=5)
+                text_color = COLORS["bg_dark"] if selected_tab == tab_code else COLORS["text_white"]
+                text_surf = FONT_MAIN.render(tab_name, True, text_color)
+                text_rect = text_surf.get_rect(center=(tab_x + tab_width//2, tab_y + tab_height//2))
+                screen.blit(text_surf, text_rect)
+                
+                if tab_x <= mx <= tab_x + tab_width and tab_y <= my <= tab_y + tab_height:
+                    pygame.draw.rect(screen, COLORS["text_white"], (tab_x, tab_y, tab_width, tab_height), 2, border_radius=5)
+                    if pygame.mouse.get_pressed()[0]:
+                        selected_tab = tab_code
+            
+            filtered_achievements = []
+            if selected_tab == "all":
+                filtered_achievements = achievement_system.achievements
+            else:
+                filtered_achievements = [a for a in achievement_system.achievements if a["type"] == selected_tab]
+            
+            panel_y = 130
+            panel_width = width - 40
+            panel_height = height - panel_y - 60
+            
+            pygame.draw.rect(screen, COLORS["bg_light"], (20, panel_y, panel_width, panel_height), border_radius=10)
+            pygame.draw.rect(screen, COLORS["border"], (20, panel_y, panel_width, panel_height), 2, border_radius=10)
+            
+            item_height = 80
+            total_height = len(filtered_achievements) * item_height
+            
+            for i, achievement in enumerate(filtered_achievements):
+                item_y = panel_y + 10 + i * item_height - scroll_y
+                
+                if item_y + item_height < panel_y or item_y > panel_y + panel_height:
+                    continue
+                
+                is_unlocked = achievement["id"] in data["achievements"]["unlocked"]
+                is_claimed = achievement["id"] in data["achievements"]["claimed_rewards"]
+                
+                bg_color = COLORS["accent_gold"] if is_unlocked else COLORS["border"]
+                pygame.draw.rect(screen, bg_color, (30, item_y, panel_width - 20, item_height - 10), border_radius=8)
+                
+                icon_x = 45
+                icon_y = item_y + item_height//2 - 20
+                icon_surf = FONT_BIG.render(achievement["icon"], True, COLORS["bg_dark"] if is_unlocked else COLORS["text_gray"])
+                screen.blit(icon_surf, (icon_x, icon_y))
+                
+                name_x = 95
+                name_y = item_y + 15
+                name_surf = FONT_MAIN.render(achievement["name"], True, COLORS["bg_dark"] if is_unlocked else COLORS["text_gray"])
+                screen.blit(name_surf, (name_x, name_y))
+                
+                desc_x = 95
+                desc_y = item_y + 40
+                desc_surf = FONT_SMALL.render(achievement["description"], True, COLORS["text_gray"] if is_unlocked else COLORS["text_gray"])
+                screen.blit(desc_surf, (desc_x, desc_y))
+                
+                rewards_text = ", ".join([f"{k}:{v}" for k, v in achievement["rewards"].items()])
+                rewards_surf = FONT_SMALL.render(rewards_text, True, COLORS["accent_green"])
+                rewards_x = width - 30 - rewards_surf.get_width()
+                rewards_y = item_y + item_height//2 - rewards_surf.get_height()//2
+                screen.blit(rewards_surf, (rewards_x, rewards_y))
+                
+                if is_unlocked and not is_claimed:
+                    claim_btn = Button("领取", rewards_x - 80, item_y + 15, 70, 30, FONT_SMALL, COLORS["accent_green"], COLORS["accent_gold"])
+                    claim_btn.hovered = claim_btn.check_click((mx, my))
+                    claim_btn.draw(screen)
+                    if claim_btn.check_click((mx, my)) and pygame.mouse.get_pressed()[0]:
+                        achievement_system.claim_reward(achievement["id"])
+            
+            back_btn = Button("返回", 20, height - 45, 100, 35, FONT_MAIN)
+            back_btn.hovered = back_btn.check_click((mx, my))
+            back_btn.draw(screen)
+            
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if back_btn.check_click((mx, my)):
+                        running = False
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 4:
+                    scroll_y = max(0, scroll_y - 50)
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 5:
+                    scroll_y = min(total_height - panel_height, scroll_y + 50)
+            
+            pygame.display.flip()
+            clock.tick(30)
+        
+        pygame.display.set_mode((width, height))
+    
+    except Exception as e:
+        print(f"成就系统错误: {e}")
+        import traceback
+        traceback.print_exc()

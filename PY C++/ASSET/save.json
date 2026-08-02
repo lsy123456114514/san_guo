@@ -1,1 +1,632 @@
-{}
+{
+  "username": "",
+  "password": "",
+  "resources": {
+    "水": 352207,
+    "煤炭": 176103,
+    "木头": 281765,
+    "食物": 246545,
+    "金元宝": 70441,
+    "时间卡": 0,
+    "宠物食物": 0,
+    "普通子弹": 0,
+    "高级子弹": 0,
+    "稀有子弹": 0
+  },
+  "normal_dungeon": 1,
+  "infinite_dungeon": 1,
+  "hero_fragments": {},
+  "heroes": {},
+  "hero_guns": {},
+  "equips": {
+    "weapon": 0,
+    "armor": 0,
+    "horse": 0,
+    "book": 0
+  },
+  "activities": {
+    "春节活动": {
+      "start": "2026-02-01",
+      "end": "2026-02-20",
+      "reward": "金元宝*200, 食物*500, 限定武将皮肤*1"
+    },
+    "情人节活动": {
+      "start": "2026-02-10",
+      "end": "2026-02-20",
+      "reward": "金元宝*150, 玫瑰*99, 情侣时装*1"
+    },
+    "夏季庆典": {
+      "start": "2026-07-01",
+      "end": "2026-07-31",
+      "reward": "金元宝*250, 西瓜*100, 夏季限定坐骑*1"
+    },
+    "周年庆典": {
+      "start": "2026-10-01",
+      "end": "2026-10-15",
+      "reward": "金元宝*500, 周年限定武将*1, 传说装备*1"
+    },
+    "万圣节活动": {
+      "start": "2026-10-25",
+      "end": "2026-11-05",
+      "reward": "金元宝*200, 南瓜灯*50, 万圣节皮肤*1"
+    }
+  },
+  "achievements": {
+    "unlocked": [],
+    "progress": {},
+    "claimed_rewards": [],
+    "completed": []
+  },
+  "tech_tree": {
+    "unlocked": [
+      "resource",
+      "occupation",
+      "combat",
+      "defense",
+      "special"
+    ]
+  },
+  "buildings": {},
+  "talents": {
+    "points": 0,
+    "unlocked": []
+  },
+  "settings": {
+    "graphics": {
+      "resolution": "auto",
+      "fullscreen": false,
+      "fps_limit": 60
+    },
+    "map": {
+      "max_locations": 50
+    },
+    "sound": {
+      "enable": true,
+      "volume": 0.7
+    },
+    "language": {
+      "current": "zh",
+      "supported": [
+        "zh",
+        "en",
+        "ja"
+      ]
+    },
+    "time": {
+      "speed": 1,
+      "base_time": 60
+    }
+  },
+  "last_login": 1783381561,
+  "last_auto_save": 0,
+  "resource_bonus": 1.0,
+  "passive_income": {
+    "水": 0.1,
+    "煤炭": 0.05,
+    "木头": 0.08,
+    "食物": 0.07,
+    "金元宝": 0.02
+  },
+  "unlocked_income_slots": 1,
+  "total_play_time": 0,
+  "hero_levels": {},
+  "equip_levels": {
+    "weapon": 1,
+    "armor": 1,
+    "horse": 1,
+    "book": 1
+  },
+  "unlocked_features": [],
+  "prestige_level": 0,
+  "tasks": {
+    "daily": {
+      "last_reset": 0,
+      "progress": {},
+      "completed": []
+    },
+    "weekly": {
+      "last_reset": 0,
+      "progress": {},
+      "completed": []
+    }
+  },
+  "rankings": {
+    "pvp_wins": [],
+    "mini_game_scores": {},
+    "total_play_time": [],
+    "achievements_unlocked": []
+  },
+  "checkin": {
+    "last_checkin": "",
+    "consecutive_days": 0,
+    "total_checkins": 0,
+    "rewards_claimed": []
+  },
+  "time_tasks": {
+    "active": [],
+    "completed": []
+  },
+  "weather": {
+    "current_weather": null,
+    "weather_start_time": 0,
+    "weather_duration": 0,
+    "current_holiday": null,
+    "current_season": null,
+    "current_time_of_day": null,
+    "game_time": 0,
+    "time_speed": 1.0
+  },
+  "event_system": {
+    "event_history": [],
+    "last_event_time": 0,
+    "event_cooldown": 30
+  },
+  "story_progress": {
+    "current_chapter": 0,
+    "completed_events": [],
+    "unlocked_endings": []
+  },
+  "battle_stats": {
+    "total_battles": 0,
+    "victories": 0,
+    "defeats": 0,
+    "max_combo": 0,
+    "ultimate_used_count": 0
+  },
+  "daily_reward": {
+    "last_checkin_date": "",
+    "consecutive_days": 0,
+    "monthly_checkins": 0,
+    "claimed_rewards": [],
+    "current_month": 0
+  },
+  "task_chains": {
+    "active_chains": [],
+    "completed_chains": [],
+    "current_tasks": {},
+    "task_progress": {},
+    "daily_tasks": [],
+    "weekly_tasks": [],
+    "claimed_rewards": [],
+    "last_daily_refresh": "",
+    "last_weekly_refresh": ""
+  },
+  "hero_collection": {
+    "collected": [],
+    "collection_progress": 0,
+    "unlocked_bonuses": [],
+    "claimed_rewards": []
+  },
+  "territory": {
+    "owned_territories": [],
+    "territory_levels": {},
+    "resource_production": {},
+    "garrisons": {},
+    "last_collection_time": 0,
+    "total_power": 0
+  },
+  "season": {
+    "current_season": 1,
+    "season_start_time": 0,
+    "season_duration": 604800,
+    "season_points": 0,
+    "season_rank": 0,
+    "season_rewards_claimed": [],
+    "historical_best_rank": 0
+  },
+  "guild": {
+    "id": null,
+    "name": "",
+    "level": 1,
+    "experience": 0,
+    "members": [],
+    "leader": "",
+    "join_requests": [],
+    "guild_war_score": 0,
+    "territories": [],
+    "daily_bonus_claimed": false,
+    "last_daily_claim": ""
+  },
+  "hero_advancement": {
+    "advanced_heroes": {},
+    "awakened_heroes": [],
+    "skill_enhancements": {}
+  },
+  "dungeon": {
+    "unlocked_dungeons": [],
+    "completed_floors": {},
+    "best_scores": {},
+    "daily_challenges": [],
+    "weekly_challenges": [],
+    "claimed_rewards": [],
+    "task_progress": {},
+    "last_daily_reset": "",
+    "last_weekly_reset": ""
+  },
+  "notifications": {
+    "unread": [],
+    "read": [],
+    "settings": {
+      "daily_reminder": true,
+      "activity_alert": true,
+      "reward_notification": true
+    }
+  },
+  "mail": {
+    "inbox": [],
+    "sent": [],
+    "archived": []
+  },
+  "checkin_calendar": {
+    "current_month": "",
+    "checkins": {},
+    "monthly_rewards_claimed": [],
+    "streak_rewards_claimed": []
+  },
+  "leaderboard": {
+    "player_rank": 0,
+    "categories": {
+      "power": [],
+      "wealth": [],
+      "achievements": [],
+      "pvp": []
+    }
+  },
+  "mc_world": {
+    "placed_blocks": [],
+    "hotbar": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "hotbar_selected": 0,
+    "player_pos": [
+      0,
+      0,
+      0
+    ],
+    "camera_yaw": 0,
+    "camera_pitch": -20,
+    "camera_mode": "first",
+    "inventory": [],
+    "world_seed": 0
+  },
+  "custom_heroes": {
+    "赵云·龙胆": {
+      "name": "赵云·龙胆",
+      "quality": "legendary",
+      "element": "风",
+      "faction": "shu",
+      "base_attributes": {
+        "hp": 950,
+        "attack": 185,
+        "defense": 85,
+        "speed": 95
+      },
+      "skills": [
+        {
+          "name": "龙胆枪",
+          "damage": 420,
+          "element": "风",
+          "cooldown": 2
+        }
+      ],
+      "passive_skills": [
+        {
+          "name": "七进七出",
+          "description": "战斗中闪避率提升25%，受到致命伤害时回复30%生命值"
+        }
+      ],
+      "ultimate_skill": {
+        "name": "龙鸣九霄",
+        "damage": 850,
+        "element": "风",
+        "cooldown": 10
+      },
+      "story": "常山赵子龙，一身是胆，在长坂坡七进七出，威震天下。"
+    },
+    "诸葛亮·卧龙": {
+      "name": "诸葛亮·卧龙",
+      "quality": "legendary",
+      "element": "雷",
+      "faction": "shu",
+      "base_attributes": {
+        "hp": 700,
+        "attack": 200,
+        "defense": 60,
+        "speed": 70
+      },
+      "skills": [
+        {
+          "name": "奇门遁甲",
+          "damage": 380,
+          "element": "雷",
+          "cooldown": 3
+        }
+      ],
+      "passive_skills": [
+        {
+          "name": "运筹帷幄",
+          "description": "所有友军攻击力提升15%，技能伤害提升20%"
+        }
+      ],
+      "ultimate_skill": {
+        "name": "七星续命",
+        "damage": 900,
+        "element": "雷",
+        "cooldown": 12
+      },
+      "story": "卧龙先生，三分天下，智谋无双，鞠躬尽瘁死而后已。"
+    },
+    "曹操·枭雄": {
+      "name": "曹操·枭雄",
+      "quality": "legendary",
+      "element": "火",
+      "faction": "wei",
+      "base_attributes": {
+        "hp": 900,
+        "attack": 175,
+        "defense": 95,
+        "speed": 65
+      },
+      "skills": [
+        {
+          "name": "挟天子",
+          "damage": 350,
+          "element": "火",
+          "cooldown": 2
+        }
+      ],
+      "passive_skills": [
+        {
+          "name": "乱世枭雄",
+          "description": "每击败一名敌人，攻击力永久提升5%，最多提升50%"
+        }
+      ],
+      "ultimate_skill": {
+        "name": "铜雀春深",
+        "damage": 800,
+        "element": "火",
+        "cooldown": 10
+      },
+      "story": "治世之能臣，乱世之奸雄，挟天子以令诸侯。"
+    },
+    "孙尚香·弓腰姬": {
+      "name": "孙尚香·弓腰姬",
+      "quality": "epic",
+      "element": "水",
+      "faction": "wu",
+      "base_attributes": {
+        "hp": 650,
+        "attack": 190,
+        "defense": 55,
+        "speed": 90
+      },
+      "skills": [
+        {
+          "name": "月影弓",
+          "damage": 320,
+          "element": "水",
+          "cooldown": 2
+        }
+      ],
+      "passive_skills": [
+        {
+          "name": "巾帼不让",
+          "description": "攻击速度提升30%，暴击率提升15%"
+        }
+      ],
+      "ultimate_skill": {
+        "name": "红颜祸水",
+        "damage": 700,
+        "element": "水",
+        "cooldown": 8
+      },
+      "story": "东吴郡主，弓腰姬孙尚香，英姿飒爽，不让须眉。"
+    },
+    "吕布·飞将": {
+      "name": "吕布·飞将",
+      "quality": "legendary",
+      "element": "土",
+      "faction": "qun",
+      "base_attributes": {
+        "hp": 1000,
+        "attack": 220,
+        "defense": 90,
+        "speed": 85
+      },
+      "skills": [
+        {
+          "name": "方天画戟",
+          "damage": 450,
+          "element": "土",
+          "cooldown": 3
+        }
+      ],
+      "passive_skills": [
+        {
+          "name": "人中吕布",
+          "description": "攻击力提升20%，对所有敌人造成额外10%伤害"
+        }
+      ],
+      "ultimate_skill": {
+        "name": "辕门射戟",
+        "damage": 950,
+        "element": "土",
+        "cooldown": 12
+      },
+      "story": "人中吕布，马中赤兔，天下无双的猛将。"
+    },
+    "司马懿·冢虎": {
+      "name": "司马懿·冢虎",
+      "quality": "legendary",
+      "element": "暗",
+      "faction": "jin",
+      "base_attributes": {
+        "hp": 750,
+        "attack": 180,
+        "defense": 70,
+        "speed": 75
+      },
+      "skills": [
+        {
+          "name": "隐忍",
+          "damage": 300,
+          "element": "暗",
+          "cooldown": 2
+        }
+      ],
+      "passive_skills": [
+        {
+          "name": "鹰视狼顾",
+          "description": "每次受到攻击时反弹20%伤害，每回合恢复5%生命值"
+        }
+      ],
+      "ultimate_skill": {
+        "name": "三马同槽",
+        "damage": 880,
+        "element": "暗",
+        "cooldown": 11
+      },
+      "story": "冢虎司马懿，隐忍数十年，最终篡魏建晋。"
+    },
+    "关羽·武圣": {
+      "name": "关羽·武圣",
+      "quality": "legendary",
+      "element": "火",
+      "faction": "shu",
+      "base_attributes": {
+        "hp": 980,
+        "attack": 200,
+        "defense": 88,
+        "speed": 60
+      },
+      "skills": [
+        {
+          "name": "青龙偃月",
+          "damage": 400,
+          "element": "火",
+          "cooldown": 3
+        }
+      ],
+      "passive_skills": [
+        {
+          "name": "义薄云天",
+          "description": "生命值越低，攻击力越高，最低提升50%"
+        }
+      ],
+      "ultimate_skill": {
+        "name": "过五关斩六将",
+        "damage": 920,
+        "element": "火",
+        "cooldown": 12
+      },
+      "story": "武圣关羽，忠义无双，过五关斩六将，威震华夏。"
+    },
+    "貂蝉·闭月": {
+      "name": "貂蝉·闭月",
+      "quality": "epic",
+      "element": "光",
+      "faction": "qun",
+      "base_attributes": {
+        "hp": 550,
+        "attack": 165,
+        "defense": 45,
+        "speed": 95
+      },
+      "skills": [
+        {
+          "name": "倾国倾城",
+          "damage": 280,
+          "element": "光",
+          "cooldown": 2
+        }
+      ],
+      "passive_skills": [
+        {
+          "name": "红颜魅惑",
+          "description": "有30%概率使敌人眩晕一回合，所有友军闪避率提升10%"
+        }
+      ],
+      "ultimate_skill": {
+        "name": "月下独舞",
+        "damage": 650,
+        "element": "光",
+        "cooldown": 8
+      },
+      "story": "闭月羞花之貌，连环计破董卓吕布。"
+    },
+    "周瑜·公瑾": {
+      "name": "周瑜·公瑾",
+      "quality": "legendary",
+      "element": "水",
+      "faction": "wu",
+      "base_attributes": {
+        "hp": 720,
+        "attack": 195,
+        "defense": 65,
+        "speed": 80
+      },
+      "skills": [
+        {
+          "name": "羽扇纶巾",
+          "damage": 360,
+          "element": "水",
+          "cooldown": 2
+        }
+      ],
+      "passive_skills": [
+        {
+          "name": "雄姿英发",
+          "description": "技能伤害提升25%，对火属性敌人造成额外30%伤害"
+        }
+      ],
+      "ultimate_skill": {
+        "name": "火烧赤壁",
+        "damage": 860,
+        "element": "水",
+        "cooldown": 10
+      },
+      "story": "周郎赤壁，谈笑间樯橹灰飞烟灭。"
+    },
+    "张辽·文远": {
+      "name": "张辽·文远",
+      "quality": "epic",
+      "element": "风",
+      "faction": "wei",
+      "base_attributes": {
+        "hp": 820,
+        "attack": 170,
+        "defense": 80,
+        "speed": 88
+      },
+      "skills": [
+        {
+          "name": "威震逍遥",
+          "damage": 340,
+          "element": "风",
+          "cooldown": 3
+        }
+      ],
+      "passive_skills": [
+        {
+          "name": "八百破十万",
+          "description": "对兵力多于自己的敌人造成额外50%伤害"
+        }
+      ],
+      "ultimate_skill": {
+        "name": "突袭",
+        "damage": 750,
+        "element": "风",
+        "cooldown": 9
+      },
+      "story": "张文远威震逍遥津，八百铁骑破十万吴军。"
+    }
+  }
+}

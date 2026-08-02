@@ -5,23 +5,12 @@ import platform
 import pygame
 import math
 import random
-import logging
 from ASSET.fun_effects import PetSprite, FloatingParticles
 from ASSET.game_data import data, save, get_system_font_name
+from ASSET.log_system import info, warning, error, critical, sync_time
 from ASSET import safe_exit
 from ASSET.login_system import save_game
-from ASSET.equipment_system import main as equipment_system_main  # pyright: ignore[reportUnusedImport]
-
-# 配置日志系统
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("game.log", encoding='utf-8'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
+from ASSET.equipment_system import main as equipment_system_main
 
 # 全局变量（延迟初始化）
 screen = None
@@ -486,7 +475,7 @@ def test_font_renderable(font, text="测试"):
         return False
 
 def init_fonts():
-    """初始化字体 - 增强兼容性版本"""
+    """初始化字体 - 增强兼容性版本，优先使用内置字体"""
     global FONT_MAIN, FONT_SMALL, FONT_BIG
 
     current_platform = get_platform()
@@ -499,14 +488,28 @@ def init_fonts():
         small_size = 28
         big_size = 60
 
+    # 优先尝试使用内置字体文件
+    try:
+        from ASSET.font_manager import load_font
+        FONT_MAIN = load_font(base_size)
+        FONT_SMALL = load_font(small_size)
+        FONT_BIG = load_font(big_size)
+        info("成功加载内置字体")
+        
+        test_text = "测试中文ABC123"
+        if test_font_renderable(FONT_MAIN, test_text):
+            return
+    except Exception as e:
+        warning(f"加载内置字体失败，尝试系统字体: {e}")
+
     system_font = get_system_font_name()
     if system_font:
         font_list = [system_font] + get_font_list()
     else:
         font_list = get_font_list()
 
-    logger.info(f"当前平台: {current_platform}")
-    logger.info(f"尝试加载字体列表: {font_list}")
+    info(f"当前平台: {current_platform}")
+    info(f"尝试加载字体列表: {font_list}")
 
     for font_name in font_list:
         try:
@@ -521,15 +524,15 @@ def init_fonts():
 
             test_text = "测试中文ABC123"
             if test_font_renderable(FONT_MAIN, test_text):
-                logger.info(f"成功使用字体: {font_name if font_name else '默认字体'}")
+                info(f"成功使用字体: {font_name if font_name else '默认字体'}")
 
                 if not test_font_renderable(FONT_MAIN, "中文"):
-                    logger.warning(f"字体 {font_name} 不支持中文，尝试备选方案")
+                    warning(f"字体 {font_name} 不支持中文，尝试备选方案")
                     continue
 
                 return
         except Exception as e:
-            logger.error(f"字体 {font_name} 加载失败: {e}")
+            error(f"字体 {font_name} 加载失败: {e}")
             continue
 
     logger.warning("使用 Pygame 默认字体")
@@ -1088,10 +1091,14 @@ def clear():
 def run_module(module_file):
     """运行子模块"""
     try:
+        global screen, screen_width, screen_height
+        old_width = screen_width
+        old_height = screen_height
+        
         if is_android():
-            if module_file == "pvp_p2p.py":
-                from ASSET.pvp_p2p import main as pvp_main
-                pvp_main()
+            if module_file == "pvp_super.py":
+                from ASSET.pvp_super import main as pvp_main
+                pvp_main(screen)
             elif module_file == "game_map_pygame.py":
                 from ASSET.game_map_pygame import main as map_main
                 map_main()
@@ -1194,10 +1201,31 @@ def run_module(module_file):
             elif module_file == "pet_arena.py":
                 from ASSET.pet_arena import main as arena_main
                 arena_main()
+            elif module_file == "subordinate_system.py":
+                from ASSET.subordinate_system import main as subordinate_main
+                subordinate_main()
+            elif module_file == "formation_system.py":
+                from ASSET.formation_system import main as formation_main
+                formation_main()
+            elif module_file == "hero_rebirth_system.py":
+                from ASSET.hero_rebirth_system import main as rebirth_main
+                rebirth_main(screen)
+            elif module_file == "divine_weapon_system.py":
+                from ASSET.divine_weapon_system import main as divine_main
+                divine_main()
+            elif module_file == "legion_system.py":
+                from ASSET.legion_system import main as legion_main
+                legion_main()
+            elif module_file == "official_rank_system.py":
+                from ASSET.official_rank_system import main as official_main
+                official_main()
+            elif module_file == "mount_system.py":
+                from ASSET.mount_system import main as mount_main
+                mount_main()
         else:
-            if module_file == "pvp_p2p.py":
-                from ASSET.pvp_p2p import main as pvp_main
-                pvp_main()
+            if module_file == "pvp_super.py":
+                from ASSET.pvp_super import main as pvp_main
+                pvp_main(screen)
             elif module_file == "game_map_pygame.py":
                 from ASSET.game_map_pygame import main as map_main
                 map_main()
@@ -1300,14 +1328,56 @@ def run_module(module_file):
             elif module_file == "pet_arena.py":
                 from ASSET.pet_arena import main as arena_main
                 arena_main()
+            elif module_file == "subordinate_system.py":
+                from ASSET.subordinate_system import main as subordinate_main
+                subordinate_main()
+            elif module_file == "formation_system.py":
+                from ASSET.formation_system import main as formation_main
+                formation_main()
+            elif module_file == "hero_rebirth_system.py":
+                from ASSET.hero_rebirth_system import main as rebirth_main
+                rebirth_main(screen)
+            elif module_file == "divine_weapon_system.py":
+                from ASSET.divine_weapon_system import main as divine_main
+                divine_main()
+            elif module_file == "legion_system.py":
+                from ASSET.legion_system import main as legion_main
+                legion_main()
+            elif module_file == "official_rank_system.py":
+                from ASSET.official_rank_system import main as official_main
+                official_main()
+            elif module_file == "mount_system.py":
+                from ASSET.mount_system import main as mount_main
+                mount_main()
+            elif module_file == "welfare_center.py":
+                from ASSET.welfare_center import main as welfare_main
+                welfare_main()
+            elif module_file == "bug_report_system.py":
+                from ASSET.bug_report_system import main as bug_report_main
+                bug_report_main()
+            elif module_file == "developer_console.py":
+                from ASSET.developer_console import main as console_main
+                console_main()
 
         pygame.event.clear()
+        
+        try:
+            current_width = screen.get_width()
+            current_height = screen.get_height()
+            if current_width != old_width or current_height != old_height:
+                screen = pygame.display.set_mode((old_width, old_height))
+                screen_width = old_width
+                screen_height = old_height
+        except Exception:
+            screen = pygame.display.set_mode((old_width, old_height))
+            screen_width = old_width
+            screen_height = old_height
 
     except Exception as e:
-        logger.error(f"启动模块 {module_file} 失败：{str(e)}")
-        logger.error("详细错误信息：")
+        error(f"启动模块 {module_file} 失败：{str(e)}")
+        error("详细错误信息：")
         import traceback
-        logger.error(traceback.format_exc())
+        error(traceback.format_exc())
         if is_android():
             if FONT_SMALL:
                 error_text = FONT_SMALL.render(f"启动失败：{str(e)}", True, (255, 0, 0))
@@ -1418,15 +1488,27 @@ def setting_menu():
         import sys
         import os
         sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        from main import save_login_state
+        from main import save_login_state, SCREEN_WIDTH, SCREEN_HEIGHT
         login_state_available = True
     except Exception:
         save_login_state = None
         login_state_available = False
 
+    # 导入配置管理器
+    try:
+        from ASSET.config_manager import config_manager
+        config_available = True
+    except ImportError:
+        config_available = False
+
     particles = []
 
     resolution_changed = False
+    original_resolution = None
+    
+    # 保存原始分辨率
+    if config_available:
+        original_resolution = config_manager.get('graphics.resolution', 'auto')
 
     def get_settings_text():
         if 'fullscreen' not in data['settings']['graphics']:
@@ -1492,7 +1574,7 @@ def setting_menu():
                 for i, btn in enumerate(setting_buttons):
                     if btn.rect.collidepoint(event.pos):
                         if i == 0:
-                            resolutions = ["800x600", "1024x768", "1280x720", "1366x768", "1920x1080"]
+                            resolutions = ["800x600", "1024x768", "1280x720", "1366x768", "1920x1080", "auto"]
                             current = data['settings']['graphics']['resolution']
                             try:
                                 idx = resolutions.index(current)
@@ -1501,10 +1583,20 @@ def setting_menu():
                                 next_idx = 0
                             data['settings']['graphics']['resolution'] = resolutions[next_idx]
                             save()
+                            
+                            # 同时保存到配置文件
+                            if config_available:
+                                config_manager.set('graphics.resolution', resolutions[next_idx])
+                            
                             resolution_changed = True
                         elif i == 1:
                             data['settings']['graphics']['fullscreen'] = not data['settings']['graphics']['fullscreen']
                             save()
+                            
+                            # 同时保存到配置文件
+                            if config_available:
+                                config_manager.set('graphics.fullscreen', data['settings']['graphics']['fullscreen'])
+                            
                             resolution_changed = True
                         elif i == 2:
                             new_max = data['settings']['map']['max_locations'] + 10
@@ -1512,13 +1604,25 @@ def setting_menu():
                                 new_max = 10
                             data['settings']['map']['max_locations'] = new_max
                             save()
+                            
+                            # 同时保存到配置文件
+                            if config_available:
+                                config_manager.set('map.max_locations', new_max)
                         elif i == 3:
                             data['settings']['sound']['enable'] = not data['settings']['sound']['enable']
                             save()
+                            
+                            # 同时保存到配置文件
+                            if config_available:
+                                config_manager.set('sound.enable', data['settings']['sound']['enable'])
                         elif i == 4:
                             running = False
 
         clock.tick(60)
+
+    # 如果分辨率改变，应用新的分辨率
+    if resolution_changed and config_available:
+        apply_new_resolution()
 
 def input_save_name(screen, font_title, font_input):
     """输入存档名称"""
@@ -1571,6 +1675,9 @@ def main():
 
     init_fonts()
 
+    info("游戏启动，开始时间同步...")
+    sync_time()
+
     if FONT_MAIN is None or FONT_SMALL is None or FONT_BIG is None:
         FONT_MAIN = pygame.font.Font(None, 40)
         FONT_SMALL = pygame.font.Font(None, 28)
@@ -1583,26 +1690,45 @@ def main():
     resolution = data['settings']['graphics']['resolution']
     fullscreen = data['settings']['graphics']['fullscreen']
 
+    # 获取屏幕信息
+    display_info = pygame.display.Info()
+    screen_width_full = display_info.current_w
+    screen_height_full = display_info.current_h
+
+    # 使用安全的分辨率计算
+    def get_safe_res(width, height, min_w=600, min_h=400, ratio=0.85):
+        safe_w = int(width * ratio)
+        safe_h = int(height * ratio)
+        safe_w = max(min_w, min(safe_w, width - 50))
+        safe_h = max(min_h, min(safe_h, height - 50))
+        return safe_w, safe_h
+
     if is_android():
-        info = pygame.display.Info()
-        screen_width = info.current_w
-        screen_height = info.current_h
+        screen_width = int(screen_width_full * 0.75)
+        screen_height = int(screen_height_full * 0.75)
+        screen_width = max(600, min(screen_width, screen_width_full - 100))
+        screen_height = max(400, min(screen_height, screen_height_full - 100))
         screen = pygame.display.set_mode((screen_width, screen_height))
     else:
         if fullscreen:
-            screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-            screen_width = screen.get_width()
-            screen_height = screen.get_height()
-        else:
-            try:
-                width, height = map(int, resolution.split('x'))
-                screen = pygame.display.set_mode((width, height))
-                screen_width = width
-                screen_height = height
-            except ValueError:
-                screen = pygame.display.set_mode((800, 600))
-                screen_width = 800
-                screen_height = 600
+            fullscreen = False
+        
+        try:
+            width, height = map(int, resolution.split('x'))
+            width, height = get_safe_res(width, height)
+            screen = pygame.display.set_mode((width, height))
+            screen_width = width
+            screen_height = height
+        except ValueError:
+            width, height = get_safe_res(screen_width_full, screen_height_full)
+            screen = pygame.display.set_mode((width, height))
+            screen_width = width
+            screen_height = height
+
+    # 更新全局尺寸变量
+    global SCREEN_WIDTH, SCREEN_HEIGHT
+    SCREEN_WIDTH = screen_width
+    SCREEN_HEIGHT = screen_height
 
     pygame.display.set_caption("游戏主菜单")
     clock = pygame.time.Clock()
@@ -1617,7 +1743,17 @@ def main():
     button_width = min(300, screen_width * 0.35)
     button_height = min(55, screen_height * 0.07)
     button_spacing = min(15, screen_height * 0.025)
-    start_y = screen_height * 0.28
+    
+    total_elements = 8
+    total_height = total_elements * (button_height + button_spacing)
+    max_available_height = screen_height * 0.6
+    
+    if total_height > max_available_height:
+        scale_factor = max_available_height / total_height
+        button_height = int(button_height * scale_factor)
+        button_spacing = int(button_spacing * scale_factor)
+    
+    start_y = max(20, (screen_height - total_height) // 2)
 
     game_core_items = [
         ("PVP联机", "1"),
@@ -1632,6 +1768,11 @@ def main():
     game_system_items = [
         ("武将仓库", "7"),
         ("武将招募", "29"),
+        ("武将转生", "42"),
+        ("副将系统", "40"),
+        ("阵法系统", "41"),
+        ("神兵系统", "43"),
+        ("坐骑系统", "44"),
         ("活动中心", "8"),
         ("科技树系统", "12"),
         ("建筑系统", "21"),
@@ -1658,6 +1799,11 @@ def main():
 
     other_items = [
         ("游戏商城", "6"),
+        ("福利中心", "47"),
+        ("Bug上报", "48"),
+        ("开发者控制台", "49"),
+        ("军团系统", "45"),
+        ("官职系统", "46"),
         ("天气系统", "27"),
         ("新手引导", "31"),
         ("背景故事", "32"),
@@ -1994,7 +2140,7 @@ def main():
                         clicked, code = element.check_click(mouse_pos)
                         if clicked and code:
                             if code == "1":
-                                run_module("pvp_p2p.py")
+                                run_module("pvp_super.py")
                             elif code == "2":
                                 run_module("game_map_pygame.py")
                             elif code == "28":
@@ -2049,6 +2195,26 @@ def main():
                                 run_module("faq_system.py")
                             elif code == "27":
                                 run_module("weather_system.py")
+                            elif code == "40":
+                                run_module("subordinate_system.py")
+                            elif code == "41":
+                                run_module("formation_system.py")
+                            elif code == "42":
+                                run_module("hero_rebirth_system.py")
+                            elif code == "43":
+                                run_module("divine_weapon_system.py")
+                            elif code == "44":
+                                run_module("mount_system.py")
+                            elif code == "45":
+                                run_module("legion_system.py")
+                            elif code == "46":
+                                run_module("official_rank_system.py")
+                            elif code == "47":
+                                run_module("welfare_center.py")
+                            elif code == "48":
+                                run_module("bug_report_system.py")
+                            elif code == "49":
+                                run_module("developer_console.py")
                             break
                     elif element_type == "button":
                         btn, code = element
@@ -2336,3 +2502,64 @@ def startup_animation():
 
         pygame.display.flip()
         clock.tick(60)
+
+def apply_new_resolution():
+    """应用新的分辨率设置"""
+    global screen, clock, SCREEN_WIDTH, SCREEN_HEIGHT
+    
+    try:
+        from ASSET.config_manager import config_manager
+        import pygame
+        
+        # 获取新的分辨率设置
+        resolution = config_manager.get('graphics.resolution', 'auto')
+        fullscreen = config_manager.get('graphics.fullscreen', False)
+        
+        # 获取屏幕信息
+        info = pygame.display.Info()
+        screen_width_full = info.current_w
+        screen_height_full = info.current_h
+        
+        # 计算新的分辨率
+        if resolution == 'auto':
+            # 自动模式：使用屏幕的80%，但不小于800x600
+            new_width = int(screen_width_full * 0.8)
+            new_height = int(screen_height_full * 0.8)
+            
+            # 确保最小值（适合笔记本屏幕）
+            new_width = max(800, new_width)
+            new_height = max(600, new_height)
+            
+            # 确保不超过屏幕（留边距）
+            new_width = min(new_width, screen_width_full - 50)
+            new_height = min(new_height, screen_height_full - 50)
+        else:
+            # 手动配置模式
+            try:
+                new_width, new_height = map(int, resolution.split('x'))
+                # 验证并修正
+                new_width = max(640, min(new_width, screen_width_full - 50))
+                new_height = max(360, min(new_height, screen_height_full - 50))
+            except ValueError:
+                # 默认分辨率
+                new_width = int(screen_width_full * 0.8)
+                new_height = int(screen_height_full * 0.8)
+        
+        # 设置全屏或窗口模式
+        if fullscreen:
+            new_screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        else:
+            new_screen = pygame.display.set_mode((new_width, new_height))
+        
+        # 更新全局变量
+        screen = new_screen
+        SCREEN_WIDTH = new_screen.get_width()
+        SCREEN_HEIGHT = new_screen.get_height()
+        
+        # 重新初始化时钟
+        clock = pygame.time.Clock()
+        
+        print(f"分辨率已更新为: {SCREEN_WIDTH}x{SCREEN_HEIGHT}")
+        
+    except Exception as e:
+        print(f"应用新分辨率失败: {e}")

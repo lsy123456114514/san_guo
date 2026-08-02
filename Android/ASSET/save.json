@@ -2,11 +2,11 @@
   "username": "",
   "password": "",
   "resources": {
-    "水": 0,
-    "煤炭": 0,
-    "木头": 0,
-    "食物": 0,
-    "金元宝": 0,
+    "水": 352207,
+    "煤炭": 176103,
+    "木头": 281765,
+    "食物": 246545,
+    "金元宝": 70441,
     "时间卡": 0,
     "宠物食物": 0,
     "普通子弹": 0,
@@ -54,7 +54,8 @@
   "achievements": {
     "unlocked": [],
     "progress": {},
-    "claimed_rewards": []
+    "claimed_rewards": [],
+    "completed": []
   },
   "tech_tree": {
     "unlocked": [
@@ -96,7 +97,7 @@
       "base_time": 60
     }
   },
-  "last_login": 1779859489,
+  "last_login": 1783381561,
   "last_auto_save": 0,
   "resource_bonus": 1.0,
   "passive_income": {
@@ -269,6 +270,363 @@
       "wealth": [],
       "achievements": [],
       "pvp": []
+    }
+  },
+  "mc_world": {
+    "placed_blocks": [],
+    "hotbar": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "hotbar_selected": 0,
+    "player_pos": [
+      0,
+      0,
+      0
+    ],
+    "camera_yaw": 0,
+    "camera_pitch": -20,
+    "camera_mode": "first",
+    "inventory": [],
+    "world_seed": 0
+  },
+  "custom_heroes": {
+    "赵云·龙胆": {
+      "name": "赵云·龙胆",
+      "quality": "legendary",
+      "element": "风",
+      "faction": "shu",
+      "base_attributes": {
+        "hp": 950,
+        "attack": 185,
+        "defense": 85,
+        "speed": 95
+      },
+      "skills": [
+        {
+          "name": "龙胆枪",
+          "damage": 420,
+          "element": "风",
+          "cooldown": 2
+        }
+      ],
+      "passive_skills": [
+        {
+          "name": "七进七出",
+          "description": "战斗中闪避率提升25%，受到致命伤害时回复30%生命值"
+        }
+      ],
+      "ultimate_skill": {
+        "name": "龙鸣九霄",
+        "damage": 850,
+        "element": "风",
+        "cooldown": 10
+      },
+      "story": "常山赵子龙，一身是胆，在长坂坡七进七出，威震天下。"
+    },
+    "诸葛亮·卧龙": {
+      "name": "诸葛亮·卧龙",
+      "quality": "legendary",
+      "element": "雷",
+      "faction": "shu",
+      "base_attributes": {
+        "hp": 700,
+        "attack": 200,
+        "defense": 60,
+        "speed": 70
+      },
+      "skills": [
+        {
+          "name": "奇门遁甲",
+          "damage": 380,
+          "element": "雷",
+          "cooldown": 3
+        }
+      ],
+      "passive_skills": [
+        {
+          "name": "运筹帷幄",
+          "description": "所有友军攻击力提升15%，技能伤害提升20%"
+        }
+      ],
+      "ultimate_skill": {
+        "name": "七星续命",
+        "damage": 900,
+        "element": "雷",
+        "cooldown": 12
+      },
+      "story": "卧龙先生，三分天下，智谋无双，鞠躬尽瘁死而后已。"
+    },
+    "曹操·枭雄": {
+      "name": "曹操·枭雄",
+      "quality": "legendary",
+      "element": "火",
+      "faction": "wei",
+      "base_attributes": {
+        "hp": 900,
+        "attack": 175,
+        "defense": 95,
+        "speed": 65
+      },
+      "skills": [
+        {
+          "name": "挟天子",
+          "damage": 350,
+          "element": "火",
+          "cooldown": 2
+        }
+      ],
+      "passive_skills": [
+        {
+          "name": "乱世枭雄",
+          "description": "每击败一名敌人，攻击力永久提升5%，最多提升50%"
+        }
+      ],
+      "ultimate_skill": {
+        "name": "铜雀春深",
+        "damage": 800,
+        "element": "火",
+        "cooldown": 10
+      },
+      "story": "治世之能臣，乱世之奸雄，挟天子以令诸侯。"
+    },
+    "孙尚香·弓腰姬": {
+      "name": "孙尚香·弓腰姬",
+      "quality": "epic",
+      "element": "水",
+      "faction": "wu",
+      "base_attributes": {
+        "hp": 650,
+        "attack": 190,
+        "defense": 55,
+        "speed": 90
+      },
+      "skills": [
+        {
+          "name": "月影弓",
+          "damage": 320,
+          "element": "水",
+          "cooldown": 2
+        }
+      ],
+      "passive_skills": [
+        {
+          "name": "巾帼不让",
+          "description": "攻击速度提升30%，暴击率提升15%"
+        }
+      ],
+      "ultimate_skill": {
+        "name": "红颜祸水",
+        "damage": 700,
+        "element": "水",
+        "cooldown": 8
+      },
+      "story": "东吴郡主，弓腰姬孙尚香，英姿飒爽，不让须眉。"
+    },
+    "吕布·飞将": {
+      "name": "吕布·飞将",
+      "quality": "legendary",
+      "element": "土",
+      "faction": "qun",
+      "base_attributes": {
+        "hp": 1000,
+        "attack": 220,
+        "defense": 90,
+        "speed": 85
+      },
+      "skills": [
+        {
+          "name": "方天画戟",
+          "damage": 450,
+          "element": "土",
+          "cooldown": 3
+        }
+      ],
+      "passive_skills": [
+        {
+          "name": "人中吕布",
+          "description": "攻击力提升20%，对所有敌人造成额外10%伤害"
+        }
+      ],
+      "ultimate_skill": {
+        "name": "辕门射戟",
+        "damage": 950,
+        "element": "土",
+        "cooldown": 12
+      },
+      "story": "人中吕布，马中赤兔，天下无双的猛将。"
+    },
+    "司马懿·冢虎": {
+      "name": "司马懿·冢虎",
+      "quality": "legendary",
+      "element": "暗",
+      "faction": "jin",
+      "base_attributes": {
+        "hp": 750,
+        "attack": 180,
+        "defense": 70,
+        "speed": 75
+      },
+      "skills": [
+        {
+          "name": "隐忍",
+          "damage": 300,
+          "element": "暗",
+          "cooldown": 2
+        }
+      ],
+      "passive_skills": [
+        {
+          "name": "鹰视狼顾",
+          "description": "每次受到攻击时反弹20%伤害，每回合恢复5%生命值"
+        }
+      ],
+      "ultimate_skill": {
+        "name": "三马同槽",
+        "damage": 880,
+        "element": "暗",
+        "cooldown": 11
+      },
+      "story": "冢虎司马懿，隐忍数十年，最终篡魏建晋。"
+    },
+    "关羽·武圣": {
+      "name": "关羽·武圣",
+      "quality": "legendary",
+      "element": "火",
+      "faction": "shu",
+      "base_attributes": {
+        "hp": 980,
+        "attack": 200,
+        "defense": 88,
+        "speed": 60
+      },
+      "skills": [
+        {
+          "name": "青龙偃月",
+          "damage": 400,
+          "element": "火",
+          "cooldown": 3
+        }
+      ],
+      "passive_skills": [
+        {
+          "name": "义薄云天",
+          "description": "生命值越低，攻击力越高，最低提升50%"
+        }
+      ],
+      "ultimate_skill": {
+        "name": "过五关斩六将",
+        "damage": 920,
+        "element": "火",
+        "cooldown": 12
+      },
+      "story": "武圣关羽，忠义无双，过五关斩六将，威震华夏。"
+    },
+    "貂蝉·闭月": {
+      "name": "貂蝉·闭月",
+      "quality": "epic",
+      "element": "光",
+      "faction": "qun",
+      "base_attributes": {
+        "hp": 550,
+        "attack": 165,
+        "defense": 45,
+        "speed": 95
+      },
+      "skills": [
+        {
+          "name": "倾国倾城",
+          "damage": 280,
+          "element": "光",
+          "cooldown": 2
+        }
+      ],
+      "passive_skills": [
+        {
+          "name": "红颜魅惑",
+          "description": "有30%概率使敌人眩晕一回合，所有友军闪避率提升10%"
+        }
+      ],
+      "ultimate_skill": {
+        "name": "月下独舞",
+        "damage": 650,
+        "element": "光",
+        "cooldown": 8
+      },
+      "story": "闭月羞花之貌，连环计破董卓吕布。"
+    },
+    "周瑜·公瑾": {
+      "name": "周瑜·公瑾",
+      "quality": "legendary",
+      "element": "水",
+      "faction": "wu",
+      "base_attributes": {
+        "hp": 720,
+        "attack": 195,
+        "defense": 65,
+        "speed": 80
+      },
+      "skills": [
+        {
+          "name": "羽扇纶巾",
+          "damage": 360,
+          "element": "水",
+          "cooldown": 2
+        }
+      ],
+      "passive_skills": [
+        {
+          "name": "雄姿英发",
+          "description": "技能伤害提升25%，对火属性敌人造成额外30%伤害"
+        }
+      ],
+      "ultimate_skill": {
+        "name": "火烧赤壁",
+        "damage": 860,
+        "element": "水",
+        "cooldown": 10
+      },
+      "story": "周郎赤壁，谈笑间樯橹灰飞烟灭。"
+    },
+    "张辽·文远": {
+      "name": "张辽·文远",
+      "quality": "epic",
+      "element": "风",
+      "faction": "wei",
+      "base_attributes": {
+        "hp": 820,
+        "attack": 170,
+        "defense": 80,
+        "speed": 88
+      },
+      "skills": [
+        {
+          "name": "威震逍遥",
+          "damage": 340,
+          "element": "风",
+          "cooldown": 3
+        }
+      ],
+      "passive_skills": [
+        {
+          "name": "八百破十万",
+          "description": "对兵力多于自己的敌人造成额外50%伤害"
+        }
+      ],
+      "ultimate_skill": {
+        "name": "突袭",
+        "damage": 750,
+        "element": "风",
+        "cooldown": 9
+      },
+      "story": "张文远威震逍遥津，八百铁骑破十万吴军。"
     }
   }
 }

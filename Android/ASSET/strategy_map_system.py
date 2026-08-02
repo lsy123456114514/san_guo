@@ -730,3 +730,125 @@ class HeroAdvancementSystem:
             if info:
                 result.append(info)
         return result
+
+
+def draw_gradient_background(screen, color1, color2):
+    height = screen.get_height()
+    for y in range(height):
+        ratio = y / height
+        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
+        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
+        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
+        pygame.draw.line(screen, (r, g, b), (0, y), (screen.get_width(), y))
+
+
+class Button:
+    def __init__(self, text, x, y, width, height, font, color=(100, 100, 150), hover_color=(120, 120, 180), text_color=(255, 255, 255)):
+        self.text = text
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.font = font
+        self.color = color
+        self.hover_color = hover_color
+        self.text_color = text_color
+        self.hovered = False
+    
+    def draw(self, screen):
+        col = self.hover_color if self.hovered else self.color
+        pygame.draw.rect(screen, col, (self.x, self.y, self.width, self.height), border_radius=8)
+        pygame.draw.rect(screen, (255, 215, 0), (self.x, self.y, self.width, self.height), 2, border_radius=8)
+        text_surf = self.font.render(self.text, True, self.text_color)
+        text_rect = text_surf.get_rect(center=(self.x + self.width//2, self.y + self.height//2))
+        screen.blit(text_surf, text_rect)
+    
+    def check_click(self, mx, my):
+        return self.x <= mx <= self.x + self.width and self.y <= my <= self.y + self.height
+
+
+def main():
+    """战略地图系统主界面"""
+    try:
+        if not pygame.get_init():
+            pygame.init()
+        
+        resolution = data['settings']['graphics']['resolution']
+        try:
+            width, height = map(int, resolution.split('x'))
+        except ValueError:
+            width, height = 800, 600
+        
+        screen = pygame.display.set_mode((width, height))
+        pygame.display.set_caption("🏰 战略地图")
+        clock = pygame.time.Clock()
+        
+        font_name = get_system_font_name()
+        try:
+            font_big = pygame.font.SysFont(font_name, 36)
+            font_main = pygame.font.SysFont(font_name, 26)
+            font_small = pygame.font.SysFont(font_name, 20)
+        except Exception:
+            font_big = pygame.font.Font(None, 36)
+            font_main = pygame.font.Font(None, 26)
+            font_small = pygame.font.Font(None, 20)
+        
+        territory_manager = TerritoryManager()
+        
+        running = True
+        scroll_y = 0
+        
+        while running:
+            mx, my = pygame.mouse.get_pos()
+            
+            draw_gradient_background(screen, (10, 15, 30), (25, 35, 55))
+            
+            title_surf = font_big.render("🏰 战略地图系统", True, (255, 215, 0))
+            screen.blit(title_surf, (width//2 - title_surf.get_width()//2, 30))
+            
+            owned_count = len(data["territory"]["owned_territories"])
+            total_power = data["territory"]["total_power"]
+            
+            info_surf = font_main.render(f"已占领领土: {owned_count} | 总战力: {total_power}", True, (255, 255, 255))
+            screen.blit(info_surf, (20, 80))
+            
+            panel_y = 110
+            panel_width = width - 40
+            
+            pygame.draw.rect(screen, (40, 40, 70), (20, panel_y, panel_width, height - panel_y - 70), border_radius=10)
+            pygame.draw.rect(screen, (80, 80, 120), (20, panel_y, panel_width, height - panel_y - 70), 2, border_radius=10)
+            
+            text_y = panel_y + 20
+            for terr in territory_manager.territories[:15]:
+                text_surf = font_small.render(f"📍 {terr['name']} - 防御: {terr['defense']}", True, (255, 255, 255))
+                screen.blit(text_surf, (40, text_y - scroll_y))
+                text_y += 35
+            
+            back_btn = Button("⏎ 返回", 20, height - 50, 120, 40, font_main)
+            back_btn.hovered = back_btn.check_click(mx, my)
+            back_btn.draw(screen)
+            
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if back_btn.check_click(mx, my):
+                        running = False
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 4:
+                    scroll_y = max(0, scroll_y - 50)
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 5:
+                    scroll_y = min(500, scroll_y + 50)
+            
+            pygame.display.flip()
+            clock.tick(30)
+        
+        pygame.display.quit()
+        pygame.mixer.quit()
+    
+    except Exception as e:
+        print(f"战略地图错误: {e}")
+        import traceback
+        traceback.print_exc()
+
+if __name__ == "__main__":
+    main()

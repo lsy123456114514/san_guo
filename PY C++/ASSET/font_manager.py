@@ -9,9 +9,9 @@ FONT_DIR = os.path.join(os.path.dirname(__file__), 'fonts')
 
 # 内置字体文件名
 BUILTIN_FONTS = {
-    'primary': '字魂白鸽天行体(商用需授权).ttf',  # 主要中文字体
-    'bold': '字魂白鸽天行体(商用需授权).ttf',    # 粗体（使用同一种字体）
-    'light': '字魂白鸽天行体(商用需授权).ttf',   # 细体（使用同一种字体）
+    'primary': 'NotoSansSC-Regular.ttf',      # 主要中文字体
+    'bold': 'NotoSansSC-Bold.ttf',            # 粗体
+    'light': 'NotoSansSC-Light.ttf',          # 细体
     'emoji': 'NotoColorEmoji.ttf'             # Emoji字体
 }
 

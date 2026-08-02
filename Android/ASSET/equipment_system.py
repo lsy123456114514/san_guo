@@ -406,6 +406,391 @@ class EquipmentSystem:
                 return False, "装備の強化に失敗しました！"
             else:
                 return False, "装备强化失败！"
+    
+    def refine_equipment(self, equipment, gold, refine_stones):
+        """洗练装备，重新随机生成属性"""
+        current_lang = data.get('settings', {}).get('language', {}).get('current', 'zh')
+        
+        costs = self._get_refine_cost(equipment)
+        if gold < costs["gold"]:
+            if current_lang == "zh":
+                return False, "金元宝不足"
+            return False, "Not enough gold"
+        if refine_stones < costs["stones"]:
+            if current_lang == "zh":
+                return False, "洗练石不足"
+            return False, "Not enough refine stones"
+        
+        attributes = self.equip_attributes[equipment["type"]].get(current_lang, 
+                    self.equip_attributes[equipment["type"]]["zh"])
+        
+        enhance_bonus = 1 + equipment.get("enhancement_level", 0) * 0.1
+        
+        old_attrs = equipment["attributes"].copy()
+        new_attrs = {}
+        for attr in attributes:
+            base_value = random.randint(8, 25) * (equipment["level"] + 1)
+            value = int(base_value * enhance_bonus)
+            new_attrs[attr] = max(1, value)
+        
+        equipment["attributes"] = new_attrs
+        equipment["last_refined_at"] = datetime.datetime.now().isoformat()
+        equipment["refine_count"] = equipment.get("refine_count", 0) + 1
+        
+        save()
+        
+        if current_lang == "zh":
+            return True, f"装备洗练成功！洗练次数：{equipment['refine_count']}"
+        elif current_lang == "en":
+            return True, f"Equipment refined successfully! Refine count: {equipment['refine_count']}"
+        elif current_lang == "ja":
+            return True, f"装備の洗練に成功しました！洗練回数：{equipment['refine_count']}"
+        else:
+            return True, f"装备洗练成功！洗练次数：{equipment['refine_count']}"
+    
+    def _get_refine_cost(self, equipment):
+        """获取洗练所需资源"""
+        base_cost = {"gold": 200, "stones": 5}
+        multiplier = 1 + equipment.get("refine_count", 0) * 0.5
+        return {
+            "gold": int(base_cost["gold"] * multiplier),
+            "stones": int(base_cost["stones"] * multiplier)
+        }
+    
+    def can_refine(self, equipment, gold, refine_stones):
+        """检查是否可以洗练"""
+        costs = self._get_refine_cost(equipment)
+        if gold < costs["gold"]:
+            return False, f"金元宝不足，需要{costs['gold']}"
+        if refine_stones < costs["stones"]:
+            return False, f"洗练石不足，需要{costs['stones']}"
+        return True, "可以洗练"
+
+class GemSystem:
+    """宝石镶嵌系统"""
+    
+    GEM_TYPES = {
+        "ruby": {
+            "name": "红宝石",
+            "icon": "💎",
+            "rarity": "legendary",
+            "stats": {"attack": 50},
+            "color": (255, 50, 50),
+            "description": "蕴含火之力的宝石"
+        },
+        "sapphire": {
+            "name": "蓝宝石",
+            "icon": "🔵",
+            "rarity": "legendary",
+            "stats": {"defense": 50},
+            "color": (50, 100, 255),
+            "description": "蕴含水之力的宝石"
+        },
+        "emerald": {
+            "name": "绿宝石",
+            "icon": "💚",
+            "rarity": "legendary",
+            "stats": {"hp": 300},
+            "color": (50, 200, 50),
+            "description": "蕴含木之力的宝石"
+        },
+        "topaz": {
+            "name": "黄宝石",
+            "icon": "💛",
+            "rarity": "epic",
+            "stats": {"crit_rate": 0.05},
+            "color": (255, 200, 50),
+            "description": "蕴含金之力的宝石"
+        },
+        "amethyst": {
+            "name": "紫宝石",
+            "icon": "💜",
+            "rarity": "epic",
+            "stats": {"skill_damage": 0.1},
+            "color": (150, 50, 200),
+            "description": "蕴含土之力的宝石"
+        },
+        "diamond": {
+            "name": "钻石",
+            "icon": "💠",
+            "rarity": "mythic",
+            "stats": {"attack": 100, "crit_rate": 0.1},
+            "color": (255, 255, 255),
+            "description": "稀世珍宝，蕴含无尽力量"
+        },
+        "obsidian": {
+            "name": "黑曜石",
+            "icon": "⚫",
+            "rarity": "rare",
+            "stats": {"damage_reduction": 0.05},
+            "color": (50, 50, 50),
+            "description": "吸收伤害的黑暗宝石"
+        },
+        "jade": {
+            "name": "翡翠",
+            "icon": "🟢",
+            "rarity": "rare",
+            "stats": {"heal_bonus": 0.1},
+            "color": (100, 200, 150),
+            "description": "温润如玉，增强治疗效果"
+        }
+    }
+    
+    GEM_SLOTS_BY_QUALITY = {
+        "common": 0,
+        "rare": 1,
+        "epic": 2,
+        "legendary": 3,
+        "mythic": 4
+    }
+    
+    GEM_LEVELS = {
+        1: {"multiplier": 1.0, "upgrade_cost": {"gold": 100, "gems": 3}},
+        2: {"multiplier": 1.5, "upgrade_cost": {"gold": 300, "gems": 5}},
+        3: {"multiplier": 2.0, "upgrade_cost": {"gold": 800, "gems": 10}},
+        4: {"multiplier": 3.0, "upgrade_cost": {"gold": 2000, "gems": 20}},
+        5: {"multiplier": 5.0, "upgrade_cost": {"gold": 5000, "gems": 50}}
+    }
+    
+    @classmethod
+    def get_gem_slots(cls, quality):
+        """获取装备可镶嵌的宝石槽数"""
+        return cls.GEM_SLOTS_BY_QUALITY.get(quality, 0)
+    
+    @classmethod
+    def can_equip_gem(cls, equipment, gem_type):
+        """检查是否可以镶嵌宝石"""
+        if "gems" not in equipment:
+            equipment["gems"] = []
+        
+        max_slots = cls.get_gem_slots(equipment.get("quality", "common"))
+        if len(equipment["gems"]) >= max_slots:
+            return False, "宝石槽已满"
+        
+        return True, "可以镶嵌"
+    
+    @classmethod
+    def equip_gem(cls, equipment, gem_type, gem_level=1):
+        """镶嵌宝石"""
+        can_equip, reason = cls.can_equip_gem(equipment, gem_type)
+        if not can_equip:
+            return False, reason
+        
+        if "gems" not in equipment:
+            equipment["gems"] = []
+        
+        gem_data = cls.GEM_TYPES.get(gem_type)
+        if not gem_data:
+            return False, "宝石类型不存在"
+        
+        equipment["gems"].append({
+            "type": gem_type,
+            "level": gem_level
+        })
+        
+        save()
+        return True, f"成功镶嵌{gem_data['name']} Lv.{gem_level}"
+    
+    @classmethod
+    def remove_gem(cls, equipment, gem_index):
+        """卸下宝石"""
+        if "gems" not in equipment or len(equipment["gems"]) <= gem_index:
+            return False, "宝石不存在"
+        
+        removed_gem = equipment["gems"].pop(gem_index)
+        gem_data = cls.GEM_TYPES.get(removed_gem["type"])
+        
+        save()
+        return True, f"成功卸下{gem_data['name']}"
+    
+    @classmethod
+    def get_gem_bonus(cls, equipment):
+        """获取宝石总属性加成"""
+        bonus = {}
+        if "gems" not in equipment:
+            return bonus
+        
+        for gem in equipment["gems"]:
+            gem_data = cls.GEM_TYPES.get(gem["type"])
+            if not gem_data:
+                continue
+            
+            level_multiplier = cls.GEM_LEVELS.get(gem["level"], {}).get("multiplier", 1.0)
+            
+            for stat, value in gem_data["stats"].items():
+                if stat not in bonus:
+                    bonus[stat] = 0
+                bonus[stat] += int(value * level_multiplier)
+        
+        return bonus
+    
+    @classmethod
+    def upgrade_gem(cls, equipment, gem_index, gold, gems):
+        """升级宝石"""
+        if "gems" not in equipment or len(equipment["gems"]) <= gem_index:
+            return False, "宝石不存在"
+        
+        gem = equipment["gems"][gem_index]
+        current_level = gem.get("level", 1)
+        
+        if current_level >= 5:
+            return False, "已达到最高等级"
+        
+        upgrade_cost = cls.GEM_LEVELS.get(current_level + 1, {}).get("upgrade_cost", {})
+        if gold < upgrade_cost.get("gold", 0):
+            return False, "金元宝不足"
+        if gems < upgrade_cost.get("gems", 0):
+            return False, "宝石碎片不足"
+        
+        gem["level"] = current_level + 1
+        save()
+        
+        gem_data = cls.GEM_TYPES.get(gem["type"])
+        return True, f"{gem_data['name']}升级到Lv.{gem['level']}"
+
+class EquipmentSetSystem:
+    """装备套装系统 - 收集指定套装获得额外属性"""
+    
+    SET_BONUSES = {
+        "dragon_set": {
+            "name": "龙鳞套装",
+            "icon": "🐉",
+            "description": "传说中的龙鳞打造的装备",
+            "pieces": ["龙鳞铠甲", "龙鳞头盔", "龙鳞战靴", "龙鳞护手"],
+            "bonuses": {
+                2: {"name": "龙鳞之护", "effects": {"defense": 50, "damage_reduction": 0.05}, "description": "防御力+50，伤害减免5%"},
+                3: {"name": "龙威", "effects": {"attack": 80, "defense": 50}, "description": "攻击力+80，防御力+50"},
+                4: {"name": "真龙附体", "effects": {"attack": 200, "defense": 150, "hp": 1000, "skill_damage": 0.3}, "description": "攻击力+200，防御力+150，生命值+1000，技能伤害+30%"}
+            },
+            "rarity": "legendary"
+        },
+        "phoenix_set": {
+            "name": "凤凰套装",
+            "icon": "🔥",
+            "description": "浴火重生的凤凰之羽打造",
+            "pieces": ["凤凰烈焰甲", "凤凰羽冠", "凤凰战靴", "凤凰护腕"],
+            "bonuses": {
+                2: {"name": "烈焰", "effects": {"attack": 60, "crit_rate": 0.05}, "description": "攻击力+60，暴击率+5%"},
+                3: {"name": "涅槃", "effects": {"hp_regen": 0.05, "attack": 60}, "description": "每回合恢复5%生命，攻击力+60"},
+                4: {"name": "不死鸟", "effects": {"attack": 150, "crit_rate": 0.15, "crit_damage": 0.5, "resurrect_chance": 0.3}, "description": "攻击力+150，暴击率+15%，暴击伤害+50%，死亡时有30%概率复活"}
+            },
+            "rarity": "legendary"
+        },
+        "tiger_set": {
+            "name": "白虎套装",
+            "icon": "🐅",
+            "description": "白虎之骨打造的强悍装备",
+            "pieces": ["白虎战甲", "白虎头盔", "白虎战靴", "白虎护手"],
+            "bonuses": {
+                2: {"name": "虎威", "effects": {"attack": 40, "speed": 30}, "description": "攻击力+40，速度+30"},
+                3: {"name": "猛虎", "effects": {"attack": 100, "crit_rate": 0.08}, "description": "攻击力+100，暴击率+8%"},
+                4: {"name": "白虎降临", "effects": {"attack": 250, "speed": 100, "crit_rate": 0.2, "armor_penetration": 0.2}, "description": "攻击力+250，速度+100，暴击率+20%，无视敌人20%防御"}
+            },
+            "rarity": "legendary"
+        },
+        "turtle_set": {
+            "name": "玄武套装",
+            "icon": "🐢",
+            "description": "玄武之甲打造的防御装备",
+            "pieces": ["玄武铠甲", "玄武头盔", "玄武战靴", "玄武护手"],
+            "bonuses": {
+                2: {"name": "龟壳", "effects": {"defense": 80, "hp": 500}, "description": "防御力+80，生命值+500"},
+                3: {"name": "磐石", "effects": {"damage_reduction": 0.15, "defense": 80}, "description": "伤害减免15%，防御力+80"},
+                4: {"name": "玄武守护", "effects": {"defense": 300, "hp": 2000, "damage_reduction": 0.3, "immortal_chance": 0.2}, "description": "防御力+300，生命值+2000，伤害减免30%，受到致命伤害时有20%概率不死"}
+            },
+            "rarity": "legendary"
+        },
+        "snake_set": {
+            "name": "青龙套装",
+            "icon": "🐍",
+            "description": "青龙之鳞打造的策略装备",
+            "pieces": ["青龙法袍", "青龙冠", "青龙履", "青龙护腕"],
+            "bonuses": {
+                2: {"name": "毒牙", "effects": {"skill_damage": 0.1, "attack": 30}, "description": "技能伤害+10%，攻击力+30"},
+                3: {"name": "龙息", "effects": {"skill_damage": 0.15, "mp": 200}, "description": "技能伤害+15%，法力值+200"},
+                4: {"name": "青龙觉醒", "effects": {"skill_damage": 0.5, "attack": 150, "mp": 500, "heal_bonus": 0.3}, "description": "技能伤害+50%，攻击力+150，法力值+500，治疗效果+30%"}
+            },
+            "rarity": "legendary"
+        },
+        "general_set": {
+            "name": "将军套装",
+            "icon": "⚔️",
+            "description": "久经沙场的将军装备",
+            "pieces": ["将军铠甲", "将军头盔", "将军战靴", "将军护手"],
+            "bonuses": {
+                2: {"name": "百战", "effects": {"attack": 30, "defense": 30}, "description": "攻击力+30，防御力+30"},
+                3: {"name": "不败", "effects": {"attack": 50, "hp": 300}, "description": "攻击力+50，生命值+300"},
+                4: {"name": "战神", "effects": {"attack": 100, "defense": 80, "hp": 500, "crit_rate": 0.1}, "description": "攻击力+100，防御力+80，生命值+500，暴击率+10%"}
+            },
+            "rarity": "epic"
+        },
+        "scholar_set": {
+            "name": "谋士套装",
+            "icon": "📜",
+            "description": "智慧与谋略的象征",
+            "pieces": ["谋士法袍", "谋士冠", "谋士履", "谋士护腕"],
+            "bonuses": {
+                2: {"name": "睿智", "effects": {"skill_damage": 0.08, "mp": 100}, "description": "技能伤害+8%，法力值+100"},
+                3: {"name": "谋略", "effects": {"skill_damage": 0.1, "speed": 20}, "description": "技能伤害+10%，速度+20"},
+                4: {"name": "卧龙", "effects": {"skill_damage": 0.3, "mp": 300, "speed": 50, "heal_bonus": 0.2}, "description": "技能伤害+30%，法力值+300，速度+50，治疗效果+20%"}
+            },
+            "rarity": "epic"
+        }
+    }
+    
+    @classmethod
+    def get_set_bonus(cls, hero_equipment):
+        """获取装备套装加成"""
+        all_bonuses = {}
+        
+        for set_id, set_data in cls.SET_BONUSES.items():
+            pieces_owned = 0
+            for piece in set_data["pieces"]:
+                for equip in hero_equipment:
+                    if equip.get("name") == piece:
+                        pieces_owned += 1
+                        break
+            
+            max_bonus_count = max(set_data["bonuses"].keys())
+            if pieces_owned >= max_bonus_count:
+                bonus_data = set_data["bonuses"][max_bonus_count]
+            elif pieces_owned > 0:
+                bonus_data = set_data["bonuses"].get(pieces_owned)
+            else:
+                continue
+            
+            if bonus_data:
+                for stat, value in bonus_data["effects"].items():
+                    if stat not in all_bonuses:
+                        all_bonuses[stat] = 0
+                    all_bonuses[stat] += value
+        
+        return all_bonuses
+    
+    @classmethod
+    def check_set_progress(cls, hero_equipment):
+        """检查套装收集进度"""
+        progress = []
+        
+        for set_id, set_data in cls.SET_BONUSES.items():
+            pieces_owned = 0
+            for piece in set_data["pieces"]:
+                for equip in hero_equipment:
+                    if equip.get("name") == piece:
+                        pieces_owned += 1
+                        break
+            
+            progress.append({
+                "set_id": set_id,
+                "name": set_data["name"],
+                "icon": set_data["icon"],
+                "pieces_owned": pieces_owned,
+                "total_pieces": len(set_data["pieces"]),
+                "rarity": set_data["rarity"],
+                "current_bonus": None
+            })
+        
+        return progress
 
 class MountSystem:
     """坐骑系统"""
@@ -623,6 +1008,63 @@ class GuildSystem:
         })
         save()
         return True, f"成功加入公会 {guild_name}！"
+
+class GuildWarSystem:
+    """公会战系统"""
+    
+    WAR_REWARDS = {
+        "win": {
+            "gold": 5000,
+            "guild_resources": 1000,
+            "rebirth_stones": 20,
+            "title": "公会战冠军"
+        },
+        "lose": {
+            "gold": 1000,
+            "guild_resources": 200,
+            "rebirth_stones": 5
+        }
+    }
+    
+    WAR_RANKS = {
+        1: {"name": "霸主", "bonus": {"attack": 0.2, "defense": 0.2}},
+        2: {"name": "王者", "bonus": {"attack": 0.15, "defense": 0.15}},
+        3: {"name": "强者", "bonus": {"attack": 0.1, "defense": 0.1}},
+        4: {"name": "勇士", "bonus": {"attack": 0.05, "defense": 0.05}},
+        5: {"name": "卫士", "bonus": {"attack": 0.03, "defense": 0.03}}
+    }
+    
+    @classmethod
+    def start_war(cls, guild_name, enemy_guild_name):
+        """开始公会战"""
+        import random
+        
+        guild_power = cls._calculate_guild_power(guild_name)
+        enemy_power = cls._calculate_guild_power(enemy_guild_name)
+        
+        power_ratio = guild_power / (guild_power + enemy_power)
+        win_chance = power_ratio * 0.7 + random.random() * 0.3
+        
+        if win_chance > 0.5:
+            result = "win"
+            rewards = cls.WAR_REWARDS["win"]
+            message = f"🎉 公会战胜利！获得 {rewards['gold']} 金元宝，{rewards['guild_resources']} 公会资源，{rewards['rebirth_stones']} 转生石！"
+        else:
+            result = "lose"
+            rewards = cls.WAR_REWARDS["lose"]
+            message = f"💔 公会战失败！获得 {rewards['gold']} 金元宝，{rewards['guild_resources']} 公会资源，{rewards['rebirth_stones']} 转生石！"
+        
+        return result, message, rewards
+    
+    @classmethod
+    def _calculate_guild_power(cls, guild_name):
+        """计算公会战力"""
+        return random.randint(1000, 10000)
+    
+    @classmethod
+    def get_war_rank_bonus(cls, rank):
+        """获取公会战排名加成"""
+        return cls.WAR_RANKS.get(rank, {}).get("bonus", {})
 
 class TradingSystem:
     """交易系统"""

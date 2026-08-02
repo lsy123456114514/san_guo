@@ -1063,8 +1063,20 @@ def main():
                 }
                 
                 map_path = get_map_data_path()
-                with open(map_path, 'w', encoding='utf-8') as f:
+                
+                if os.path.exists(map_path):
+                    backup_path = map_path + ".bak"
+                    with open(map_path, "rb") as f_in:
+                        with open(backup_path, "wb") as f_out:
+                            f_out.write(f_in.read())
+                
+                temp_path = map_path + ".tmp"
+                with open(temp_path, 'w', encoding='utf-8') as f:
                     json.dump(map_data, f, ensure_ascii=False, indent=2)
+                
+                if os.path.exists(map_path):
+                    os.remove(map_path)
+                os.rename(temp_path, map_path)
                 
                 print(f"地图数据已保存到: {map_path}")
                 return True
