@@ -1307,7 +1307,7 @@ class Particle:
         self.size = max(0.5, self.size - 0.03)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
         pygame.draw.circle(surface, self.color, (int(self.x), int(self.y)), int(self.size))
 
 class FloatingText:
@@ -1331,7 +1331,7 @@ class FloatingText:
             self.scale = max(1.0, self.scale - 0.02)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
         text_surf = self.font.render(self.text, True, self.color)
         scaled_size = (int(text_surf.get_width() * self.scale), int(text_surf.get_height() * self.scale))
         scaled_surf = pygame.transform.scale(text_surf, scaled_size)
@@ -3594,7 +3594,7 @@ def main():
             # 绘制怒气条
             if player_heroes:
                 main_hero = player_heroes[0]
-                rage_ratio = main_hero.rage / main_hero.max_rage
+                rage_ratio = main_hero.rage / main_hero.max_rage if main_hero.max_rage > 0 else 0
                 rage_width = 200
                 rage_height = 20
                 rage_x = SCREEN_WIDTH // 2 - rage_width // 2

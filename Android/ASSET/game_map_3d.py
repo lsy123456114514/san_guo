@@ -4088,7 +4088,7 @@ class GameMap3D:
                     z = float(args[3])
                     self.player_pos = [x, y, z]
                     self.add_chat_message(f"已传送到 ({x}, {y}, {z})")
-                except:
+                except Exception:
                     self.add_chat_message("用法: /tp <x> <y> <z>")
         
         elif cmd == "heal":

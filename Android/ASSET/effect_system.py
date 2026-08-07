@@ -137,10 +137,10 @@ class Particle:
         self.size = max(0.5, self.size - 0.05)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
         try:
             pygame.draw.circle(surface, (*self.color[:3], alpha), (int(self.x), int(self.y)), int(self.size))
-        except:
+        except Exception:
             pass
 
 class LightningEffect:
@@ -251,7 +251,7 @@ class FireEffect:
                 pygame.draw.circle(surface, (*color[:3], alpha), 
                                    (int(flame['x']), int(flame['y'])), 
                                    int(flame['size']))
-            except:
+            except Exception:
                 pass
 
 class SmokeEffect:
@@ -295,7 +295,7 @@ class SmokeEffect:
                 pygame.draw.circle(surface, (*self.color[:3], alpha), 
                                    (int(smoke['x']), int(smoke['y'])), 
                                    int(smoke['size']))
-            except:
+            except Exception:
                 pass
 
 class IceEffect:
@@ -310,7 +310,7 @@ class IceEffect:
     
     def update(self):
         elapsed = pygame.time.get_ticks() - self.start_time
-        progress = elapsed / self.duration
+        progress = elapsed / self.duration if self.duration > 0 else 1
         
         self.current_radius = self.radius * min(1, progress * 2)
         
@@ -357,7 +357,7 @@ class IceEffect:
                     points.append((px, py))
                 
                 pygame.draw.polygon(surface, (150, 200, 255, alpha), points)
-            except:
+            except Exception:
                 pass
 
 class RainbowEffect:
@@ -385,8 +385,7 @@ class RainbowEffect:
     
     def draw(self, surface):
         elapsed = pygame.time.get_ticks() - self.start_time
-        progress = elapsed / self.duration
-        
+        progress = elapsed / self.duration if self.duration > 0 else 1
         if progress < 0.5:
             scale = progress * 2
         else:
@@ -438,7 +437,7 @@ class StarsEffect:
     
     def draw(self, surface):
         elapsed = pygame.time.get_ticks() - self.start_time
-        progress = elapsed / self.duration
+        progress = elapsed / self.duration if self.duration > 0 else 1
         
         for star in self.stars:
             adjusted_progress = max(0, (progress - star['delay']) / (1 - star['delay'])) if star['delay'] < 1 else 0
@@ -455,7 +454,7 @@ class StarsEffect:
             
             try:
                 pygame.draw.circle(surface, (255, 255, 255, alpha), (int(x), int(y)), size)
-            except:
+            except Exception:
                 pass
 
 class ExplosionEffect:
@@ -500,7 +499,7 @@ class ExplosionEffect:
                     pygame.draw.circle(surface, (*particle['color'][:3], alpha), 
                                        (int(particle['x']), int(particle['y'])), 
                                        int(particle['size']))
-                except:
+                except Exception:
                     pass
 
 class HealEffect:
@@ -543,7 +542,7 @@ class HealEffect:
                 pygame.draw.circle(surface, (*color[:3], alpha), 
                                    (int(particle['x']), int(particle['y'])), 
                                    int(particle['size']))
-            except:
+            except Exception:
                 pass
 
 class PoisonEffect:
@@ -558,7 +557,7 @@ class PoisonEffect:
     
     def update(self):
         elapsed = pygame.time.get_ticks() - self.start_time
-        progress = elapsed / self.duration
+        progress = elapsed / self.duration if self.duration > 0 else 1
         
         self.current_radius = self.radius * min(1, progress)
         
@@ -597,7 +596,7 @@ class PoisonEffect:
                 pygame.draw.circle(surface, (150, 255, 150, alpha), 
                                    (int(bubble['x']), int(bubble['y'])), 
                                    int(bubble['size']))
-            except:
+            except Exception:
                 pass
 
 class ShockwaveEffect:
@@ -611,14 +610,14 @@ class ShockwaveEffect:
     
     def update(self):
         elapsed = pygame.time.get_ticks() - self.start_time
-        self.current_radius = self.max_radius * (elapsed / self.duration)
+        self.current_radius = self.max_radius * (elapsed / self.duration if self.duration > 0 else 1)
     
     def is_finished(self):
         return pygame.time.get_ticks() - self.start_time >= self.duration
     
     def draw(self, surface):
         elapsed = pygame.time.get_ticks() - self.start_time
-        progress = elapsed / self.duration
+        progress = elapsed / self.duration if self.duration > 0 else 1
         alpha = int(200 * (1 - progress))
         
         for i in range(3):
@@ -640,7 +639,7 @@ class MeteorEffect:
     
     def update(self):
         elapsed = pygame.time.get_ticks() - self.start_time
-        progress = min(elapsed / self.duration, 1)
+        progress = min(elapsed / self.duration if self.duration > 0 else 1, 1)
         
         self.x = self.x + (self.target_x - self.x) * progress
         self.y = self.y + (self.target_y - self.y) * progress
@@ -671,7 +670,7 @@ class MeteorEffect:
                 pygame.draw.circle(surface, (*color[:3], alpha), 
                                    (int(particle['x']), int(particle['y'])), 
                                    int(particle['size']))
-            except:
+            except Exception:
                 pass
         
         elapsed = pygame.time.get_ticks() - self.start_time
@@ -682,7 +681,7 @@ class MeteorEffect:
             try:
                 pygame.draw.circle(surface, (255, 100, 50), (int(self.x), int(self.y)), meteor_size)
                 pygame.draw.circle(surface, (255, 200, 100), (int(self.x), int(self.y)), meteor_size // 2)
-            except:
+            except Exception:
                 pass
 
 class AuroraEffect:
@@ -743,7 +742,7 @@ class AfterImage:
     
     def draw(self, surface):
         elapsed = pygame.time.get_ticks() - self.start_time
-        progress = elapsed / self.duration
+        progress = elapsed / self.duration if self.duration > 0 else 1
         alpha = int(self.alpha * (1 - progress))
         
         if alpha <= 0:
@@ -784,8 +783,7 @@ class GlowEffect:
     
     def draw(self, surface):
         elapsed = pygame.time.get_ticks() - self.start_time
-        progress = elapsed / self.duration
-        
+        progress = elapsed / self.duration if self.duration > 0 else 1
         if progress >= 1:
             return
         

@@ -80,7 +80,7 @@ class Particle:
         self.size = max(1, self.size - 0.1)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
         color = self.color[:3]
         pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
 

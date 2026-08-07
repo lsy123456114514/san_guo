@@ -184,7 +184,7 @@ else:
     try:
         exe_dir = os.path.dirname(sys.executable)
         SAVE_PATH = os.path.join(exe_dir, "save.json")
-    except:
+    except Exception:
         SAVE_PATH = os.path.join(os.path.dirname(__file__), "save.json")
 SOUND_DIR = get_resource_path("sounds")
 

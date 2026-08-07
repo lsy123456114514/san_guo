@@ -53,12 +53,12 @@ class Particle:
     def draw(self, surface):
         if self.glow_radius > 0:
             glow_surf = pygame.Surface((self.glow_radius * 2, self.glow_radius * 2), pygame.SRCALPHA)
-            alpha = int(255 * (self.life / self.max_life))
+            alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
             glow_color = (*self.color[:3], alpha // 4)
             pygame.draw.circle(glow_surf, glow_color, (int(self.glow_radius), int(self.glow_radius)), int(self.glow_radius))
             surface.blit(glow_surf, (int(self.x - self.glow_radius), int(self.y - self.glow_radius)))
         
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
         color = (*self.color[:3], alpha)
         particle_surf = pygame.Surface((self.size * 2, self.size * 2), pygame.SRCALPHA)
         pygame.draw.circle(particle_surf, color, (int(self.size), int(self.size)), int(self.size))
@@ -87,7 +87,7 @@ class FloatingText:
             self.scale = max(1.0, self.scale - 0.02)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
         text_surf = self.font.render(self.text, True, self.color)
         scaled_size = (int(text_surf.get_width() * self.scale), int(text_surf.get_height() * self.scale))
         scaled_surf = pygame.transform.scale(text_surf, scaled_size)

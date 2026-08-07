@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# Build outputs
+Output/
+dist/
+build/
+
+# Logs
+*.log
+debug.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+test_*.py
+*_test.py
+test_*.txt
+
+# Temporary files
+*.tmp
+temp/
+
+# ── 敏感文件保护 ──
+.env
+*.token
+*secret*
+credentials*
+.github_tool_config
+.sanguo_git_tool

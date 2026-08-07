@@ -121,7 +121,7 @@ class Particle:
         self.size = max(0.5, self.size - 0.05)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
         if alpha <= 0:
             return
         # 在带 alpha 通道的临时 Surface 上绘制再 blit，确保透明度生效
