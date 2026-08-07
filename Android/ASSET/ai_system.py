@@ -3,7 +3,8 @@
 import pygame
 import os
 import json
-from ASSET.game_data import data, save, get_system_font_name
+import time
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET.game_main_menu import Button, draw_gradient_background, COLORS
 
 # 尝试导入requests模块
@@ -70,7 +71,7 @@ def draw_resource_panel(surface, x, y, width, height):
         ("食物", data['resources']['食物'], (200, 150, 100))
     ]
     
-    spacing = width // len(resources)
+    spacing = width // max(1, len(resources))
     for i, (icon, value, color) in enumerate(resources):
         icon_x = x + i * spacing + spacing // 2
         icon_y = y + height // 2
@@ -198,7 +199,7 @@ def input_text(screen, font, prompt):
                     input_text += event.unicode
         
         # 绘制
-        draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+        draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
         draw_title(screen, "游戏内AI", screen.get_height() * 0.1, screen.get_width())
         
         # 提示文字（自动换行）
@@ -291,16 +292,23 @@ def call_ollama(prompt, model, url):
     try:
         # 先测试连接
         test_url = f"{url}/api/tags"
+        t0 = time.perf_counter()
+        logger.info("[AI] 开始请求模型列表 GET %s (timeout=5s)", test_url)
         test_response = requests.get(test_url, timeout=5)
         test_response.raise_for_status()
+        t1 = time.perf_counter()
+        logger.info("[AI] 模型列表请求完成，耗时 %.3fs 状态=%s", t1 - t0, test_response.status_code)
         models = test_response.json().get("models", [])
         model_names = [m.get("name") for m in models]
-        
+
         # 检查模型是否存在
         if model not in model_names:
             return f"错误: 模型'{model}'未找到\n已下载的模型: {', '.join(model_names)}\n请运行: ollama pull {model}"
-        
+
         # 发送生成请求
+        t2 = time.perf_counter()
+        prompt_len = len(full_prompt)
+        logger.info("[AI] 开始生成 POST %s model=%s prompt_len=%d (timeout=30s)", api_url, model, prompt_len)
         response = requests.post(
             api_url,
             json={
@@ -311,18 +319,64 @@ def call_ollama(prompt, model, url):
             timeout=30
         )
         response.raise_for_status()
+        t3 = time.perf_counter()
         data = response.json()
-        return data.get("response", "")
+        resp_text = data.get("response", "")
+        logger.info("[AI] 生成完成，耗时 %.3fs 状态=%s resp_len=%d", t3 - t2, response.status_code, len(resp_text))
+        return resp_text
+    except requests.exceptions.Timeout as e:
+        # ConnectTimeout / ReadTimeout 的父类，单独拎出来给"超时"这个最常见的卡顿原因精确定位
+        duration = time.perf_counter() - locals().get('t0', time.perf_counter())
+        timeout_type = type(e).__name__  # ConnectTimeout / ReadTimeout / Timeout
+        stage = "模型列表查询" if 't2' not in locals() else "生成推理"
+        # 配置里写的 timeout 阈值写进日志，方便直接判断是不是真的到了时间
+        limit = 5 if 't2' not in locals() else 30
+        logger.error(
+            "[AI] 请求超时 类型=%s 阶段=%s 阈值=%ss 实际耗时≈%.3fs url=%s",
+            timeout_type, stage, limit, duration, url, exc_info=True,
+        )
+        hint = (
+            f"错误: 请求超时（{timeout_type}）\n"
+            f"阶段: {stage}  阈值: {limit}s  实际耗时: {duration:.1f}s\n"
+            f"请检查: 1. 网络是否稳定  2. OLLAMA服务是否卡住（首次pull模型很耗时）\n"
+            f"       3. 是否需要在 settings 中调大 AI 接口超时阈值"
+        )
+        return hint
     except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 404:
+        duration = time.perf_counter() - locals().get('t0', time.perf_counter())
+        status = e.response.status_code if e.response else '?'
+        resp_snippet = ""
+        if e.response is not None:
+            try:
+                resp_snippet = e.response.text[:300].replace("\n", "\\n")
+            except Exception as _e:
+                resp_snippet = "<无法读取响应体>"
+        logger.error(
+            "[AI] HTTP错误 状态=%s 耗时约%.3fs snippet=%s err=%s",
+            status, duration, resp_snippet, e,
+        )
+        if e.response and e.response.status_code == 404:
             if "tags" in str(e.request.url):
                 return f"错误: 404 - OLLAMA API未找到，请检查URL是否正确\n地址: {url}"
             else:
                 return f"错误: 404 - 模型'{model}'未找到，请确保模型已下载\n请运行: ollama pull {model}"
-        return f"错误: HTTP错误 {e.response.status_code}\n详情: {e.response.text}"
-    except requests.exceptions.ConnectionError:
+        if e.response and e.response.status_code == 408:
+            return f"错误: 408 - 服务器端请求超时\n地址: {url}\n请稍后重试"
+        return f"错误: HTTP错误 {status}\n详情: {e.response.text if e.response else e}"
+    except requests.exceptions.ConnectionError as e:
+        duration = time.perf_counter() - locals().get('t0', time.perf_counter())
+        conn_err_type = type(e).__name__
+        logger.error(
+            "[AI] 连接失败 类型=%s 耗时约%.3fs url=%s err=%s",
+            conn_err_type, duration, url, e,
+        )
         return f"错误: 连接失败，请确保OLLAMA服务已启动\n地址: {url}\n请检查: 1. OLLAMA服务是否运行 2. 防火墙是否允许访问 3. 端口是否正确"
     except Exception as e:
+        duration = time.perf_counter() - locals().get('t0', time.perf_counter())
+        logger.error(
+            "[AI] 未分类异常 类型=%s 耗时约%.3fs err=%s",
+            type(e).__name__, duration, e, exc_info=True,
+        )
         return f"错误: {str(e)}\n请检查: 1. OLLAMA服务是否运行 2. 模型是否已下载 3. URL是否正确"
 
 def main():
@@ -360,7 +414,7 @@ def main():
             FONT_MAIN = pygame.font.Font(None, 40)
             FONT_SMALL = pygame.font.Font(None, 28)
             FONT_BIG = pygame.font.Font(None, 60)
-    except Exception:
+    except Exception as _e:
         FONT_MAIN = pygame.font.Font(None, 40)
         FONT_SMALL = pygame.font.Font(None, 28)
         FONT_BIG = pygame.font.Font(None, 60)
@@ -380,7 +434,7 @@ def main():
     
     while running:
         # 渐变背景
-        draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+        draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
         
         # 标题
         draw_title(screen, "游戏内AI", screen_height * 0.1, screen_width)
@@ -616,7 +670,7 @@ def main():
                                                 scroll_y = min(scroll_y + 30, max_scroll)
                                     
                                     # 绘制背景
-                                    draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+                                    draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
                                     
                                     # 标题
                                     draw_title(screen, "用户服务条款及免责声明", screen.get_height() * 0.1, screen.get_width())

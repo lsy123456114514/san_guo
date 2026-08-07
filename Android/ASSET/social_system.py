@@ -1,8 +1,10 @@
+"""社交系统 - 好友/公会/聊天窗口 UI 渲染"""
+
 import os
 import pygame
 import random
 import datetime
-from ASSET.game_data import data, save, get_system_font_name
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 
 # 颜色主题
@@ -159,7 +161,7 @@ class ScrollableContainer:
                            (self.x + self.width - 12, scrollbar_y, 8, scrollbar_height),
                            border_radius=4)
 
-def draw_gradient_background(surface, color1, color2):
+def draw_gradient_bg(surface, color1, color2):
     """绘制渐变背景"""
     width, height = surface.get_size()
     for y in range(height):
@@ -737,13 +739,7 @@ def main():
 
         # 字体初始化（根据屏幕大小自适应）
         def init_font(size):
-            font_name = get_system_font_name()
-            # 根据屏幕大小调整字体
-            adjusted_size = int(size * min(SCREEN_WIDTH / 900, SCREEN_HEIGHT / 700))
-            try:
-                return pygame.font.SysFont(font_name, adjusted_size)
-            except Exception:
-                return pygame.font.Font(None, adjusted_size)
+            return get_font(size)
 
         font_big = init_font(48)
         font_main = init_font(32)
@@ -779,7 +775,7 @@ def main():
             mx, my = pygame.mouse.get_pos()
             
             # 渐变背景
-            draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+            draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
             
             # 导航按钮
             nav_buttons = [
@@ -914,19 +910,19 @@ def main():
                     if current_page == "pet":
                         pet = pet_container.get_item_at(mx, my)
                         if pet:
-                            print(f"点击了宠物: {pet['name']}")
+                            logger.info(f"点击了宠物: {pet['name']}")
                     elif current_page == "task":
                         task = task_container.get_item_at(mx, my)
                         if task:
-                            print(f"点击了任务: {task['name']}")
+                            logger.info(f"点击了任务: {task['name']}")
                     elif current_page == "mail":
                         mail = mail_container.get_item_at(mx, my)
                         if mail:
-                            print(f"点击了邮件: {mail['subject']}")
+                            logger.info(f"点击了邮件: {mail['subject']}")
                     elif current_page == "friend":
                         friend = friend_container.get_item_at(mx, my)
                         if friend:
-                            print(f"点击了好友: {friend['username']}")
+                            logger.info(f"点击了好友: {friend['username']}")
                 
                 # 处理滚动事件
                 if current_page == "pet":
@@ -942,8 +938,8 @@ def main():
         
         safe_exit("社交系统")
     except Exception as e:
-        print(f"异常：{str(e)}")
-        print("详细错误信息：")
+        logger.info(f"异常：{str(e)}")
+        logger.info("详细错误信息：")
         import traceback
         traceback.print_exc()
         safe_exit("社交系统", str(e))

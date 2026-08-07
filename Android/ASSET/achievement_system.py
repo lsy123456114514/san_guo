@@ -1,5 +1,5 @@
 import time
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, logger, draw_gradient_bg, cull_dead, get_font
 
 class AchievementSystem:
     """成就系统 - 给予玩家成就感和目标感"""

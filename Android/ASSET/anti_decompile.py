@@ -1,9 +1,12 @@
+"""反混淆/反破解运行期检测（发布版启用）"""
+
 import os
 import sys
 import hashlib
 import time
 import random
 import traceback
+from ASSET.game_data import draw_gradient_bg, cull_dead, get_font
 
 # 反反编译保护模块
 class AntiDecompile:
@@ -24,7 +27,7 @@ class AntiDecompile:
             with open(file_path, 'rb') as f:
                 content = f.read()
                 return hashlib.sha256(content).hexdigest()
-        except Exception:
+        except Exception as _e:
             return None
     
     def init_protection(self):
@@ -73,8 +76,8 @@ class AntiDecompile:
             is_debugger_present = kernel32.IsDebuggerPresent()
             if is_debugger_present:
                 self.trigger_protection()
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
     
     def check_virtual_machine(self):
         """检查是否在虚拟机中运行"""
@@ -90,8 +93,8 @@ class AntiDecompile:
             for signature in vm_signatures:
                 if signature.lower() in system_info.lower():
                     self.trigger_protection()
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
     
     def check_file_integrity(self):
         """检查文件完整性"""

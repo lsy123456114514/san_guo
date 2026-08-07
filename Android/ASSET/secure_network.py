@@ -13,6 +13,7 @@ import hashlib
 import random
 import struct
 from typing import Dict, Any, Optional, Callable
+from ASSET.game_data import draw_gradient_bg, cull_dead, get_font
 
 
 class SecureNetwork:
@@ -331,7 +332,7 @@ class SecureNetwork:
             ip = s.getsockname()[0]
             s.close()
             return ip
-        except:
+        except Exception as _e:
             return '127.0.0.1'
     
     def stop(self):
@@ -341,8 +342,8 @@ class SecureNetwork:
         if self.socket:
             try:
                 self.socket.close()
-            except:
-                pass
+            except Exception as _e:
+                logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
         print("🛑 安全网络模块已停止")
 
 

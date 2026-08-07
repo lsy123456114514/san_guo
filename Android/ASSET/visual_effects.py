@@ -2,6 +2,7 @@ import pygame
 import random
 import time
 import math
+from ASSET.game_data import draw_gradient_bg, cull_dead, get_font
 
 class VisualEffects:
     """视觉特效系统 - 借鉴成功游戏的视觉风格"""

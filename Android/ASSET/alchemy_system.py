@@ -1,8 +1,10 @@
+"""炼丹系统 - 资源合成、丹药炼制与冷却"""
+
 import os
 import pygame
 import random
 import datetime
-from ASSET.game_data import data, save, get_system_font_name
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET.languages import get_text
 from ASSET import safe_exit
 
@@ -77,7 +79,7 @@ class Button:
                 self.is_clicked = False
         return False
 
-def draw_gradient_background(surface, color1, color2):
+def draw_gradient_bg(surface, color1, color2):
     """绘制渐变背景"""
     width, height = surface.get_size()
     for y in range(height):
@@ -395,13 +397,7 @@ def main():
 
         # 字体初始化（根据屏幕大小自适应）
         def init_font(size):
-            font_name = get_system_font_name()
-            # 根据屏幕大小调整字体
-            adjusted_size = int(size * min(SCREEN_WIDTH / 900, SCREEN_HEIGHT / 700))
-            try:
-                return pygame.font.SysFont(font_name, adjusted_size)
-            except Exception:
-                return pygame.font.Font(None, adjusted_size)
+            return get_font(size)
 
         font_big = init_font(48)
         font_main = init_font(32)
@@ -450,7 +446,7 @@ def main():
                 save()
             
             # 渐变背景
-            draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+            draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
             
             # 导航按钮
             back_btn = Button("返回", SCREEN_WIDTH - 150, SCREEN_HEIGHT - 70, 120, 50, font_small)
@@ -503,8 +499,8 @@ def main():
         
         safe_exit("炼金系统")
     except Exception as e:
-        print(f"异常：{str(e)}")
-        print("详细错误信息：")
+        logger.info(f"异常：{str(e)}")
+        logger.info("详细错误信息：")
         import traceback
         traceback.print_exc()
         safe_exit("炼金系统", str(e))

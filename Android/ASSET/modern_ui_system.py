@@ -1,6 +1,6 @@
 import pygame
 import time
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, logger, draw_gradient_bg, cull_dead, get_font
 
 class ModernUI:
     """现代化UI组件系统 - 借鉴成功游戏的设计"""
@@ -56,7 +56,7 @@ class ModernUI:
             self.font_medium = pygame.font.SysFont("Microsoft YaHei", 18)
             self.font_small = pygame.font.SysFont("Microsoft YaHei", 14)
             self.font_tiny = pygame.font.SysFont("Microsoft YaHei", 12)
-        except:
+        except Exception as _e:
             self.font_large = pygame.font.Font(None, 36)
             self.font_medium = pygame.font.Font(None, 24)
             self.font_small = pygame.font.Font(None, 18)
@@ -327,44 +327,57 @@ class ModernUI:
         surface.blit(progress_surface, (x + 40, y + 30))
         
         if not goal["completed"] and goal["progress"] < goal["target"]:
-            bar_width = int((width - 60) * goal["progress"] / goal["target"])
+            if goal["target"] <= 0:
+                logger.warning("[UI] _draw_goal_item 目标值为 %s，跳过进度条绘制", goal.get("target"))
+                bar_width = 0
+            else:
+                bar_width = int((width - 60) * goal["progress"] / goal["target"])
             pygame.draw.rect(surface, self.COLORS["accent_cyan"], 
                             (x + 55, y + 35, bar_width, 5), border_radius=3)
     
     def _get_today_goals(self):
         """获取今日目标"""
         goals = []
-        
+
         daily_reward = data.get("daily_reward", {})
         consecutive = daily_reward.get("consecutive_days", 0)
+        checkin_done = daily_reward.get("last_checkin_date") == time.strftime("%Y-%m-%d")
         goals.append({
             "name": f"每日签到 ({consecutive}天)",
-            "completed": daily_reward.get("last_checkin_date") == time.strftime("%Y-%m-%d"),
-            "progress": 1 if goals[-1]["completed"] else 0,
+            "completed": checkin_done,
+            "progress": 1 if checkin_done else 0,
             "target": 1
         })
-        
+
         task_chains = data.get("task_chains", {})
-        daily_tasks = task_chains.get("daily_tasks", [])
+        daily_tasks = task_chains.get("daily_tasks", []) or []
         completed_daily = sum(1 for tid in daily_tasks if tid in task_chains.get("claimed_rewards", []))
+        daily_target = max(1, len(daily_tasks))
+        if len(daily_tasks) == 0:
+            logger.info("[UI] 今日任务列表为空，daily_target 兜底为 1")
         goals.append({
             "name": f"完成每日任务 ({completed_daily}/{len(daily_tasks)})",
-            "completed": completed_daily >= len(daily_tasks) if daily_tasks else False,
+            "completed": len(daily_tasks) > 0 and completed_daily >= len(daily_tasks),
             "progress": completed_daily,
-            "target": len(daily_tasks)
+            "target": daily_target
         })
-        
+
         battle_stats = data.get("battle_stats", {})
-        victories = battle_stats.get("victories", 0)
+        victories = battle_stats.get("victories", 0) or 0
         goals.append({
             "name": "赢得战斗",
             "completed": victories > 0,
             "progress": min(1, victories),
             "target": 1
         })
-        
+
         dungeon = data.get("dungeon", {})
-        completed_floors = sum(dungeon.get("completed_floors", {}).values())
+        floor_dict = dungeon.get("completed_floors", {}) or {}
+        floor_values = [v for v in floor_dict.values() if isinstance(v, (int, float))]
+        skipped_values = len(floor_dict) - len(floor_values)
+        if skipped_values > 0:
+            logger.warning("[UI] completed_floors 中有 %s 个非数值项被跳过", skipped_values)
+        completed_floors = int(sum(floor_values)) if floor_values else 0
         goals.append({
             "name": f"通关副本 ({completed_floors}层)",
             "completed": completed_floors > 0,

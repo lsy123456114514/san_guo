@@ -2,7 +2,7 @@ import pygame
 import random
 import math
 import time
-from ASSET.game_data import data
+from ASSET.game_data import data, logger, draw_gradient_bg, cull_dead, get_font
 
 class EffectSystem:
     def __init__(self):
@@ -91,17 +91,20 @@ class EffectSystem:
             self.motion_blur_frames = []
     
     def update(self):
-        """更新所有特效"""
-        for effect in self.effects[:]:
+        """更新所有特效（O(n) 原地清理死亡元素，避免 O(n^2) list.remove）"""
+        # effects: 保留未 is_finished 的
+        alive_effects = []
+        for effect in self.effects:
             effect.update()
-            if effect.is_finished():
-                self.effects.remove(effect)
-        
-        for particle in self.particles[:]:
+            if not effect.is_finished():
+                alive_effects.append(effect)
+        self.effects = alive_effects
+
+        # particles: 保留 life > 0 的（cull_dead 等效写法，避免额外传参）
+        for particle in self.particles:
             particle.update()
-            if particle.life <= 0:
-                self.particles.remove(particle)
-        
+        self.particles[:] = [p for p in self.particles if p.life > 0]
+
         # 更新屏幕晃动
         self.update_screen_shake()
     
@@ -137,11 +140,15 @@ class Particle:
         self.size = max(0.5, self.size - 0.05)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
+        if self.max_life <= 0:
+            logger.warning("[特效] alpha 计算 max_life=%s 异常，alpha 置 0", self.max_life)
+            alpha = 0
+        else:
+            alpha = int(255 * (self.life / self.max_life))
         try:
             pygame.draw.circle(surface, (*self.color[:3], alpha), (int(self.x), int(self.y)), int(self.size))
-        except:
-            pass
+        except Exception as _e:
+            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class LightningEffect:
     def __init__(self, x, y, duration=1000, forks=3):
@@ -224,13 +231,12 @@ class FireEffect:
                     'max_life': life
                 })
         
-        for flame in self.flames[:]:
+        for flame in self.flames:
             flame['x'] += flame['speed_x'] + math.sin(pygame.time.get_ticks() * 0.01) * 0.5
             flame['y'] += flame['speed_y']
             flame['life'] -= 1
             flame['size'] *= 0.98
-            if flame['life'] <= 0 or flame['size'] < 1:
-                self.flames.remove(flame)
+        self.flames[:] = [fl for fl in self.flames if fl['life'] > 0 and fl['size'] >= 1]
     
     def is_finished(self):
         return pygame.time.get_ticks() - self.start_time >= self.duration and len(self.flames) == 0
@@ -251,8 +257,8 @@ class FireEffect:
                 pygame.draw.circle(surface, (*color[:3], alpha), 
                                    (int(flame['x']), int(flame['y'])), 
                                    int(flame['size']))
-            except:
-                pass
+            except Exception as _e:
+                logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class SmokeEffect:
     def __init__(self, x, y, duration=4000, color=(100, 100, 120)):
@@ -277,13 +283,12 @@ class SmokeEffect:
                     'max_life': 150
                 })
         
-        for smoke in self.smoke_particles[:]:
+        for smoke in self.smoke_particles:
             smoke['x'] += smoke['speed_x']
             smoke['y'] += smoke['speed_y']
             smoke['size'] *= 1.01
             smoke['life'] -= 1
-            if smoke['life'] <= 0:
-                self.smoke_particles.remove(smoke)
+        self.smoke_particles[:] = [s for s in self.smoke_particles if s['life'] > 0]
     
     def is_finished(self):
         return pygame.time.get_ticks() - self.start_time >= self.duration and len(self.smoke_particles) == 0
@@ -295,8 +300,8 @@ class SmokeEffect:
                 pygame.draw.circle(surface, (*self.color[:3], alpha), 
                                    (int(smoke['x']), int(smoke['y'])), 
                                    int(smoke['size']))
-            except:
-                pass
+            except Exception as _e:
+                logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class IceEffect:
     def __init__(self, x, y, duration=2000, radius=50):
@@ -310,8 +315,11 @@ class IceEffect:
     
     def update(self):
         elapsed = pygame.time.get_ticks() - self.start_time
-        progress = elapsed / self.duration
-        
+        if self.duration <= 0:
+            logger.warning("[特效] progress 计算 duration=%s 异常，置 1", self.duration)
+            progress = 1
+        else:
+            progress = elapsed / self.duration
         self.current_radius = self.radius * min(1, progress * 2)
         
         if progress < 0.3:
@@ -326,11 +334,10 @@ class IceEffect:
                     'life': random.randint(50, 100)
                 })
         
-        for crystal in self.crystals[:]:
+        for crystal in self.crystals:
             crystal['rotation'] += 0.02
             crystal['life'] -= 1
-            if crystal['life'] <= 0:
-                self.crystals.remove(crystal)
+        self.crystals[:] = [c for c in self.crystals if c['life'] > 0]
     
     def is_finished(self):
         return pygame.time.get_ticks() - self.start_time >= self.duration
@@ -357,8 +364,8 @@ class IceEffect:
                     points.append((px, py))
                 
                 pygame.draw.polygon(surface, (150, 200, 255, alpha), points)
-            except:
-                pass
+            except Exception as _e:
+                logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class RainbowEffect:
     def __init__(self, x, y, duration=3000, height=100):
@@ -385,8 +392,11 @@ class RainbowEffect:
     
     def draw(self, surface):
         elapsed = pygame.time.get_ticks() - self.start_time
-        progress = elapsed / self.duration
-        
+        if self.duration <= 0:
+            logger.warning("[特效] progress 计算 duration=%s 异常，置 1", self.duration)
+            progress = 1
+        else:
+            progress = elapsed / self.duration
         if progress < 0.5:
             scale = progress * 2
         else:
@@ -438,8 +448,11 @@ class StarsEffect:
     
     def draw(self, surface):
         elapsed = pygame.time.get_ticks() - self.start_time
-        progress = elapsed / self.duration
-        
+        if self.duration <= 0:
+            logger.warning("[特效] progress 计算 duration=%s 异常，置 1", self.duration)
+            progress = 1
+        else:
+            progress = elapsed / self.duration
         for star in self.stars:
             adjusted_progress = max(0, (progress - star['delay']) / (1 - star['delay'])) if star['delay'] < 1 else 0
             
@@ -455,8 +468,8 @@ class StarsEffect:
             
             try:
                 pygame.draw.circle(surface, (255, 255, 255, alpha), (int(x), int(y)), size)
-            except:
-                pass
+            except Exception as _e:
+                logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class ExplosionEffect:
     def __init__(self, x, y, duration=1500, power=1.0):
@@ -500,8 +513,8 @@ class ExplosionEffect:
                     pygame.draw.circle(surface, (*particle['color'][:3], alpha), 
                                        (int(particle['x']), int(particle['y'])), 
                                        int(particle['size']))
-                except:
-                    pass
+                except Exception as _e:
+                    logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class HealEffect:
     def __init__(self, x, y, duration=2000):
@@ -525,12 +538,11 @@ class HealEffect:
                     'max_life': 100
                 })
         
-        for particle in self.particles[:]:
+        for particle in self.particles:
             particle['x'] += particle['speed_x'] + math.sin(pygame.time.get_ticks() * 0.005) * 0.5
             particle['y'] += particle['speed_y']
             particle['life'] -= 1
-            if particle['life'] <= 0:
-                self.particles.remove(particle)
+        self.particles[:] = [p for p in self.particles if p['life'] > 0]
     
     def is_finished(self):
         return pygame.time.get_ticks() - self.start_time >= self.duration and len(self.particles) == 0
@@ -543,8 +555,8 @@ class HealEffect:
                 pygame.draw.circle(surface, (*color[:3], alpha), 
                                    (int(particle['x']), int(particle['y'])), 
                                    int(particle['size']))
-            except:
-                pass
+            except Exception as _e:
+                logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class PoisonEffect:
     def __init__(self, x, y, duration=3000, radius=60):
@@ -558,8 +570,11 @@ class PoisonEffect:
     
     def update(self):
         elapsed = pygame.time.get_ticks() - self.start_time
-        progress = elapsed / self.duration
-        
+        if self.duration <= 0:
+            logger.warning("[特效] progress 计算 duration=%s 异常，置 1", self.duration)
+            progress = 1
+        else:
+            progress = elapsed / self.duration
         self.current_radius = self.radius * min(1, progress)
         
         if random.random() < 0.15:
@@ -572,11 +587,10 @@ class PoisonEffect:
                 'max_life': 80
             })
         
-        for bubble in self.bubbles[:]:
+        for bubble in self.bubbles:
             bubble['y'] += bubble['speed_y']
             bubble['life'] -= 1
-            if bubble['life'] <= 0:
-                self.bubbles.remove(bubble)
+        self.bubbles[:] = [b for b in self.bubbles if b['life'] > 0]
     
     def is_finished(self):
         return pygame.time.get_ticks() - self.start_time >= self.duration
@@ -597,8 +611,8 @@ class PoisonEffect:
                 pygame.draw.circle(surface, (150, 255, 150, alpha), 
                                    (int(bubble['x']), int(bubble['y'])), 
                                    int(bubble['size']))
-            except:
-                pass
+            except Exception as _e:
+                logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class ShockwaveEffect:
     def __init__(self, x, y, duration=1500, max_radius=150):
@@ -611,14 +625,18 @@ class ShockwaveEffect:
     
     def update(self):
         elapsed = pygame.time.get_ticks() - self.start_time
-        self.current_radius = self.max_radius * (elapsed / self.duration)
+        self.current_radius = self.max_radius * (elapsed / self.duration if self.duration > 0 else 1)
     
     def is_finished(self):
         return pygame.time.get_ticks() - self.start_time >= self.duration
     
     def draw(self, surface):
         elapsed = pygame.time.get_ticks() - self.start_time
-        progress = elapsed / self.duration
+        if self.duration <= 0:
+            logger.warning("[特效] progress 计算 duration=%s 异常，置 1", self.duration)
+            progress = 1
+        else:
+            progress = elapsed / self.duration
         alpha = int(200 * (1 - progress))
         
         for i in range(3):
@@ -640,7 +658,7 @@ class MeteorEffect:
     
     def update(self):
         elapsed = pygame.time.get_ticks() - self.start_time
-        progress = min(elapsed / self.duration, 1)
+        progress = min(elapsed / self.duration if self.duration > 0 else 1, 1)
         
         self.x = self.x + (self.target_x - self.x) * progress
         self.y = self.y + (self.target_y - self.y) * progress
@@ -671,8 +689,8 @@ class MeteorEffect:
                 pygame.draw.circle(surface, (*color[:3], alpha), 
                                    (int(particle['x']), int(particle['y'])), 
                                    int(particle['size']))
-            except:
-                pass
+            except Exception as _e:
+                logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
         
         elapsed = pygame.time.get_ticks() - self.start_time
         progress = min(elapsed / self.duration, 1)
@@ -682,8 +700,8 @@ class MeteorEffect:
             try:
                 pygame.draw.circle(surface, (255, 100, 50), (int(self.x), int(self.y)), meteor_size)
                 pygame.draw.circle(surface, (255, 200, 100), (int(self.x), int(self.y)), meteor_size // 2)
-            except:
-                pass
+            except Exception as _e:
+                logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class AuroraEffect:
     def __init__(self, x, y, duration=5000, width=300):
@@ -743,7 +761,11 @@ class AfterImage:
     
     def draw(self, surface):
         elapsed = pygame.time.get_ticks() - self.start_time
-        progress = elapsed / self.duration
+        if self.duration <= 0:
+            logger.warning("[特效] progress 计算 duration=%s 异常，置 1", self.duration)
+            progress = 1
+        else:
+            progress = elapsed / self.duration
         alpha = int(self.alpha * (1 - progress))
         
         if alpha <= 0:
@@ -784,8 +806,11 @@ class GlowEffect:
     
     def draw(self, surface):
         elapsed = pygame.time.get_ticks() - self.start_time
-        progress = elapsed / self.duration
-        
+        if self.duration <= 0:
+            logger.warning("[特效] progress 计算 duration=%s 异常，置 1", self.duration)
+            progress = 1
+        else:
+            progress = elapsed / self.duration
         if progress >= 1:
             return
         

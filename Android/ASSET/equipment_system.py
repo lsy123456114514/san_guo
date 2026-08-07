@@ -1,8 +1,10 @@
+"""装备系统 - 装备获取、穿戴、强化、套装属性"""
+
 import os
 import pygame
 import random
 import datetime
-from ASSET.game_data import data, save, get_system_font_name
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET.languages import get_text
 from ASSET import safe_exit
 
@@ -177,7 +179,7 @@ class EquipmentScrollContainer(ScrollableContainer):
         surface.blit(level_surf, (x + 10, y + 30))
         surface.blit(attr_surf, (x + 10, y + 50))
 
-def draw_gradient_background(surface, color1, color2):
+def draw_gradient_bg(surface, color1, color2):
     """绘制渐变背景"""
     width, height = surface.get_size()
     for y in range(height):
@@ -1037,13 +1039,7 @@ def main():
 
         # 字体初始化（根据屏幕大小自适应）
         def init_font(size):
-            font_name = get_system_font_name()
-            # 根据屏幕大小调整字体
-            adjusted_size = int(size * min(SCREEN_WIDTH / 900, SCREEN_HEIGHT / 700))
-            try:
-                return pygame.font.SysFont(font_name, adjusted_size)
-            except Exception:
-                return pygame.font.Font(None, adjusted_size)
+            return get_font(size)
 
         font_big = init_font(48)
         font_main = init_font(32)
@@ -1114,7 +1110,7 @@ def main():
                 save()
             
             # 渐变背景
-            draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+            draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
             
             # 导航按钮
             nav_buttons = [
@@ -1270,8 +1266,8 @@ def main():
         
         safe_exit("装备系统")
     except Exception as e:
-        print(f"异常：{str(e)}")
-        print("详细错误信息：")
+        logger.info(f"异常：{str(e)}")
+        logger.info("详细错误信息：")
         import traceback
         traceback.print_exc()
         safe_exit("装备系统", str(e))

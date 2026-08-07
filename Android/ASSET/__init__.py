@@ -1,6 +1,7 @@
 import os
 import sys
 import pygame
+from ASSET.game_data import draw_gradient_bg, cull_dead, get_font
 
 def safe_exit(module_name="模块", error=""):
     """优雅退出：适配安卓/PC"""
@@ -13,8 +14,8 @@ def safe_exit(module_name="模块", error=""):
         try:
             import android
             android.exit()
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
     else:
         sys.exit(0)
 

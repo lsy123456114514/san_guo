@@ -8,7 +8,7 @@ import sys
 import pygame
 import random
 import math
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET.game_main_menu import Button, COLORS, init_fonts
 
 # 全局变量
@@ -199,8 +199,6 @@ def show_recruit_animation(hero_data):
         for p in particles[:]:
             p.update()
             p.draw(screen)
-            if p.life <= 0:
-                particles.remove(p)
         
         # 绘制武将信息
         if pygame.time.get_ticks() - start_time > 1000:
@@ -299,8 +297,6 @@ def main():
             p.update()
             p.x += math.sin(p.y * 0.02) * 0.5
             p.draw(screen)
-            if p.life <= 0:
-                particles.remove(p)
         
         # 标题
         title_surf = FONT_BIG.render("武将招募", True, (255, 215, 0))

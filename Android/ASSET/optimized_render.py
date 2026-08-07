@@ -8,6 +8,7 @@
 import pygame
 import math
 from functools import lru_cache
+from ASSET.game_data import draw_gradient_bg, cull_dead, get_font
 
 # 全局缓存字典
 _surface_cache = {}

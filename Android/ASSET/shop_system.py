@@ -1,3 +1,5 @@
+"""商店系统 - 分类货架、限购、资源购买"""
+
 import os
 import pygame
 import random
@@ -5,7 +7,7 @@ import math
 import os
 import sys
 import traceback
-from ASSET.game_data import data, save, get_system_font_name, load_sound
+from ASSET.game_data import data, save, get_system_font_name, load_sound, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 
 # 颜色主题
@@ -307,10 +309,10 @@ class AnimatedButton:
             self.scale = max(1.0, self.scale - 0.02)
             self.glow_alpha = max(0, self.glow_alpha - 8)
         
-        for p in self.particles[:]:
+        for p in self.particles:
             p.update()
-            if p.life <= 0:
-                self.particles.remove(p)
+        self.particles[:] = [p for p in self.particles if p.life > 0]
+
     
     def draw(self, surface):
         # 发光效果
@@ -350,7 +352,7 @@ class AnimatedButton:
         for p in self.particles:
             p.draw(surface)
 
-def draw_gradient_background(surface, color1, color2):
+def draw_gradient_bg(surface, color1, color2):
     """绘制渐变背景"""
     width, height = surface.get_size()
     for y in range(height):
@@ -403,7 +405,7 @@ def draw_resource_bar(surface, x, y, screen_width, font_small, scale=1.0):
     
     # 计算每行显示的资源数量
     items_per_row = min(max_items_per_row, len(display_resources))
-    spacing = (screen_width - 60) // items_per_row
+    spacing = (screen_width - 60) // max(1, items_per_row)
     
     # 分多行显示
     for i, (name, amount) in enumerate(display_resources):
@@ -451,34 +453,7 @@ def main():
 
         # 字体初始化（根据屏幕大小自适应）
         def init_font(size):
-            # 尝试多个字体，按优先级排序
-            font_list = [
-                get_system_font_name(),  # 系统字体
-                "Arial Unicode MS",       # 支持多语言和emoji
-                "SimHei",               # 黑体
-                "Microsoft YaHei",      # 微软雅黑
-                None                     # 默认字体
-            ]
-            
-            adjusted_size = int(size * scale)
-            
-            for font_name in font_list:
-                try:
-                    if font_name:
-                        font = pygame.font.SysFont(font_name, adjusted_size)
-                    else:
-                        font = pygame.font.Font(None, adjusted_size)
-                    
-                    # 测试字体是否能正确渲染中文
-                    test_text = "测试中文 金元宝"
-                    test_surface = font.render(test_text, True, (255, 255, 255))
-                    if test_surface and test_surface.get_width() > 0:
-                        return font
-                except Exception:
-                    continue
-            
-            # 最后使用默认字体
-            return pygame.font.Font(None, adjusted_size)
+            return get_font(size)
 
         font_title = init_font(36 if not 'ANDROID_DATA' in os.environ else 52)
         font_normal = init_font(24 if not 'ANDROID_DATA' in os.environ else 36)
@@ -493,8 +468,8 @@ def main():
             if sound and data['settings']['sound']['enable']:
                 try:
                     sound.play()
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
         # 购买逻辑（全部免费）
         def buy_resource(resource_name, amount):
@@ -659,7 +634,7 @@ def main():
             mx, my = pygame.mouse.get_pos()
             
             # 渐变背景
-            draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+            draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
             
             # 绘制星星
             for star in stars:
@@ -944,14 +919,10 @@ def main():
             for p in particles[:]:
                 p.update()
                 p.draw(screen)
-                if p.life <= 0:
-                    particles.remove(p)
 
             for ft in floating_texts[:]:
                 ft.update()
                 ft.draw(screen)
-                if ft.life <= 0:
-                    floating_texts.remove(ft)
 
             # 获取所有事件
             events = pygame.event.get()
@@ -1067,8 +1038,8 @@ def main():
 
         safe_exit("商城模块")
     except Exception as e:
-        print(f"异常：{str(e)}")
-        print("详细错误信息：")
+        logger.info(f"异常：{str(e)}")
+        logger.info("详细错误信息：")
         traceback.print_exc()
         safe_exit("商城模块", str(e))
 

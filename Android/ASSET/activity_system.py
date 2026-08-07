@@ -1,7 +1,9 @@
+"""活动面板系统 - 活动卡片布局渲染"""
+
 import os
 import pygame
 import platform
-from ASSET.game_data import data, get_system_font_name
+from ASSET.game_data import data, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 from ASSET import snake_game, push_box, breakout, minesweeper, game_2048, tetris, gobang
 
@@ -34,11 +36,7 @@ def main():
 
         # 字体初始化
         def init_font(size):
-            font_name = get_system_font_name()
-            try:
-                return pygame.font.SysFont(font_name, size)
-            except Exception:
-                return pygame.font.Font(None, size)
+            return get_font(size)
 
         font_title = init_font(32 if not 'ANDROID_DATA' in os.environ else 48)
         font_normal = init_font(24 if not 'ANDROID_DATA' in os.environ else 36)
@@ -82,7 +80,7 @@ def main():
         # 创建按钮矩形
         game_buttons = []
         for i, (name, func) in enumerate(games):
-            row = i // cols
+            row = i // max(1, cols)
             col = i % cols
             x = start_x + col * (btn_width + btn_spacing)
             y = start_y + row * (btn_height + btn_spacing)

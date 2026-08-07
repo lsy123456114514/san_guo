@@ -1,5 +1,5 @@
 import time
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, logger, draw_gradient_bg, cull_dead, get_font
 
 class ActivityCenter:
     """活动中心 - 借鉴冰河时代的活动推送机制"""

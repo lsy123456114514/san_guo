@@ -1,9 +1,11 @@
+"""Pygame 2D 世界地图经典版"""
+
 import os
 import pygame
 import random
 import math
 import platform
-from ASSET.game_data import data, save, get_system_font_name, load_sound
+from ASSET.game_data import data, save, get_system_font_name, load_sound, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 
 # 颜色主题
@@ -100,7 +102,7 @@ class FloatingText:
         text_surf.set_alpha(alpha)
         surface.blit(text_surf, (int(self.x), int(self.y)))
 
-def draw_gradient_background(surface, color1, color2):
+def draw_gradient_bg(surface, color1, color2):
     """绘制渐变背景"""
     width, height = surface.get_size()
     for y in range(height):
@@ -346,11 +348,7 @@ def main():
 
         # 字体初始化
         def init_font(size):
-            font_name = get_system_font_name()
-            try:
-                return pygame.font.SysFont(font_name, size)
-            except Exception:
-                return pygame.font.Font(None, size)
+            return get_font(size)
 
         font_small = init_font(16 if not 'ANDROID_DATA' in os.environ else 22)
         font_main = init_font(20 if not 'ANDROID_DATA' in os.environ else 26)
@@ -362,8 +360,8 @@ def main():
             if sound and data['settings']['sound']['enable']:
                 try:
                     sound.play()
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
         # 生成地图地点
         def generate_map(num_locations):
@@ -443,7 +441,7 @@ def main():
             mx, my = pygame.mouse.get_pos()
             
             # 渐变背景
-            draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+            draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
             
             # 绘制星星
             for star in stars:
@@ -570,15 +568,11 @@ def main():
             for p in particles[:]:
                 p.update()
                 p.draw(screen)
-                if p.life <= 0:
-                    particles.remove(p)
 
             # 更新和绘制浮动文字
             for ft in floating_texts[:]:
                 ft.update()
                 ft.draw(screen)
-                if ft.life <= 0:
-                    floating_texts.remove(ft)
 
             # 事件处理
             for event in pygame.event.get():

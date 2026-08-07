@@ -1,10 +1,12 @@
+"""3D 世界地图（MC 模式）- 方块放置、摄像机、热键栏"""
+
 import pygame
 import math
 import random
 import json
 import os
 import time
-from ASSET.game_data import data, save, get_system_font_name, load_sound
+from ASSET.game_data import data, save, get_system_font_name, load_sound, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 
 MC_WORLD_KEY = "mc_world"
@@ -24,7 +26,7 @@ try:
     from renderer_bindings import renderer, TreeData, LocationData, NPCData, EnemyData, GeneralData, PetData, PlayerData, FollowerData, ProjectileData, PickupData, TechBlockData, ParticleData
     cpp_renderer_available = renderer.is_available
 except Exception as e:
-    print(f"无法加载C++渲染器: {e}")
+    logger.info(f"无法加载C++渲染器: {e}")
     cpp_renderer_available = False
 
 # 颜色定义
@@ -1209,7 +1211,7 @@ class GameMap3D:
     def initialize(self):
         """初始化3D地图"""
         if not opengl_available:
-            print("错误: OpenGL不可用，无法启动3D地图")
+            logger.info("错误: OpenGL不可用，无法启动3D地图")
             return False
         
         try:
@@ -1241,7 +1243,7 @@ class GameMap3D:
                 else:
                     self.font_main = pygame.font.Font(None, 40)
                     self.font_small = pygame.font.Font(None, 24)
-            except Exception:
+            except Exception as _e:
                 self.font_main = pygame.font.Font(None, 40)
                 self.font_small = pygame.font.Font(None, 24)
             
@@ -1265,7 +1267,7 @@ class GameMap3D:
             
             return True
         except Exception as e:
-            print(f"初始化错误: {e}")
+            logger.info(f"初始化错误: {e}")
             return False
     
     def show_performance_warning(self):
@@ -1290,12 +1292,12 @@ class GameMap3D:
             username = data.get("username", "")
             password = data.get("password", "")
             if not username or not password:
-                print("错误: 未登录，无法加载地图数据")
+                logger.info("错误: 未登录，无法加载地图数据")
                 return
             
             map_path = self.get_map_data_path()
             if not os.path.exists(map_path):
-                print("地图数据文件不存在，将生成新地图")
+                logger.info("地图数据文件不存在，将生成新地图")
                 self.locations = self.generate_locations(MAX_LOCATIONS)
                 self.save_map_data(self.locations)
             else:
@@ -1304,13 +1306,13 @@ class GameMap3D:
                 
                 # 验证用户名
                 if map_data.get("username") != username:
-                    print("错误: 地图数据与当前用户不匹配")
+                    logger.info("错误: 地图数据与当前用户不匹配")
                     return
                 
                 self.locations = map_data.get("locations", [])
-                print(f"成功加载地图数据，包含 {len(self.locations)} 个地点")
+                logger.info(f"成功加载地图数据，包含 {len(self.locations)} 个地点")
         except Exception as e:
-            print(f"加载地图数据失败: {e}")
+            logger.info(f"加载地图数据失败: {e}")
             self.locations = self.generate_locations(MAX_LOCATIONS)
             self.save_map_data(self.locations)
     
@@ -1339,7 +1341,7 @@ class GameMap3D:
             
             return True
         except Exception as e:
-            print(f"保存地图数据失败: {e}")
+            logger.info(f"保存地图数据失败: {e}")
             return False
     
     def load_mc_world_data(self):
@@ -1372,9 +1374,9 @@ class GameMap3D:
                 
                 self.update_camera()
                 self.validate_all()
-                print(f"[调试] 加载MC世界数据成功: {len(self.placed_blocks)} 个方块, 位置: {self.player_pos}")
+                logger.info(f"[调试] 加载MC世界数据成功: {len(self.placed_blocks)} 个方块, 位置: {self.player_pos}")
         except Exception as e:
-            print(f"[错误] 加载MC世界数据失败: {e}")
+            logger.info(f"[错误] 加载MC世界数据失败: {e}")
             self.validate_all()
     
     def save_mc_world_data(self):
@@ -1400,9 +1402,9 @@ class GameMap3D:
             
             data[MC_WORLD_KEY] = mc_world
             save()
-            print(f"[调试] 保存MC世界数据成功: {len(self.placed_blocks)} 个方块, 位置: {self.player_pos}")
+            logger.info(f"[调试] 保存MC世界数据成功: {len(self.placed_blocks)} 个方块, 位置: {self.player_pos}")
         except Exception as e:
-            print(f"[错误] 保存MC世界数据失败: {e}")
+            logger.info(f"[错误] 保存MC世界数据失败: {e}")
     
     def generate_locations(self, count):
         """生成地图地点"""
@@ -1791,7 +1793,7 @@ class GameMap3D:
             
             pygame.display.flip()
         except Exception as e:
-            print(f"C++渲染错误: {e}")
+            logger.info(f"C++渲染错误: {e}")
             self.draw_3d_scene_python()
     
     def draw_3d_scene_python(self):
@@ -1851,7 +1853,7 @@ class GameMap3D:
             
             pygame.display.flip()
         except Exception as e:
-            print(f"Python渲染错误: {e}")
+            logger.info(f"Python渲染错误: {e}")
     
     def draw_terrain(self):
         """绘制像素化地形 - 类似我的世界风格"""
@@ -1913,7 +1915,7 @@ class GameMap3D:
             
             glEnable(GL_LIGHTING)
         except Exception as e:
-            print(f"绘制地形错误: {e}")
+            logger.info(f"绘制地形错误: {e}")
     
     def draw_placed_blocks(self):
         """绘制玩家放置的方块 - MC风格"""
@@ -1997,7 +1999,7 @@ class GameMap3D:
             
             glEnable(GL_LIGHTING)
         except Exception as e:
-            print(f"绘制放置方块错误: {e}")
+            logger.info(f"绘制放置方块错误: {e}")
     
     def update_day_night(self):
         """更新昼夜系统"""
@@ -2053,7 +2055,7 @@ class GameMap3D:
                 else:
                     return (0.05, 0.1, 0.2)
         except Exception as e:
-            print(f"[错误] 获取天空颜色失败: {e}")
+            logger.info(f"[错误] 获取天空颜色失败: {e}")
             return (0.5, 0.7, 1.0)  # 默认天空颜色
     
     def draw_sun_moon(self):
@@ -2095,7 +2097,7 @@ class GameMap3D:
             glPopMatrix()
             glEnable(GL_LIGHTING)
         except Exception as e:
-            print(f"绘制太阳月亮错误: {e}")
+            logger.info(f"绘制太阳月亮错误: {e}")
     
     def update_weather(self):
         """更新天气系统"""
@@ -2158,7 +2160,7 @@ class GameMap3D:
                     p["x"] = p.get("x", 0) + p.get("drift_x", 0) * 0.1
                     p["z"] = p.get("z", 0) + p.get("drift_z", 0) * 0.1
         except Exception as e:
-            print(f"更新天气错误: {e}")
+            logger.info(f"更新天气错误: {e}")
     
     def draw_weather(self):
         """绘制天气效果"""
@@ -2186,7 +2188,7 @@ class GameMap3D:
             
             glEnable(GL_LIGHTING)
         except Exception as e:
-            print(f"绘制天气错误: {e}")
+            logger.info(f"绘制天气错误: {e}")
     
     def spawn_effect_particle(self, x, y, z, effect_type="explosion"):
         """生成特效粒子"""
@@ -2216,7 +2218,7 @@ class GameMap3D:
                 }
                 self.effect_particles.append(particle)
         except Exception as e:
-            print(f"[错误] 生成特效粒子失败: {e}")
+            logger.info(f"[错误] 生成特效粒子失败: {e}")
     
     def spawn_dust_particle(self, x, y, z):
         """生成尘埃粒子"""
@@ -2235,7 +2237,7 @@ class GameMap3D:
                 }
                 self.dust_particles.append(particle)
         except Exception as e:
-            print(f"[错误] 生成尘埃粒子失败: {e}")
+            logger.info(f"[错误] 生成尘埃粒子失败: {e}")
     
     def update_effect_particles(self):
         """更新特效粒子"""
@@ -2250,7 +2252,7 @@ class GameMap3D:
                 if particle["life"] <= 0:
                     self.effect_particles.remove(particle)
         except Exception as e:
-            print(f"[错误] 更新特效粒子失败: {e}")
+            logger.info(f"[错误] 更新特效粒子失败: {e}")
     
     def update_dust_particles(self):
         """更新尘埃粒子"""
@@ -2264,7 +2266,7 @@ class GameMap3D:
                 if particle["life"] <= 0:
                     self.dust_particles.remove(particle)
         except Exception as e:
-            print(f"[错误] 更新尘埃粒子失败: {e}")
+            logger.info(f"[错误] 更新尘埃粒子失败: {e}")
     
     def draw_effect_particles(self):
         """绘制特效粒子"""
@@ -2281,7 +2283,7 @@ class GameMap3D:
             
             glEnable(GL_LIGHTING)
         except Exception as e:
-            print(f"[错误] 绘制特效粒子失败: {e}")
+            logger.info(f"[错误] 绘制特效粒子失败: {e}")
     
     def draw_dust_particles(self):
         """绘制尘埃粒子"""
@@ -2298,7 +2300,7 @@ class GameMap3D:
             
             glEnable(GL_LIGHTING)
         except Exception as e:
-            print(f"[错误] 绘制尘埃粒子失败: {e}")
+            logger.info(f"[错误] 绘制尘埃粒子失败: {e}")
     
     def spawn_entity(self):
         """生成生物"""
@@ -2393,7 +2395,7 @@ class GameMap3D:
             
             glEnable(GL_LIGHTING)
         except Exception as e:
-            print(f"绘制实体错误: {e}")
+            logger.info(f"绘制实体错误: {e}")
     
     def draw_herobrine(self):
         """绘制Herobrine（彩蛋）"""
@@ -2520,7 +2522,7 @@ class GameMap3D:
             
             glEnable(GL_LIGHTING)
         except Exception as e:
-            print(f"绘制海浪错误: {e}")
+            logger.info(f"绘制海浪错误: {e}")
     
     def draw_tree(self, x, z):
         """绘制树木"""
@@ -2598,7 +2600,7 @@ class GameMap3D:
             glPopMatrix()
             glEnable(GL_LIGHTING)
         except Exception as e:
-            print(f"绘制树木错误: {e}")
+            logger.info(f"绘制树木错误: {e}")
     
     def draw_location(self, loc):
         """绘制地点 - 优化版，增加高度和细节"""
@@ -2707,7 +2709,7 @@ class GameMap3D:
             glEnable(GL_LIGHTING)
             glPopMatrix()
         except Exception as e:
-            print(f"绘制地点错误: {e}")
+            logger.info(f"绘制地点错误: {e}")
     
     def draw_cube(self, width, height, depth):
         """绘制立方体"""
@@ -3002,7 +3004,7 @@ class GameMap3D:
             glEnable(GL_LIGHTING)
             glPopMatrix()
         except Exception as e:
-            print(f"绘制玩家错误: {e}")
+            logger.info(f"绘制玩家错误: {e}")
     
     def draw_follower(self, follower):
         """绘制跟随者"""
@@ -3027,7 +3029,7 @@ class GameMap3D:
             
             glPopMatrix()
         except Exception as e:
-            print(f"绘制跟随者错误: {e}")
+            logger.info(f"绘制跟随者错误: {e}")
     
     def draw_hud(self):
         """绘制HUD"""
@@ -3087,8 +3089,8 @@ class GameMap3D:
             self.screen.blit(crosshair_surf, 
                            (crosshair_center[0] - crosshair_size - 5, 
                             crosshair_center[1] - crosshair_size - 5))
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
         
         # 绘制控制提示
         controls = [
@@ -3377,7 +3379,7 @@ class GameMap3D:
                 self.add_chat_message("🎉 解锁彩蛋: 制作一把弓！")
             
         except Exception as e:
-            print(f"[错误] 检测彩蛋触发失败: {e}")
+            logger.info(f"[错误] 检测彩蛋触发失败: {e}")
     
     def draw_pause_menu(self):
         """绘制暂停菜单（类似MC风格）"""
@@ -4076,7 +4078,7 @@ class GameMap3D:
                     z = float(args[3])
                     self.player_pos = [x, y, z]
                     self.add_chat_message(f"已传送到 ({x}, {y}, {z})")
-                except:
+                except Exception as _e:
                     self.add_chat_message("用法: /tp <x> <y> <z>")
         
         elif cmd == "heal":
@@ -4225,7 +4227,7 @@ class GameMap3D:
                         return
                         
         except Exception as e:
-            print(f"[错误] 检测作弊码序列失败: {e}")
+            logger.info(f"[错误] 检测作弊码序列失败: {e}")
     
     def get_key_name(self, key):
         """获取按键名称"""
@@ -4400,7 +4402,7 @@ class GameMap3D:
             self.spawn_effect_particle(self.player_pos[0], self.player_pos[1] + 2, self.player_pos[2], "enchant")
             
         except Exception as e:
-            print(f"[错误] 激活作弊码失败: {e}")
+            logger.info(f"[错误] 激活作弊码失败: {e}")
             self.add_chat_message(f"❌ 作弊码激活失败: {str(e)}")
     
     def check_secret_location_triggers(self):
@@ -4424,7 +4426,7 @@ class GameMap3D:
                         self.spawn_effect_particle(pos[0], pos[1] + 2, pos[2], "magic")
                         
         except Exception as e:
-            print(f"[错误] 检测位置彩蛋失败: {e}")
+            logger.info(f"[错误] 检测位置彩蛋失败: {e}")
     
     def draw_command_input(self):
         """绘制命令输入框"""

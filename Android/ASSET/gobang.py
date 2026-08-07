@@ -1,7 +1,7 @@
 import os
 import pygame
 import platform
-from ASSET.game_data import data, get_system_font_name, save
+from ASSET.game_data import data, get_system_font_name, save, logger, get_font, draw_gradient_bg
 from ASSET import safe_exit
 
 class GobangGame:

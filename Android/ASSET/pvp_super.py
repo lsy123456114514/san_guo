@@ -11,14 +11,14 @@ import random
 import math
 import time
 from typing import Dict, Any, Optional
-from ASSET.game_data import data, save, get_system_font_name
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
 
 # 导入安全网络模块
 try:
     from ASSET.secure_network import SecureNetwork
     from ASSET.p2p_ngrok import P2PNgrok
-except:
-    pass
+except Exception as _e:
+    logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 # 颜色主题
 COLORS = {
@@ -158,232 +158,7 @@ class SuperPVP:
     
     def init_fonts(self):
         def init_font(size):
-            font_name = get_system_font_name()
-            try:
-                return pygame.font.SysFont(font_name, size)
-            except Exception:
-                return pygame.font.Font(None, size)
-        
-        self.font_title = init_font(42)
-        self.font_big = init_font(32)
-        self.font_main = init_font(24)
-        self.font_small = init_font(18)
-    
-    def init_ui(self):
-        btn_width = 320
-        btn_height = 70
-        start_y = 180
-        spacing = 90
-        
-        self.main_buttons = [
-            AnimatedButton("🌍 世界聊天", (self.width - btn_width) // 2, start_y, btn_width, btn_height, self.font_main, COLORS["accent_green"]),
-            AnimatedButton("🌐 公网P2P对战", (self.width - btn_width) // 2, start_y + spacing, btn_width, btn_height, self.font_main, COLORS["accent_purple"]),
-            AnimatedButton("🏠 局域网对战", (self.width - btn_width) // 2, start_y + spacing * 2, btn_width, btn_height, self.font_main, COLORS["accent_blue"]),
-            AnimatedButton("🤖 模拟对战", (self.width - btn_width) // 2, start_y + spacing * 3, btn_width, btn_height, self.font_main, COLORS["accent_gold"]),
-        ]
-        
-        self.back_btn = AnimatedButton("← 返回", 30, 20, 140, 50, self.font_small, (100, 100, 120))
-        
-        # P2P UI
-        self.ip_input = InputBox(50, 250, 300, 50, self.font_main, '127.0.0.1')
-        self.port_input = InputBox(370, 250, 150, 50, self.font_main, '4000')
-        self.create_room_btn = AnimatedButton("创建房间", 540, 250, 150, 50, self.font_main, COLORS["accent_green"])
-        self.join_room_btn = AnimatedButton("加入房间", 710, 250, 150, 50, self.font_main, COLORS["accent_blue"])
-    
-    def init_particles(self):
-        self.bg_particles = []
-        for _ in range(50):
-            self.bg_particles.append(Particle(
-                random.randint(0, self.width),
-                random.randint(0, self.height),
-                (80, 130, 200), 0.25, random.uniform(1, 3.5), random.randint(100, 350)
-            ))
-    
-    def draw_background(self):
-        for y in range(self.height):
-            ratio = y / self.height
-            r = int(COLORS["bg_dark"][0] * (1 - ratio) + COLORS["bg_light"][0] * ratio)
-            g = int(COLORS["bg_dark"][1] * (1 - ratio) + COLORS["bg_light"][1] * ratio)
-            b = int(COLORS["bg_dark"][2] * (1 - ratio) + COLORS["bg_light"][2] * ratio)
-            pygame.draw.line(self.screen, (r, g, b), (0, y), (self.width, y))
-        
-        for p in self.bg_particles:
-            p.update()
-            if p.life <= 0 or p.x < 0 or p.x > self.width or p.y < 0 or p.y > self.height:
-                p.x = random.randint(0, self.width)
-                p.y = random.randint(0, self.height)
-                p.life = p.max_life
-            p.draw(self.screen)
-    
-    def draw_main_menu(self):
-        title = self.font_title.render("⚔️ 三国游戏 - 对战大厅", True, COLORS["accent_gold"])
-        self.screen.blit(title, (self.width // 2 - title.get_width() // 2, 80))
-        
-        subtitle = self.font_small.render("选择你的对战方式", True, COLORS["text_gray"])
-        self.screen.blit(subtitle, (self.width // 2 - subtitle.get_width() // 2, 140))
-        
-        player_info = f"{data.get('player_name', '主公')} | Lv.{data.get('player_level', 1)} | ⚔️ {data.get('player_power', 1000)}"
-        info_text = self.font_main.render(player_info, True, COLORS["text_white"])
-        info_rect = pygame.Rect((self.width - 400) // 2, self.height - 100, 400, 60)
-        
-        pygame.draw.rect(self.screen, (35, 45, 70), info_rect, border_radius=12)
-        pygame.draw.rect(self.screen, (70, 90, 120), info_rect, 2, border_radius=12)
-        self.screen.blit(info_text, info_text.get_rect(center=info_rect.center))
-    
-    def draw_p2p_ngrok(self):
-        title = self.font_big.render("🌐 公网P2P对战", True, COLORS["accent_purple"])
-        self.screen.blit(title, (self.width // 2 - title.get_width() // 2, 60))
-        
-        desc = [
-            "使用ngrok内网穿透，跨网对战！",
-            "像陶瓦联机一样，地球两端也能玩！"
-        ]
-        for i, line in enumerate(desc):
-            text = self.font_small.render(line, True, COLORS["text_gray"])
-            self.screen.blit(text, (self.width // 2 - text.get_width() // 2, 110 + i * 25))
-        
-        ip_label = self.font_main.render("对方IP:", True, COLORS["text_white"])
-        port_label = self.font_main.render("端口:", True, COLORS["text_white"])
-        self.screen.blit(ip_label, (50, 220))
-        self.screen.blit(port_label, (370, 220))
-        
-        self.ip_input.draw(self.screen)
-        self.port_input.draw(self.screen)
-        
-        if self.tunnel_url:
-            tunnel_text = self.font_main.render(f"你的公网地址: {self.tunnel_url}", True, COLORS["accent_green"])
-            self.screen.blit(tunnel_text, (50, 350))
-        
-        hint = self.font_small.render("提示: 需要先安装ngrok: https://ngrok.com/download", True, COLORS["text_gray"])
-        self.screen.blit(hint, (50, 450))
-    
-    def draw_world_chat_info(self):
-        title = self.font_big.render("🌍 世界聊天", True, COLORS["accent_green"])
-        self.screen.blit(title, (self.width // 2 - title.get_width() // 2, 80))
-        
-        info = [
-            "先启动聊天服务器: python ASSET/chat_server.py",
-            "然后连接服务器IP即可全球聊天！"
-        ]
-        for i, line in enumerate(info):
-            text = self.font_small.render(line, True, COLORS["text_gray"])
-            self.screen.blit(text, (self.width // 2 - text.get_width() // 2, 150 + i * 30))
-        
-        launch_btn = AnimatedButton("启动聊天", (self.width - 200) // 2, 250, 200, 60, self.font_main, COLORS["accent_green"])
-        launch_btn.draw(self.screen, pygame.mouse.get_pos())
-        
-        return launch_btn
-    
-    def run(self):
-        running = True
-        clock = pygame.time.Clock()
-        
-        try:
-            while running:
-                self.draw_background()
-                mouse_pos = pygame.mouse.get_pos()
-                
-                if self.state == "main":
-                    self.draw_main_menu()
-                    for btn in self.main_buttons:
-                        btn.draw(self.screen, mouse_pos)
-                
-                elif self.state == "p2p_ngrok":
-                    self.draw_p2p_ngrok()
-                    self.create_room_btn.draw(self.screen, mouse_pos)
-                    self.join_room_btn.draw(self.screen, mouse_pos)
-                    self.back_btn.draw(self.screen, mouse_pos)
-                
-                elif self.state == "world_chat_info":
-                    launch_btn = self.draw_world_chat_info()
-                    self.back_btn.draw(self.screen, mouse_pos)
-                
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        running = False
-                    
-                    if self.state == "main":
-                        for i, btn in enumerate(self.main_buttons):
-                            if btn.check_click(event, mouse_pos):
-                                if i == 0:
-                                    self.state = "world_chat_info"
-                                elif i == 1:
-                                    self.state = "p2p_ngrok"
-                                elif i == 2:
-                                    self._launch_lan_pvp()
-                                elif i == 3:
-                                    self._launch_mock_pvp()
-                    
-                    elif self.state == "p2p_ngrok":
-                        self.ip_input.handle_event(event)
-                        self.port_input.handle_event(event)
-                        
-                        if self.create_room_btn.check_click(event, mouse_pos):
-                            self._create_ngrok_room()
-                        if self.join_room_btn.check_click(event, mouse_pos):
-                            self._join_ngrok_room()
-                        if self.back_btn.check_click(event, mouse_pos):
-                            self.state = "main"
-                    
-                    elif self.state == "world_chat_info":
-                        if self.back_btn.check_click(event, mouse_pos):
-                            self.state = "main"
-                        if event.type == pygame.MOUSEBUTTONDOWN:
-                            self._launch_world_chat()
-                
-                if self.state in ["p2p_ngrok"]:
-                    self.ip_input.update()
-                    self.port_input.update()
-                
-                pygame.display.flip()
-                clock.tick(60)
-        
-        finally:
-            if self.ngrok_network:
-                self.ngrok_network.stop()
-        
-        return True
-    
-    def _create_ngrok_room(self):
-        try:
-            from ASSET.p2p_ngrok import P2PNgrok
-            port = int(self.port_input.text) if self.port_input.text else 4000
-            
-            self.ngrok_network = P2PNgrok(data.get('player_name', '主公'))
-            
-            def handle_msg(msg, addr):
-                self.messages.append(str(msg))
-            
-            self.tunnel_url = self.ngrok_network.start_host(port, handle_msg)
-            self.messages.append(f"房间已创建: {self.tunnel_url}")
-        except Exception as e:
-            self.messages.append(f"创建失败: {e}")
-    
-    def _join_ngrok_room(self):
-        pass
-    
-    def _launch_world_chat(self):
-        try:
-            from ASSET.world_chat import WorldChat
-            chat = WorldChat(self.screen)
-            chat.run()
-        except Exception as e:
-            print(f"启动聊天失败: {e}")
-    
-    def _launch_lan_pvp(self):
-        try:
-            from ASSET.pvp_online import PVPOnline
-            pvp = PVPOnline(self.screen)
-            pvp.run()
-        except Exception as e:
-            print(f"启动局域网失败: {e}")
-    
-    def _launch_mock_pvp(self):
-        try:
-            from ASSET.pvp_p2p import main as mock_pvp
-            mock_pvp(self.screen)
-        except Exception as e:
-            print(f"启动模拟失败: {e}")
+            return get_font(size)
 
 
 def main(screen=None):
@@ -400,7 +175,7 @@ def main(screen=None):
         
         return True
     except Exception as e:
-        print(f"超级PVP异常: {e}")
+        logger.info(f"超级PVP异常: {e}")
         return False
 
 

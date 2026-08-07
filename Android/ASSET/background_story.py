@@ -8,7 +8,7 @@ import sys
 import pygame
 import math
 import random
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET.game_main_menu import Button, COLORS, init_fonts
 
 # 全局变量
@@ -164,8 +164,6 @@ def main():
             p.update()
             p.x += math.sin(p.y * 0.02) * 0.5
             p.draw(screen)
-            if p.life <= 0:
-                particles.remove(p)
         
         # 绘制故事内容
         chapter = STORY_CHAPTERS[current_chapter]

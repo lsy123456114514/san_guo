@@ -1,8 +1,10 @@
+"""限时活动系统 - 节日、庆典特殊奖励"""
+
 import os
 import pygame
 import datetime
 import random
-from ASSET.game_data import data, save, get_system_font_name
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 
 # 颜色主题
@@ -75,7 +77,7 @@ class Button:
                 self.is_clicked = False
         return False
 
-def draw_gradient_background(surface, color1, color2):
+def draw_gradient_bg(surface, color1, color2):
     """绘制渐变背景"""
     width, height = surface.get_size()
     for y in range(height):
@@ -388,11 +390,7 @@ def main():
 
         # 字体初始化
         def init_font(size):
-            font_name = get_system_font_name()
-            try:
-                return pygame.font.SysFont(font_name, size)
-            except Exception:
-                return pygame.font.Font(None, size)
+            return get_font(size)
 
         font_big = init_font(48)
         font_main = init_font(32)
@@ -407,7 +405,7 @@ def main():
             mx, my = pygame.mouse.get_pos()
             
             # 渐变背景
-            draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+            draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
             
             # 标题
             draw_title(screen, "限时活动", SCREEN_HEIGHT * 0.1, SCREEN_WIDTH, font_big)
@@ -468,8 +466,8 @@ def main():
         
         safe_exit("限时活动系统")
     except Exception as e:
-        print(f"异常：{str(e)}")
-        print("详细错误信息：")
+        logger.info(f"异常：{str(e)}")
+        logger.info("详细错误信息：")
         import traceback
         traceback.print_exc()
         safe_exit("限时活动系统", str(e))

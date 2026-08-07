@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 import pygame
 import os
-from ASSET.game_data import data, save, TALENT_TREE, get_system_font_name
+from ASSET.game_data import data, save, TALENT_TREE, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET.game_main_menu import Button, draw_gradient_background
 
 # 颜色主题
@@ -78,7 +78,7 @@ def draw_resource_panel(surface, x, y, width, height):
         ("食物", data['resources']['食物'], (200, 150, 100))
     ]
     
-    spacing = width // len(resources)
+    spacing = width // max(1, len(resources))
     for i, (icon, value, color) in enumerate(resources):
         icon_x = x + i * spacing + spacing // 2
         icon_y = y + height // 2
@@ -129,7 +129,7 @@ def main():
             FONT_MAIN = pygame.font.Font(None, 40)
             FONT_SMALL = pygame.font.Font(None, 28)
             FONT_BIG = pygame.font.Font(None, 60)
-    except Exception:
+    except Exception as _e:
         FONT_MAIN = pygame.font.Font(None, 40)
         FONT_SMALL = pygame.font.Font(None, 28)
         FONT_BIG = pygame.font.Font(None, 60)
@@ -145,7 +145,7 @@ def main():
     running = True
     while running:
         # 渐变背景
-        draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+        draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
         
         # 标题
         draw_title(screen, "天赋系统", screen_height * 0.1, screen_width)

@@ -1,5 +1,5 @@
 import time
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, logger, draw_gradient_bg, cull_dead, get_font
 
 class HeroCollectionSystem:
     """武将图鉴收集系统 - 收集天下名将，解锁奖励"""

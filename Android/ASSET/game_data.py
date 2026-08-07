@@ -1,7 +1,33 @@
+"""全局存档/配置/字体/音效数据与 load/save 工具"""
+
 import json
 import os
 import platform
+import sys
+import logging
 import pygame
+
+# ── 统一日志器（所有模块共享，写入 game.log）──
+# 避免重复配置：仅当无 handler 时添加
+_logger = logging.getLogger("sanguo")
+if not _logger.handlers:
+    _logger.setLevel(logging.INFO)
+    try:
+        _fh = logging.FileHandler("game.log", encoding='utf-8')
+        _fh.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        _logger.addHandler(_fh)
+        try:
+            _ch = logging.StreamHandler()
+            _ch.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+            _logger.addHandler(_ch)
+        except Exception as _e:
+            pass
+    except Exception as _e:
+        pass
+    _logger.propagate = False
+
+logger = _logger
+
 
 def hide_file(filepath):
     """隐藏文件（仅Windows）"""
@@ -14,8 +40,8 @@ def hide_file(filepath):
             import ctypes
             ctypes.windll.kernel32.SetFileAttributesW(filepath, 0x80)
             ctypes.windll.kernel32.SetFileAttributesW(filepath, 0x02)
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("[异常静默] hide_file %s %s: %s", type(_e).__name__, filepath, _e)
 
 # 基础配置
 RESOURCES = ["水", "煤炭", "木头", "食物", "金元宝", "时间卡", "宠物食物", "普通子弹", "高级子弹", "稀有子弹"]
@@ -186,24 +212,47 @@ SETTINGS = {
 
 def get_system_font_name():
     """跨系统中文字体适配（含安卓）"""
-    # 打开日志文件
-    try:
-        log_file = open("debug.log", "a", encoding="utf-8")
-        hide_file("debug.log")
-    except Exception:
-        log_file = None
-    
+    log_lines = []
+
+    def _flush_log():
+        """将暂存的日志一次性写入文件（避免中途关闭后再使用）"""
+        if not log_lines:
+            return
+        try:
+            with open("debug.log", "a", encoding="utf-8") as lf:
+                lf.write('\n'.join(log_lines) + '\n')
+            hide_file("debug.log")
+        except Exception as _e:
+            logger.debug("[异常静默] _flush_log %s: %s", type(_e).__name__, _e)
+
+    result = None
     s = platform.system()
+    is_android = 'ANDROID_DATA' in os.environ
+    logger.info("[字体] 系统=%s, 安卓=%s", s, is_android)
+
+    # 优先使用打包字体（确保其他设备也能显示中文）
+    try:
+        if hasattr(sys, '_MEIPASS'):
+            base_path = sys._MEIPASS
+        else:
+            base_path = os.path.dirname(os.path.abspath(__file__))
+        font_dir = os.path.join(base_path, 'fonts')
+        if os.path.isdir(font_dir):
+            for f in os.listdir(font_dir):
+                if f.endswith('.ttf'):
+                    font_path = os.path.join(font_dir, f)
+                    logger.info("[字体] 选择打包字体: %s", font_path)
+                    log_lines.append(f"选择打包字体: {font_path}")
+                    _flush_log()
+                    return font_path
+    except Exception as e:
+        logger.warning("[字体] 打包字体加载失败: %s", e)
+        log_lines.append(f"打包字体加载失败: {e}")
+
     if s == "Windows":
-        # 尝试多个Windows中文字体，按优先级排序
-        # 优先选择同时支持中文和emoji的字体
         font_list = [
-            "Microsoft YaHei",      # 微软雅黑，优先选择这个，它在Windows上更常用
-            "SimHei",               # 黑体
-            "Microsoft YaHei UI",  # 微软雅黑UI
-            "Segoe UI",             # Windows默认字体，支持emoji
-            "Arial",                # 通用字体
-            None                     # 默认字体
+            "Microsoft YaHei", "SimHei", "Microsoft YaHei UI",
+            "Segoe UI", "Arial", None
         ]
         for font_name in font_list:
             try:
@@ -211,40 +260,33 @@ def get_system_font_name():
                     font = pygame.font.SysFont(font_name, 12)
                 else:
                     font = pygame.font.Font(None, 12)
-                
-                # 测试字体是否能正确渲染中文
                 test_text = "测试中文"
                 test_surface = font.render(test_text, True, (255, 255, 255))
                 if test_surface and test_surface.get_width() > 0:
-                    # 写入日志文件
-                    if log_file:
-                        log_file.write(f"选择字体: {font_name if font_name else '默认字体'}\n")
-                        log_file.close()
-                    return font_name
+                    display_name = font_name if font_name else '默认字体'
+                    logger.info("[字体] Windows 选择系统字体: %s", display_name)
+                    log_lines.append(f"选择字体: {display_name}")
+                    result = font_name
+                    break
             except Exception as e:
-                # 写入日志文件
-                if log_file:
-                    log_file.write(f"字体 {font_name} 失败: {e}\n")
+                logger.debug("[字体] Windows 字体 %s 失败: %s", font_name, e)
+                log_lines.append(f"字体 {font_name} 失败: {e}")
                 continue
-        # 关闭日志文件
-        if log_file:
-            log_file.close()
-        return None
     elif s == "Darwin":
-        if log_file:
-            log_file.write("选择字体: PingFang SC\n")
-            log_file.close()
-        return "PingFang SC"
-    elif s == "Linux" or 'ANDROID_DATA' in os.environ:
-        if log_file:
-            log_file.write("选择字体: DroidSansFallback\n")
-            log_file.close()
-        return "DroidSansFallback"  # 安卓默认中文字体
-    
-    # 关闭日志文件
-    if log_file:
-        log_file.close()
-    return None
+        logger.info("[字体] macOS 选择: PingFang SC")
+        log_lines.append("选择字体: PingFang SC")
+        result = "PingFang SC"
+    elif s == "Linux" or is_android:
+        logger.info("[字体] Linux/Android 选择: DroidSansFallback")
+        log_lines.append("选择字体: DroidSansFallback")
+        result = "DroidSansFallback"
+    else:
+        logger.warning("[字体] 未知系统 %s，返回 None", s)
+
+    if result is None:
+        logger.warning("[字体] 未找到任何可用中文字体")
+    _flush_log()
+    return result
 
 def load_sound(file_name: str):
     """加载音效：无文件/静音则跳过"""
@@ -257,7 +299,7 @@ def load_sound(file_name: str):
         sound = pygame.mixer.Sound(sound_path)
         sound.set_volume(SETTINGS["sound"]["volume"])
         return sound
-    except Exception:
+    except Exception as _e:
         return None
 
 # 元素类型
@@ -1457,6 +1499,187 @@ default_save = {
 
 data = default_save.copy()
 
+
+# ─────────────────────────────────────────────────────────────────────────
+# 性能缓存层（所有子系统共享）
+#   1. get_font(size)          : 全局字体对象缓存（减少 SysFont/Font 反复创建）
+#   2. render_text(...)        : 字体渲染 surface 缓存（每帧避免同文本重新光栅化）
+#   3. draw_gradient_bg(...)   : 渐变背景缓存（按宽/色号缓存，分辨率不变时复用）
+#   4. load_sound              : 同文件不重复从磁盘解码 WAV
+#   5. cull_dead(lst, key)     : 粒子批量死亡清理 O(n)（代替 for x in lst: lst.remove(x) 的 O(n^2)）
+# ─────────────────────────────────────────────────────────────────────────
+
+_FONT_CACHE = {}          # (font_key_or_path, size) -> Font
+_FONT_NAME_CACHED = None  # get_system_font_name 结果缓存（一次性调用）
+_RENDER_CACHE = {}        # (text, size, color_tuple, bg_or_None) -> Surface
+_GRADIENT_CACHE = {}      # (w, h, c1, c2) -> Surface
+_SOUND_CACHE = {}         # filename -> Sound / None
+
+_CACHE_MAX = 4000  # 防止内存持续上涨的简单 LRU（通过 dict 有序）
+
+
+def _evict_if_full(d, max_):
+    """简易 dict-LRU：超限时删除最早（最旧）的 20% 键"""
+    if len(d) > max_:
+        drop = max(1, max_ // 5)
+        keys = list(d.keys())[:drop]
+        for k in keys:
+            try:
+                del d[k]
+            except Exception as _e:
+                logger.debug("[异常静默] cache_evict %s: %s", type(_e).__name__, _e)
+
+
+def get_font(size):
+    """
+    获取指定字号的字体对象（跨模块共享，缓存命中后 O(1)）。
+    优先使用打包字体路径，否则按系统字体名。
+    """
+    global _FONT_NAME_CACHED
+    if _FONT_NAME_CACHED is None:
+        _FONT_NAME_CACHED = get_system_font_name() or None  # 只调用一次
+    font_key = _FONT_NAME_CACHED if _FONT_NAME_CACHED else "__sys_default__"
+    cache_key = (font_key, int(size))
+    if cache_key in _FONT_CACHE:
+        return _FONT_CACHE[cache_key]
+    try:
+        if font_key == "__sys_default__":
+            font = pygame.font.Font(None, int(size))
+        elif isinstance(font_key, str) and os.path.isfile(font_key):
+            font = pygame.font.Font(font_key, int(size))
+        else:
+            font = pygame.font.SysFont(font_key, int(size))
+    except Exception as _e:
+        logger.debug("[字体缓存] 字体创建失败 key=%s size=%d: %s",
+                     font_key, int(size), _e)
+        font = pygame.font.Font(None, int(size))
+    _FONT_CACHE[cache_key] = font
+    _evict_if_full(_FONT_CACHE, 500)
+    return font
+
+
+def render_text(text, size, color, bg_color=None, antialias=True):
+    """
+    按(文本, 字号, 颜色, 背景色)键缓存渲染结果。
+    适用于几乎静态的 UI 文本（如标题、按钮、状态文本）。
+    """
+    if text is None:
+        text = ""
+    else:
+        text = str(text)
+    bg_tuple = tuple(bg_color) if bg_color is not None else None
+    key = (text, int(size), tuple(color), bg_tuple, bool(antialias))
+    if key in _RENDER_CACHE:
+        return _RENDER_CACHE[key]
+    font = get_font(int(size))
+    try:
+        if bg_color is None:
+            surf = font.render(text, bool(antialias), tuple(color))
+        else:
+            surf = font.render(text, bool(antialias), tuple(color), tuple(bg_color))
+    except Exception as _e:
+        logger.debug("[字体渲染] 失败 txt=%r: %s", text[:20], _e)
+        surf = pygame.Surface((1, 1))
+    _RENDER_CACHE[key] = surf
+    _evict_if_full(_RENDER_CACHE, _CACHE_MAX)
+    return surf
+
+
+def invalidate_render_cache_text(text):
+    """当某个文本内容变化时（如资源数量）可以主动删除对应 key。"""
+    to_drop = [k for k in _RENDER_CACHE.keys() if k[0] == str(text)]
+    for k in to_drop:
+        _RENDER_CACHE.pop(k, None)
+
+
+def draw_gradient_bg(surface, color1, color2, vertical=True):
+    """
+    在 surface 上绘制渐变背景（根据 (宽, 高, 两色) 键缓存 pre-blit surface）。
+    分辨率/配色不变时，直接 blit 一张预渲染 Surface，避免每帧 1000 次 draw.line。
+    """
+    w = surface.get_width()
+    h = surface.get_height()
+    c1 = tuple(color1)
+    c2 = tuple(color2)
+    key = (w, h, c1, c2, bool(vertical))
+    if key not in _GRADIENT_CACHE:
+        try:
+            bg = pygame.Surface((w, h)).convert()
+        except Exception as _e:
+            # Surface 创建失败（比如宽/高为 0）就直接填色兜底，不写缓存
+            try:
+                surface.fill(c1)
+            except Exception as _e2:
+                logger.debug("[渐变缓存] fill 失败: %s", _e2)
+            return
+        n_steps = max(h if vertical else w, 1)
+        for i in range(n_steps):
+            ratio = i / n_steps
+            r = int(c1[0] * (1 - ratio) + c2[0] * ratio)
+            g = int(c1[1] * (1 - ratio) + c2[1] * ratio)
+            b = int(c1[2] * (1 - ratio) + c2[2] * ratio)
+            if vertical:
+                pygame.draw.line(bg, (r, g, b), (0, i), (w, i))
+            else:
+                pygame.draw.line(bg, (r, g, b), (i, 0), (i, h))
+        _GRADIENT_CACHE[key] = bg
+        _evict_if_full(_GRADIENT_CACHE, 16)  # 渐变种类极少，8~16 个顶破天
+    surface.blit(_GRADIENT_CACHE[key], (0, 0))
+
+
+def load_sound(file_name: str):
+    """加载音效（带 LRU 缓存）：无文件/静音则跳过。"""
+    if not SETTINGS["sound"]["enable"]:
+        return None
+    if file_name in _SOUND_CACHE:
+        return _SOUND_CACHE[file_name]  # 包括已记过的 None（文件不存在也记，避免反复 os.path.exists）
+    sound_path = os.path.join(SOUND_DIR, file_name)
+    if not os.path.exists(sound_path):
+        _SOUND_CACHE[file_name] = None
+        return None
+    try:
+        sound = pygame.mixer.Sound(sound_path)
+        sound.set_volume(SETTINGS["sound"]["volume"])
+        _SOUND_CACHE[file_name] = sound
+    except Exception as _e:
+        _SOUND_CACHE[file_name] = None
+        return None
+    _evict_if_full(_SOUND_CACHE, 64)
+    return sound
+
+
+def refresh_sound_volume():
+    """设置里音量变化后，重新给所有已缓存 Sound 对象 set_volume。"""
+    vol = SETTINGS["sound"]["volume"]
+    for snd in _SOUND_CACHE.values():
+        if snd is not None:
+            try:
+                snd.set_volume(vol)
+            except Exception as _e:
+                logger.debug("[异常静默] set_volume %s: %s", type(_e).__name__, _e)
+
+
+def cull_dead(particles, is_dead=lambda p: p.life <= 0):
+    """
+    把 list.remove 从 O(n^2) 降到 O(n) 一次过。
+        for p in ps: ... if dead: ps.remove(p)   →  O(n^2)
+        cull_dead(ps)                             →  O(n)
+    is_dead(p) 判断函数可按需传入（默认按 life 属性 <=0）。
+    """
+    kept = []
+    for p in particles:
+        try:
+            if not is_dead(p):
+                kept.append(p)
+        except Exception as _e:
+            logger.debug("[异常静默] cull_dead %s: %s", type(_e).__name__, _e)
+            kept.append(p)
+    particles[:] = kept
+    return len(particles)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+
 def calculate_passive_income():
     """计算并添加被动收入"""
     import time
@@ -1480,8 +1703,10 @@ def load():
     global data
     if os.path.exists(SAVE_PATH):
         try:
+            logger.info("[存档] 开始加载: %s", SAVE_PATH)
             with open(SAVE_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
+            logger.info("[存档] 加载成功，开始补全缺失键")
             
             # 检查并添加缺失的键
             if 'achievements' not in data:
@@ -1626,8 +1851,7 @@ def load():
             calculate_passive_income()
 
         except Exception as e:
-            import logging
-            logging.error(f"加载存档失败: {e}")
+            logger.error("[存档] 加载失败: %s，回退到默认存档", e, exc_info=True)
             data = default_save.copy()
             calculate_passive_income()
 
@@ -1637,9 +1861,9 @@ def save():
         with open(SAVE_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         hide_file(SAVE_PATH)
+        logger.debug("[存档] 保存成功: %s", SAVE_PATH)
     except Exception as e:
-        import logging
-        logging.error(f"保存存档失败: {e}")
+        logger.error("[存档] 保存失败: %s", e, exc_info=True)
 
 def auto_save():
     """自动保存功能"""

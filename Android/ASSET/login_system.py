@@ -3,7 +3,7 @@ import pygame
 import platform
 import json
 import time
-from ASSET.game_data import get_system_font_name, RESOURCES, SETTINGS, default_save
+from ASSET.game_data import get_system_font_name, RESOURCES, SETTINGS, default_save, logger, get_font, draw_gradient_bg
 from ASSET import safe_exit
 
 def hide_file(filepath):
@@ -12,8 +12,8 @@ def hide_file(filepath):
         try:
             import ctypes
             ctypes.windll.kernel32.SetFileAttributesW(filepath, 0x02)
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 # 路径适配：安卓用内部存储，PC用本地
 if 'ANDROID_DATA' in os.environ:
@@ -494,12 +494,7 @@ def main():
         
         # 字体初始化
         def init_font(size):
-            font_name = get_system_font_name()
-            try:
-                return pygame.font.SysFont(font_name, size)
-            except Exception:
-                return pygame.font.Font(None, size)
-        
+            return get_font(size)
         font_title = init_font(32 if not 'ANDROID_DATA' in os.environ else 48)
         font_normal = init_font(24 if not 'ANDROID_DATA' in os.environ else 36)
         font_small = init_font(18 if not 'ANDROID_DATA' in os.environ else 28)
@@ -692,7 +687,7 @@ def main():
         # 退出登录系统
         return False, "", None
     except Exception as e:
-        print(f"登录系统异常：{str(e)}")
+        logger.info(f"登录系统异常：{str(e)}")
         # 发生异常时，返回登录失败，而不是直接退出程序
         return False, "登录系统异常", None
 

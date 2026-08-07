@@ -4,7 +4,7 @@ import platform
 import time
 import random
 import math
-from ASSET.game_data import data, save, get_system_font_name, load_sound, EQUIP_SKILLS, HERO_SKILLS, ELEMENTS, GUNS, HERO_BONDS, ELEMENT_SYNERGIES, ELEMENT_WEAKNESS
+from ASSET.game_data import data, save, get_system_font_name, load_sound, EQUIP_SKILLS, HERO_SKILLS, ELEMENTS, GUNS, HERO_BONDS, ELEMENT_SYNERGIES, ELEMENT_WEAKNESS, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET.weather_system import WeatherSystem
 from ASSET.event_system import EventSystem
 from ASSET import safe_exit
@@ -142,10 +142,10 @@ class AnimatedButton:
             self.scale = max(1.0, self.scale - 0.01)
             self.glow_alpha = max(0, self.glow_alpha - 5)
         
-        for p in self.particles[:]:
+        for p in self.particles:
             p.update()
-            if p.life <= 0:
-                self.particles.remove(p)
+        self.particles[:] = [p for p in self.particles if p.life > 0]
+
     
     def draw(self, surface):
         # 发光效果
@@ -185,7 +185,7 @@ class AnimatedButton:
         for p in self.particles:
             p.draw(surface)
 
-def draw_gradient_background(surface, color1, color2):
+def draw_gradient_bg(surface, color1, color2):
     """绘制渐变背景"""
     width, height = surface.get_size()
     for y in range(height):
@@ -197,24 +197,29 @@ def draw_gradient_background(surface, color1, color2):
 
 def draw_health_bar(surface, x, y, width, height, current, maximum, color):
     """绘制血条"""
-    ratio = max(0, current / maximum)
-    
+    if maximum <= 0:
+        logger.warning("[战斗] draw_health_bar maximum=%s 异常，比例置 0", maximum)
+        ratio = 0
+    else:
+        ratio = max(0, current / maximum)
+
     # 背景
     pygame.draw.rect(surface, COLORS["hp_bg"], (x, y, width, height), border_radius=5)
-    
+
     # 血条
     if ratio > 0:
         bar_width = int(width * ratio)
         # 渐变
-        for i in range(bar_width):
-            r = int(color[0] * (1 - i / bar_width * 0.3))
-            g = int(color[1] * (1 - i / bar_width * 0.3))
-            b = int(color[2] * (1 - i / bar_width * 0.3))
-            pygame.draw.line(surface, (r, g, b), (x + i, y), (x + i, y + height))
-    
+        if bar_width > 0:
+            for i in range(bar_width):
+                r = int(color[0] * (1 - i / bar_width * 0.3))
+                g = int(color[1] * (1 - i / bar_width * 0.3))
+                b = int(color[2] * (1 - i / bar_width * 0.3))
+                pygame.draw.line(surface, (r, g, b), (x + i, y), (x + i, y + height))
+
     # 边框
     pygame.draw.rect(surface, COLORS["text_white"], (x, y, width, height), 2, border_radius=5)
-    
+
     # 数值
     font = pygame.font.Font(None, 24)
     text = font.render(f"{current}/{maximum}", True, COLORS["text_white"])
@@ -789,7 +794,7 @@ def select_heroes(screen, font_title, font_normal, font_small):
         mx, my = pygame.mouse.get_pos()
         
         # 渐变背景
-        draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+        draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
         
         # 标题
         title_surf = font_title.render("选择上阵武将", True, COLORS["accent_gold"])
@@ -901,7 +906,7 @@ def select_pet(screen, font_title, font_normal, font_small):
         mx, my = pygame.mouse.get_pos()
         
         # 渐变背景
-        draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+        draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
         
         # 标题
         title_surf = font_title.render("选择上阵宠物", True, COLORS["accent_gold"])
@@ -1024,47 +1029,58 @@ def apply_pet_bonus(heroes, pet):
 
 # 武将战斗主函数
 def main():
-    """武将回合制战斗主函数"""
+    """武将回合制战斗主函数。
+
+    内部流程分 7 个阶段：
+        1. Pygame & 屏幕分辨率初始化
+        2. 字体 & 音效资源加载
+        3. 天气系统 & 加成表初始化
+        4. 玩家选将 & 选宠物
+        5. 敌方 AI 队伍生成 & 阵营加成计算
+        6. 回合制主战斗循环（最长的一段）
+        7. 胜负结算 + 掉落 + 返回码
+    """
     try:
-        # 初始化
+        # ==================================================================
+        # 阶段 1：Pygame 引擎 & 屏幕分辨率初始化
+        # ==================================================================
+        t0 = time.perf_counter()
         if not pygame.get_init():
             pygame.init()
             pygame.mixer.init()
-        
-        # 分辨率适配
+
         if 'ANDROID_DATA' in os.environ:
             info = pygame.display.Info()
-            SCREEN_WIDTH = info.current_w
-            SCREEN_HEIGHT = info.current_h
+            SCREEN_WIDTH, SCREEN_HEIGHT = info.current_w, info.current_h
         else:
-            # 使用设置的分辨率
             resolution = data['settings']['graphics']['resolution']
             try:
                 width, height = map(int, resolution.split('x'))
-                SCREEN_WIDTH = width
-                SCREEN_HEIGHT = height
+                SCREEN_WIDTH, SCREEN_HEIGHT = width, height
             except ValueError:
-                SCREEN_WIDTH = 800
-                SCREEN_HEIGHT = 600
-        
+                SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
+
         screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption("⚔️ 武将回合制战斗")
         clock = pygame.time.Clock()
+        logger.info("[战斗] 阶段1 初始化完成 分辨率=%dx%d 耗时%.3fs",
+                    SCREEN_WIDTH, SCREEN_HEIGHT, time.perf_counter() - t0)
 
-        # 字体初始化
+        # ==================================================================
+        # 阶段 2：字体 & 音效资源加载 & 天气加成表
+        # ==================================================================
+        t_phase2 = time.perf_counter()
+
         def init_font(size):
-            font_name = get_system_font_name()
-            try:
-                return pygame.font.SysFont(font_name, size)
-            except Exception:
-                return pygame.font.Font(None, size)
+            return get_font(size)
 
-        font_title = init_font(36 if not 'ANDROID_DATA' in os.environ else 52)
-        font_normal = init_font(24 if not 'ANDROID_DATA' in os.environ else 36)
-        font_small = init_font(18 if not 'ANDROID_DATA' in os.environ else 28)
-        font_damage = init_font(32 if not 'ANDROID_DATA' in os.environ else 48)
+        android = 'ANDROID_DATA' in os.environ
+        font_title = init_font(52 if android else 36)
+        font_normal = init_font(36 if android else 24)
+        font_small = init_font(28 if android else 18)
+        font_damage = init_font(48 if android else 32)
 
-        # 加载音效
+        # --- 音效资源 & 播放帮助函数 ---
         attack_sound = load_sound("attack.wav")
         win_sound = load_sound("win.wav")
         skill_sound = load_sound("skill.wav")
@@ -1073,123 +1089,123 @@ def main():
             if sound and data['settings']['sound']['enable']:
                 try:
                     sound.play()
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
-        # 天气系统初始化
+        # --- 天气系统初始化 & 加成表 & 2 个小工具函数 ---
         weather_system = WeatherSystem()
         current_weather = weather_system.get_current_weather()
         weather_effects = weather_system.get_weather_effects()
-        
-        # 天气影响战斗的效果
+
+        # 不同天气下的属性/元素加成
         weather_bonus = {
-            "晴天": {"attack_bonus": 0.1, "defense_bonus": 0.0},
-            "多云": {"attack_bonus": 0.05, "defense_bonus": 0.05},
-            "雨天": {"attack_bonus": -0.1, "defense_bonus": 0.1, "water_element_bonus": 0.2},
-            "雷暴": {"attack_bonus": 0.15, "defense_bonus": -0.1, "thunder_damage": 20, "lightning_element_bonus": 0.3},
-            "雪天": {"attack_bonus": -0.05, "defense_bonus": 0.15, "ice_element_bonus": 0.2}
+            "晴天":  {"attack_bonus": 0.1, "defense_bonus": 0.0},
+            "多云":  {"attack_bonus": 0.05, "defense_bonus": 0.05},
+            "雨天":  {"attack_bonus": -0.1, "defense_bonus": 0.1, "water_element_bonus": 0.2},
+            "雷暴":  {"attack_bonus": 0.15, "defense_bonus": -0.1, "thunder_damage": 20, "lightning_element_bonus": 0.3},
+            "雪天":  {"attack_bonus": -0.05, "defense_bonus": 0.15, "ice_element_bonus": 0.2},
         }
 
         def get_weather_bonus():
-            """获取天气加成"""
             if current_weather:
                 return weather_bonus.get(current_weather["name"], {})
             return {}
 
         def apply_weather_effects(heroes, is_player):
-            """对武将应用天气效果"""
+            """对一队武将应用天气属性/元素加成（原地修改 hero 对象）。"""
             bonus = get_weather_bonus()
             for hero in heroes:
-                # 攻击力加成
-                attack_bonus = bonus.get("attack_bonus", 0)
-                hero.skill["damage"] *= (1 + attack_bonus)
-                
-                # 防御力加成（应用到小弟）
+                hero.skill["damage"] *= (1 + bonus.get("attack_bonus", 0))
                 defense_bonus = bonus.get("defense_bonus", 0)
                 for minion in hero.minions:
                     minion.max_hp = int(minion.max_hp * (1 + defense_bonus))
                     minion.hp = minion.max_hp
-                
-                # 元素特定加成
-                element_bonus_key = f"{hero.element}_element_bonus"
-                if element_bonus_key in bonus:
-                    hero.skill["damage"] *= (1 + bonus[element_bonus_key])
+                key = f"{hero.element}_element_bonus"
+                if key in bonus:
+                    hero.skill["damage"] *= (1 + bonus[key])
 
-        # 获取玩家等级
+        logger.info("[战斗] 阶段2 资源加载完成 天气=%s 耗时%.3fs",
+                    current_weather.get("name") if current_weather else "无",
+                    time.perf_counter() - t_phase2)
+
+        # ==================================================================
+        # 阶段 3：玩家选将 & 选宠物
+        # ==================================================================
         player_level = data["normal_dungeon"]
-        
-        # 选择上阵武将
+
+        t_phase3 = time.perf_counter()
         selected_hero_names = select_heroes(screen, font_title, font_normal, font_small)
         if not selected_hero_names:
-            # 如果没有选择武将，返回
+            logger.info("[战斗] 用户取消选将，退出战斗")
             return
         
         # 选择上阵宠物
         selected_pet = select_pet(screen, font_title, font_normal, font_small)
-        
-        # 初始化装备技能
+
+        # ==================================================================
+        # 阶段 4：玩家武将构建 & 羁绊/阵营/宠物/天气加成 叠加
+        # ==================================================================
+        t_phase4 = time.perf_counter()
+
+        # 玩家当前装备技能表（4 件装备：武器/防具/坐骑/书籍）
         equip_skills = {
-            "weapon": EQUIP_SKILLS.get("weapon", {}).get(data["equips"].get("weapon", 0), None),
-            "armor": EQUIP_SKILLS.get("armor", {}).get(data["equips"].get("armor", 0), None),
-            "horse": EQUIP_SKILLS.get("horse", {}).get(data["equips"].get("horse", 0), None),
-            "book": EQUIP_SKILLS.get("book", {}).get(data["equips"].get("book", 0), None)
+            slot: EQUIP_SKILLS.get(slot, {}).get(data["equips"].get(slot, 0), None)
+            for slot in ("weapon", "armor", "horse", "book")
         }
-        
-        # 玩家武将
+
         player_heroes = []
         for hero_name in selected_hero_names:
             star = data["heroes"].get(hero_name, {}).get("star", 1)
             hero = Hero(hero_name, star)
-            # 分配装备技能
             hero.equip_skills = equip_skills.copy()
-            # 分配枪械
             if hero_name in data.get("hero_guns", {}):
                 gun_info = data["hero_guns"][hero_name]
                 hero.set_gun(gun_info.get("gun_type"))
-                # 应用枪械升级倍率
-                gun_level = gun_info.get("gun_level", 1)
                 base_multiplier = GUNS[gun_info.get("gun_type")]["damage_multiplier"]
                 hero.gun_multiplier = gun_info.get("gun_multiplier", base_multiplier)
             player_heroes.append(hero)
-        
-        # 应用武将羁绊效果
-        all_player_hero_names = [h.name for h in player_heroes]
+
+        # 应用 4 层顺序加成：羁绊 → 阵营 → 宠物 → 天气
+        hero_names = [h.name for h in player_heroes]
         for hero in player_heroes:
-            hero.apply_bond_effects(all_player_hero_names)
-        
-        # 应用阵营增益
+            hero.apply_bond_effects(hero_names)
         apply_faction_bonus(player_heroes)
-        
-        # 应用宠物增益
         apply_pet_bonus(player_heroes, selected_pet)
-        
-        # 应用天气效果
         apply_weather_effects(player_heroes, True)
-        
-        # 敌人武将 - 增加难度梯度
+
+        logger.info("[战斗] 阶段3-4 选将+构建完成 玩家%d人 耗时%.3fs",
+                    len(player_heroes), time.perf_counter() - t_phase3)
+
+        # ==================================================================
+        # 阶段 5：敌方队伍构建（等级+装备按玩家等级动态增强）
+        # ==================================================================
+        t_phase5 = time.perf_counter()
         enemy_heroes = []
         enemy_names = list(HERO_SKILLS.keys())
         random.shuffle(enemy_names)
-        
-        # 敌人等级随着玩家等级提升而增加，但保持合理的难度梯度
+
+        # 敌人等级随玩家等级提升，但做封顶避免碾压
         enemy_level = min(player_level, player_level // 2 + 3)
-        
+
         for hero_name in enemy_names[:max_heroes]:
             hero = Hero(hero_name, enemy_level)
-            # 敌人装备技能随着难度提升而增强
-            enemy_equip_skills = {
-                "weapon": {"damage": 15 + player_level * 2, "defense": 0, "speed": 0, "critical": 0.1 + player_level * 0.01},
-                "armor": {"damage": 0, "defense": 10 + player_level * 1.5, "speed": 0, "critical": 0},
-                "horse": {"damage": 0, "defense": 0, "speed": 3 + player_level * 0.2, "critical": 0},
-                "book": {"damage": 0, "defense": 0, "speed": 0, "critical": 0.2 + player_level * 0.01}
+            # 动态敌装：4 件装备的属性随玩家等级线性增强
+            hero.equip_skills = {
+                "weapon": {"damage": 15 + player_level * 2,   "defense": 0,                        "speed": 0,                      "critical": 0.1 + player_level * 0.01},
+                "armor":  {"damage": 0,                        "defense": 10 + player_level * 1.5, "speed": 0,                      "critical": 0},
+                "horse":  {"damage": 0,                        "defense": 0,                        "speed": 3 + player_level * 0.2, "critical": 0},
+                "book":   {"damage": 0,                        "defense": 0,                        "speed": 0,                      "critical": 0.2 + player_level * 0.01},
             }
-            hero.equip_skills = enemy_equip_skills
             enemy_heroes.append(hero)
-        
-        # 应用天气效果到敌人
-        apply_weather_effects(enemy_heroes, False)
 
-        # 战斗数据
+        apply_weather_effects(enemy_heroes, False)
+        logger.info("[战斗] 阶段5 敌方队伍构建完成 敌人%d人 等级%d 耗时%.3fs",
+                    len(enemy_heroes), enemy_level, time.perf_counter() - t_phase5)
+
+        # ==================================================================
+        # 阶段 6：战斗环境初始化（回合计数/奖励/特效/技能卡片）
+        # ==================================================================
+        # --- 基础回合/动画状态 ---
         turn = 0
         battle_over = False
         win = False
@@ -1197,44 +1213,41 @@ def main():
         animation_timer = 0
         current_attack = None  # (attacker, target, damage, element)
 
-        # 物资产出 - 增加稳定奖励和难度梯度
+        # --- 基于玩家正常副本层数的产出梯度 ---
         base_reward = data["normal_dungeon"]
-        # 随着难度增加，奖励逐渐提升，但保持稳定增长
         battle_rewards = {
-            "水": int(10 * base_reward * (1 + base_reward * 0.05)),
-            "煤炭": int(5 * base_reward * (1 + base_reward * 0.05)),
-            "木头": int(8 * base_reward * (1 + base_reward * 0.05)),
-            "食物": int(7 * base_reward * (1 + base_reward * 0.05)),
-            "金元宝": int(2 * base_reward * (1 + base_reward * 0.08)),
+            "水":     int(10 * base_reward * (1 + base_reward * 0.05)),
+            "煤炭":   int(5  * base_reward * (1 + base_reward * 0.05)),
+            "木头":   int(8  * base_reward * (1 + base_reward * 0.05)),
+            "食物":   int(7  * base_reward * (1 + base_reward * 0.05)),
+            "金元宝": int(2  * base_reward * (1 + base_reward * 0.08)),
             "普通子弹": int(5 * base_reward * (1 + base_reward * 0.03)),
             "高级子弹": int(3 * base_reward * (1 + base_reward * 0.02)),
-            "稀有子弹": int(1 * base_reward * (1 + base_reward * 0.01))
+            "稀有子弹": int(1 * base_reward * (1 + base_reward * 0.01)),
         }
-
-        # 增加额外奖励机会
+        # 30% 概率的小彩蛋：随机某一项资源额外增加 50%
         if random.random() < 0.3:
-            # 有30%几率获得额外奖励
             extra_reward = random.choice(["水", "煤炭", "木头", "食物", "金元宝"])
             battle_rewards[extra_reward] += int(battle_rewards[extra_reward] * 0.5)
 
-        # 特效
+        # --- 特效容器 ---
         particles = []
         floating_texts = []
-        
-        # 装备技能卡片
+
+        # --- 4 件装备技能卡片的布局与渲染 ---
         skill_cards = []
-        card_width = min(120, SCREEN_WIDTH * 0.15)
-        card_height = min(80, SCREEN_HEIGHT * 0.12)
+        card_width  = min(120, SCREEN_WIDTH  * 0.15)
+        card_height = min(80,  SCREEN_HEIGHT * 0.12)
         card_y = SCREEN_HEIGHT - card_height - 30
-        
-        # 技能类型和颜色
+
+        # (槽位 key, 卡片显示名, 常态色, 悬停色)
         skill_info = [
-            ("weapon", "⚔️ 武器", (200, 60, 60), (240, 90, 90)),
-            ("armor", "🛡️ 防具", (60, 120, 60), (80, 160, 80)),
-            ("horse", "🐎 坐骑", (60, 120, 200), (80, 160, 255)),
-            ("book", "📚 书籍", (180, 100, 220), (200, 130, 255))
+            ("weapon", "⚔️ 武器", (200,  60,  60), (240,  90,  90)),
+            ("armor",  "🛡️ 防具",  (60, 120,  60),  (80, 160,  80)),
+            ("horse",  "🐎 坐骑",  (60, 120, 200),  (80, 160, 255)),
+            ("book",   "📚 书籍", (180, 100, 220), (200, 130, 255)),
         ]
-        
+
         for i, (skill_type, skill_name, normal_color, hover_color) in enumerate(skill_info):
             x = 50 + i * (card_width + 15)
             if x + card_width > SCREEN_WIDTH - 50:
@@ -1246,13 +1259,13 @@ def main():
             )
             skill_cards.append((card, skill_type))
 
-        # 武将技能卡片
+        # --- 武将主动技能卡片（每个上阵武将一张）---
         hero_skill_cards = []
         hero_card_width = min(150, SCREEN_WIDTH * 0.18)
         hero_card_height = min(80, SCREEN_HEIGHT * 0.12)
         hero_card_y = SCREEN_HEIGHT - hero_card_height - card_height - 50
 
-        # 必杀技卡片
+        # --- 必杀技卡片（全屏 AOE，位于底部上方）---
         ultimate_card_width = min(200, SCREEN_WIDTH * 0.25)
         ultimate_card_height = min(70, SCREEN_HEIGHT * 0.1)
         ultimate_card_y = SCREEN_HEIGHT - card_height - hero_card_height - ultimate_card_height - 70
@@ -1262,8 +1275,7 @@ def main():
             normal_color=(200, 50, 50), hover_color=(255, 80, 80)
         )
 
-
-        # 返回按钮（提前创建）
+        # --- 返回主菜单按钮 ---
         return_btn_width = min(180, SCREEN_WIDTH * 0.25)
         return_btn_height = min(50, SCREEN_HEIGHT * 0.08)
         return_btn_y = SCREEN_HEIGHT - return_btn_height - 30
@@ -1273,13 +1285,21 @@ def main():
             normal_color=(60, 150, 60), hover_color=(80, 200, 80)
         )
 
-        # 主循环
+        # ==================================================================
+        # 阶段 7：回合制主战斗循环（整段）
+        #   - 事件处理 / UI 交互
+        #   - 画面渲染（背景→武将→血条→特效→浮动数字→卡片）
+        #   - 回合推进 / 攻击结算 / 胜负判定
+        # ==================================================================
+        logger.info("[战斗] 阶段7 进入主战斗循环 回合上限=0 (无限至某一方全灭)")
+        t_loop_start = time.perf_counter()
+
         running = True
         while running:
             mx, my = pygame.mouse.get_pos()
             
             # 渐变背景
-            draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+            draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
             
             # 背景装饰
             for i in range(5):
@@ -1337,7 +1357,7 @@ def main():
                                     attacker_x = SCREEN_WIDTH - 230 - enemy_heroes.index(attacker) * 200 + 90
                                 else:
                                     attacker_x = SCREEN_WIDTH // 2
-                            except Exception:
+                            except Exception as _e:
                                 attacker_x = SCREEN_WIDTH // 2
                         else:  # 是小弟
                             # 找到小弟所属的武将
@@ -1352,8 +1372,8 @@ def main():
                                         if attacker in hero.minions:
                                             attacker_x = SCREEN_WIDTH - 230 - enemy_heroes.index(hero) * 200 + 90
                                             break
-                            except Exception:
-                                pass
+                            except Exception as _e:
+                                logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
                         
                         try:
                             if target in player_heroes:
@@ -1362,7 +1382,7 @@ def main():
                                 target_x = SCREEN_WIDTH - 230 - enemy_heroes.index(target) * 200 + 90
                             else:
                                 target_x = SCREEN_WIDTH // 2
-                        except Exception:
+                        except Exception as _e:
                             target_x = SCREEN_WIDTH // 2
                         # 绘制攻击特效
                         draw_element_effect(screen, target_x, 230, element)
@@ -1407,7 +1427,11 @@ def main():
             # 绘制怒气条
             if player_heroes:
                 main_hero = player_heroes[0]
-                rage_ratio = main_hero.rage / main_hero.max_rage
+                if main_hero.max_rage <= 0:
+                    logger.warning("[战斗] 主将 max_rage=%s 异常，怒气条比例置 0", getattr(main_hero, 'max_rage', None))
+                    rage_ratio = 0
+                else:
+                    rage_ratio = main_hero.rage / main_hero.max_rage
                 rage_width = 200
                 rage_height = 20
                 rage_x = SCREEN_WIDTH // 2 - rage_width // 2
@@ -1459,14 +1483,10 @@ def main():
                 for p in particles[:]:
                     p.update()
                     p.draw(screen)
-                    if p.life <= 0:
-                        particles.remove(p)
 
                 for ft in floating_texts[:]:
                     ft.update()
                     ft.draw(screen)
-                    if ft.life <= 0:
-                        floating_texts.remove(ft)
 
                 # 事件处理
                 for event in pygame.event.get():
@@ -1979,8 +1999,6 @@ def main():
                 for p in particles[:]:
                     p.update()
                     p.draw(screen)
-                    if p.life <= 0:
-                        particles.remove(p)
 
                 # 事件处理
                 for event in pygame.event.get():
@@ -1993,12 +2011,22 @@ def main():
             pygame.display.flip()
             clock.tick(60)
 
-        # 确保退出时更新统计
+        # ==================================================================
+        # 阶段 8：主循环结束 → 胜负结算 → 更新玩家统计 → 退出
+        # ==================================================================
+        t_total = time.perf_counter() - t0
+        t_loop = time.perf_counter() - t_loop_start
+        logger.info("[战斗] 阶段8 主循环结束 总回合=%d 胜负=%s 战斗时长=%.1fs 总耗时=%.1fs",
+                    turn, '胜利' if win else '失败', t_loop, t_total)
+
         if battle_over:
             update_battle_stats(win, player_heroes, enemy_heroes)
-        
+
         safe_exit("战斗模块")
     except Exception as e:
+        t_total = time.perf_counter() - locals().get('t0', time.perf_counter())
+        logger.error("[战斗] 顶层异常 类型=%s 总耗时≈%.1fs err=%s",
+                     type(e).__name__, t_total, e, exc_info=True)
         safe_exit("战斗模块", str(e))
 
 if __name__ == "__main__":

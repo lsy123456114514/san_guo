@@ -1,10 +1,12 @@
+"""增强版 2D 世界地图 - 多地形、NPC、移动"""
+
 import pygame
 import math
 import random
 import json
 import os
 import time
-from ASSET.game_data import data, save, get_system_font_name, load_sound
+from ASSET.game_data import data, save, get_system_font_name, load_sound, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 
 # 简单的Perlin噪声实现
@@ -979,11 +981,7 @@ def main():
         
         # 字体初始化
         def init_font(size):
-            font_name = get_system_font_name()
-            try:
-                return pygame.font.SysFont(font_name, size)
-            except Exception:
-                return pygame.font.Font(None, size)
+            return get_font(size)
 
         font_small = init_font(12)
         font_main = init_font(16)
@@ -1052,7 +1050,7 @@ def main():
                 username = data.get("username", "")
                 password = data.get("password", "")
                 if not username or not password:
-                    print("错误: 未登录，无法保存地图数据")
+                    logger.info("错误: 未登录，无法保存地图数据")
                     return False
                 
                 # 保存地图数据
@@ -1066,10 +1064,10 @@ def main():
                 with open(map_path, 'w', encoding='utf-8') as f:
                     json.dump(map_data, f, ensure_ascii=False, indent=2)
                 
-                print(f"地图数据已保存到: {map_path}")
+                logger.info(f"地图数据已保存到: {map_path}")
                 return True
             except Exception as e:
-                print(f"保存地图数据失败: {e}")
+                logger.info(f"保存地图数据失败: {e}")
                 return False
         
         # 加载地图数据
@@ -1079,12 +1077,12 @@ def main():
                 username = data.get("username", "")
                 password = data.get("password", "")
                 if not username or not password:
-                    print("错误: 未登录，无法加载地图数据")
+                    logger.info("错误: 未登录，无法加载地图数据")
                     return None
                 
                 map_path = get_map_data_path()
                 if not os.path.exists(map_path):
-                    print("地图数据文件不存在，将生成新地图")
+                    logger.info("地图数据文件不存在，将生成新地图")
                     return None
                 
                 with open(map_path, 'r', encoding='utf-8') as f:
@@ -1092,23 +1090,23 @@ def main():
                 
                 # 验证用户名
                 if map_data.get("username") != username:
-                    print("错误: 地图数据与当前用户不匹配")
+                    logger.info("错误: 地图数据与当前用户不匹配")
                     return None
                 
-                print(f"成功加载地图数据，包含 {len(map_data.get('locations', []))} 个地点")
+                logger.info(f"成功加载地图数据，包含 {len(map_data.get('locations', []))} 个地点")
                 return map_data.get("locations")
             except Exception as e:
-                print(f"加载地图数据失败: {e}")
+                logger.info(f"加载地图数据失败: {e}")
                 return None
         
         # 加载或生成地图数据
         locations = load_map_data()
         if locations is None:
-            print(f"生成新地图，大小: {MAP_SIZE[0]}x{MAP_SIZE[1]}, 地点数量: {MAX_LOCATIONS}")
+            logger.info(f"生成新地图，大小: {MAP_SIZE[0]}x{MAP_SIZE[1]}, 地点数量: {MAX_LOCATIONS}")
             locations = generate_locations(MAX_LOCATIONS)
             save_map_data(locations)
         else:
-            print(f"加载现有地图，包含 {len(locations)} 个地点")
+            logger.info(f"加载现有地图，包含 {len(locations)} 个地点")
         
         # 计算玩家综合战力
         def calculate_player_power():
@@ -1549,7 +1547,7 @@ def main():
             clock.tick(60)
 
     except Exception as e:
-        print(f"地图系统错误: {e}")
+        logger.info(f"地图系统错误: {e}")
         import traceback
         traceback.print_exc()
     finally:

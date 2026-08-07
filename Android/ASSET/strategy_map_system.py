@@ -3,7 +3,7 @@ import math
 import random
 import json
 import time
-from ASSET.game_data import data, save, get_system_font_name
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 
 class TerritoryManager:
@@ -293,6 +293,9 @@ class SeasonSystem:
         """获取赛季进度（0-100）"""
         elapsed = time.time() - data["season"]["season_start_time"]
         total = data["season"]["season_duration"]
+        if total <= 0:
+            logger.warning("[阵法] 赛季 duration=%s 异常，进度置 0", total)
+            return 0
         return min(100, int((elapsed / total) * 100))
     
     def get_time_remaining(self):

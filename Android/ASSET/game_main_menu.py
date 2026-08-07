@@ -1,3 +1,5 @@
+"""游戏主入口 - 登录后主菜单、顶部横幅、子系统调度"""
+
 import os
 import sys
 import subprocess
@@ -7,7 +9,7 @@ import math
 import random
 import logging
 from ASSET.fun_effects import PetSprite, FloatingParticles
-from ASSET.game_data import data, save, get_system_font_name
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 from ASSET.login_system import save_game
 from ASSET.equipment_system import main as equipment_system_main  # pyright: ignore[reportUnusedImport]
@@ -71,8 +73,8 @@ class MouseTrail:
                         alpha = int(max(0, min(255, trail['alpha'])))
                         pygame.draw.circle(trail_surf, (*trail['color'], alpha), (size, size), size)
                         surface.blit(trail_surf, (int(trail['x'] - size), int(trail['y'] - size)))
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class DynamicLight:
     """动态光效类"""
@@ -104,8 +106,8 @@ class DynamicLight:
                 pygame.draw.circle(light_surf, (*self.color, alpha), (center, center), r)
             surface.blit(light_surf, (int(self.x - self.radius - 10 + self.offset_x), 
                                      int(self.y - self.radius - 10 + self.offset_y)))
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class ScrollableContainer:
     """通用滚动容器类"""
@@ -205,12 +207,12 @@ class AnimatedSprite:
                 surface.blit(self.frames[self.current_frame], (self.x, self.y))
             elif self.redundant_frame:
                 surface.blit(self.redundant_frame, (self.x, self.y))
-        except Exception:
+        except Exception as _e:
             if self.redundant_frame:
                 try:
                     surface.blit(self.redundant_frame, (self.x, self.y))
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class FloatingText:
     """浮动文字效果"""
@@ -246,13 +248,13 @@ class FloatingText:
             text_surf = self.font.render(self.text, True, self.color)
             text_surf.set_alpha(self.alpha)
             surface.blit(text_surf, (self.x, self.y))
-        except Exception:
+        except Exception as _e:
             if self.redundant_text:
                 try:
                     self.redundant_text.set_alpha(self.alpha)
                     surface.blit(self.redundant_text, (self.x, self.y))
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class GlowingEffect:
     """发光效果类"""
@@ -283,12 +285,12 @@ class GlowingEffect:
             pygame.draw.rect(glow_surf, (*self.color, alpha), 
                            (10, 10, self.width, self.height), border_radius=10)
             self.surface.blit(glow_surf, (self.x - 10, self.y - 10))
-        except Exception:
+        except Exception as _e:
             if self.redundant_surface:
                 try:
                     self.surface.blit(self.redundant_surface, (self.x - 10, self.y - 10))
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class ParticleSystem:
     """粒子系统 - 更稳定和有趣的粒子效果"""
@@ -324,25 +326,28 @@ class ParticleSystem:
         self.particles.append(particle)
         
     def update(self):
-        for p in self.particles[:]:
+        alive = []
+        for p in self.particles:
             try:
                 p.update()
                 p.x += math.sin(p.y * 0.02) * 0.5
                 if p.life <= 0:
                     self.redundant_storage.append(p)
-                    if p in self.particles:
-                        self.particles.remove(p)
-            except Exception:
-                if p in self.particles:
-                    self.particles.remove(p)
-                    
+                    continue
+                alive.append(p)
+            except Exception as _e:
+                logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
+        self.particles = alive
+
     def draw(self, surface):
-        for p in self.particles[:]:
+        alive = []
+        for p in self.particles:
             try:
                 p.draw(surface)
-            except Exception:
-                if p in self.particles:
-                    self.particles.remove(p)
+                alive.append(p)
+            except Exception as _e:
+                logger.debug("[异常静默] particle draw %s: %s", type(_e).__name__, _e)
+        self.particles = alive
 
 class SafeSurface:
     """安全表面类 - 防止绘制错误"""
@@ -357,30 +362,30 @@ class SafeSurface:
         try:
             self.surface = pygame.Surface(self.size, self.flags)
             self.surface.fill((0, 0, 0, 0))
-        except Exception:
+        except Exception as _e:
             self.surface = pygame.Surface((100, 100), pygame.SRCALPHA)
             
     def blit(self, source, dest, area=None, special_flags=0):
         try:
             return self.surface.blit(source, dest, area, special_flags)
-        except Exception:
+        except Exception as _e:
             if self.fallback_surface:
                 try:
                     return self.fallback_surface.blit(source, dest, area, special_flags)
-                except Exception:
+                except Exception as _e:
                     return None
     
     def draw_rect(self, color, rect, width=0, border_radius=0):
         try:
             pygame.draw.rect(self.surface, color, rect, width, border_radius)
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
             
     def draw_circle(self, color, center, radius, width=0):
         try:
             pygame.draw.circle(self.surface, color, center, radius, width)
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 # 平台检测
 def is_android():
@@ -417,7 +422,7 @@ def get_screen_size():
             return info.current_w, info.current_h
         else:
             return pygame.display.get_surface().get_size()
-    except Exception:
+    except Exception as _e:
         return 800, 600
 
 def get_font_list():
@@ -482,7 +487,7 @@ def test_font_renderable(font, text="测试"):
             return False
         surface = font.render(text, True, (255, 255, 255))
         return surface is not None and surface.get_width() > 0
-    except Exception:
+    except Exception as _e:
         return False
 
 def init_fonts():
@@ -695,17 +700,15 @@ class Button:
                 random.randint(50, 100)
             ))
 
-        for p in self.particles[:]:
+        for p in self.particles:
             p.update()
             p.draw(surface)
-            if p.life <= 0:
-                self.particles.remove(p)
+        self.particles[:] = [p for p in self.particles if p.life > 0]
 
-        for p in self.click_particles[:]:
+        for p in self.click_particles:
             p.update()
             p.draw(surface)
-            if p.life <= 0:
-                self.click_particles.remove(p)
+        self.click_particles[:] = [p for p in self.click_particles if p.life > 0]
 
 class DropdownMenu:
     def __init__(self, text, x, y, width, height, font, items):
@@ -813,7 +816,7 @@ class DropdownMenu:
 
         return False, None
 
-def draw_gradient_background(surface, color1, color2):
+def draw_gradient_bg(surface, color1, color2):
     """绘制渐变背景"""
     try:
         width, height = surface.get_size()
@@ -823,7 +826,7 @@ def draw_gradient_background(surface, color1, color2):
             g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
             b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
             pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
-    except Exception:
+    except Exception as _e:
         surface.fill(color1)
 
 clouds = []
@@ -904,12 +907,12 @@ def draw_three_kingdoms_background(surface, screen_width, screen_height):
                     if text_surf:
                         text_rect = text_surf.get_rect(center=(x, y))
                         surface.blit(text_surf, text_rect)
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
         draw_seal(surface, screen_width - 100, 100, 60, "三国")
         draw_seal(surface, 100, screen_height - 100, 60, "霸业")
-    except Exception:
+    except Exception as _e:
         surface.fill((10, 10, 25))
 
 def draw_chinese_pattern(surface, x, y, size, color):
@@ -930,8 +933,8 @@ def draw_chinese_pattern(surface, x, y, size, color):
             (x, y + size // 3)
         ]
         pygame.draw.polygon(surface, color, points, 2)
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 def draw_three_kingdoms_title(surface, text, y_pos, screen_width):
     """绘制三国风格标题"""
@@ -980,8 +983,8 @@ def draw_three_kingdoms_title(surface, text, y_pos, screen_width):
         pygame.draw.line(surface, line_color, (screen_width // 2 + 200, line_y - 5), (screen_width // 2 + 200, line_y + 5), 3)
         pygame.draw.circle(surface, COLORS["accent_gold"], (screen_width // 2, line_y), 10)
         pygame.draw.circle(surface, (139, 69, 19), (screen_width // 2, line_y), 6)
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 def draw_decorative_frame(surface, rect, color, border_width=3):
     """绘制装饰性边框"""
@@ -996,8 +999,8 @@ def draw_decorative_frame(surface, rect, color, border_width=3):
         ]
         for cx, cy in corners:
             pygame.draw.rect(surface, COLORS["accent_gold"], (cx, cy, corner_size, corner_size), 2)
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 def draw_resource_panel(surface, x, y, width, height):
     """绘制三国风格资源面板"""
@@ -1041,8 +1044,8 @@ def draw_resource_panel(surface, x, y, width, height):
                 if text:
                     text_rect = text.get_rect(center=(icon_x, icon_y))
                     surface.blit(text, text_rect)
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 def draw_title(surface, text, y_pos, screen_width):
     """绘制带特效的标题"""
@@ -1076,8 +1079,8 @@ def draw_title(surface, text, y_pos, screen_width):
                         (screen_width // 2 + 150, line_y), 3)
         pygame.draw.circle(surface, COLORS["accent_gold"], (screen_width // 2, line_y), 8)
         pygame.draw.circle(surface, COLORS["bg_dark"], (screen_width // 2, line_y), 5)
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 def clear():
     """清屏"""
@@ -1326,7 +1329,7 @@ def mini_games_menu():
 
     try:
         from ASSET.achievement_system import update_achievement_progress
-    except Exception:
+    except Exception as _e:
         update_achievement_progress = None
 
     mini_games = [
@@ -1368,7 +1371,7 @@ def mini_games_menu():
 
     running = True
     while running:
-        draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+        draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
 
         if random.random() < 0.1:
             particles.append(Particle(
@@ -1380,8 +1383,6 @@ def mini_games_menu():
         for p in particles[:]:
             p.update()
             p.draw(screen)
-            if p.life <= 0:
-                particles.remove(p)
 
         draw_title(screen, "小游戏中心", screen_height * 0.12, screen_width)
 
@@ -1420,7 +1421,7 @@ def setting_menu():
         sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         from main import save_login_state
         login_state_available = True
-    except Exception:
+    except Exception as _e:
         save_login_state = None
         login_state_available = False
 
@@ -1458,7 +1459,7 @@ def setting_menu():
             btn = Button(text, x, y, button_width, button_height, FONT_SMALL)
             setting_buttons.append(btn)
 
-        draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+        draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
 
         if random.random() < 0.1:
             particles.append(Particle(
@@ -1470,8 +1471,6 @@ def setting_menu():
         for p in particles[:]:
             p.update()
             p.draw(screen)
-            if p.life <= 0:
-                particles.remove(p)
 
         draw_title(screen, "游戏设置", screen_height * 0.12, screen_width)
 
@@ -1611,8 +1610,8 @@ def main():
         try:
             from ASSET.newbie_guide import main as guide_main
             guide_main()
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
     button_width = min(300, screen_width * 0.35)
     button_height = min(55, screen_height * 0.07)
@@ -1757,10 +1756,10 @@ def main():
                             trail_surf = pygame.Surface((3, 3), pygame.SRCALPHA)
                             pygame.draw.circle(trail_surf, (r, g, b, alpha), (1, 1), 1)
                             screen.blit(trail_surf, (int(x_pos), int(y_pos)))
-                        except Exception:
-                            pass
-            except Exception:
-                pass
+                        except Exception as _e:
+                            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
+            except Exception as _e:
+                logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
         
         if random.random() < 0.02 and len(rainbow_particles) < 30:
             hue = random.randint(0, 360)
@@ -1788,8 +1787,8 @@ def main():
                 rainbow_surf = pygame.Surface((int(rp['size'] * 2), int(rp['size'] * 2)), pygame.SRCALPHA)
                 pygame.draw.circle(rainbow_surf, (r, g, b, rp['alpha']), (int(rp['size']), int(rp['size'])), int(rp['size']))
                 screen.blit(rainbow_surf, (int(rp['x'] - rp['size']), int(rp['y'] - rp['size'])))
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
         for decor in bg_decorations:
             decor['x'] += math.sin(current_time * 0.001 + decor['y'] * 0.01) * decor['speed']
@@ -1822,8 +1821,8 @@ def main():
                     decor_alpha = max(1, min(255, decor['alpha']))
                     pygame.draw.circle(surf, (255, 215, 0, decor_alpha), (size, size), size)
                 screen.blit(surf, (int(decor['x'] - decor['size']), int(decor['y'] - decor['size'])))
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
         if random.random() < 0.008:
             moving_elements.append({
@@ -1846,8 +1845,8 @@ def main():
                     surf = pygame.Surface((int(element['size']), int(element['size'] // 2)), pygame.SRCALPHA)
                     pygame.draw.ellipse(surf, (255, 215, 0, element['alpha']), (0, 0, element['size'], element['size'] // 2))
                     screen.blit(surf, (int(element['x']), int(element['y'])))
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
             else:
                 moving_elements.remove(element)
 
@@ -1891,26 +1890,24 @@ def main():
             elif p.color == (200, 80, 80):
                 p.speed_y += 0.025
             p.draw(screen)
-            if p.life <= 0:
-                particles.remove(p)
         
         try:
             mouse_trail.update()
             mouse_trail.draw(screen)
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
         
         try:
             floating_particles.update()
             floating_particles.draw(screen)
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
         
         try:
             pet_sprite.update(mouse_pos)
             pet_sprite.draw(screen)
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
         draw_three_kingdoms_title(screen, "三国霸业", screen_height * 0.08, screen_width)
 
@@ -1954,8 +1951,8 @@ def main():
                                            (i, i, glow_rect.width - i*2, glow_rect.height - i*2),
                                            border_radius=btn.rect.width // 10)
                         screen.blit(glow_surf, (glow_rect.x, glow_rect.y))
-                    except Exception:
-                        pass
+                    except Exception as _e:
+                        logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
         for element_type, element in menu_elements:
             if element_type == "dropdown":
@@ -1969,8 +1966,8 @@ def main():
                                                (0, 0, item_rect.width, item_rect.height),
                                                border_radius=8)
                                 screen.blit(highlight_surf, (item_rect.x, item_rect.y))
-                        except Exception:
-                            pass
+                        except Exception as _e:
+                            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
         pygame.display.flip()
 
@@ -1986,8 +1983,8 @@ def main():
                             event.pos[0] + random.randint(-20, 20),
                             event.pos[1] + random.randint(-20, 20)
                         )
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
                 
                 for element_type, element in menu_elements:
                     if element_type == "dropdown":
@@ -2164,7 +2161,7 @@ def show_exit_menu():
 
     running = True
     while running:
-        draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+        draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
 
         if random.random() < 0.1:
             particles.append(Particle(
@@ -2176,8 +2173,6 @@ def show_exit_menu():
         for p in particles[:]:
             p.update()
             p.draw(screen)
-            if p.life <= 0:
-                particles.remove(p)
 
         pygame.draw.rect(screen, (30, 30, 55), (panel_x, panel_y, panel_width, panel_height), border_radius=15)
         pygame.draw.rect(screen, (139, 69, 19), (panel_x, panel_y, panel_width, panel_height), 3, border_radius=15)
@@ -2331,8 +2326,6 @@ def startup_animation():
         for p in particles[:]:
             p.update()
             p.draw(screen)
-            if p.life <= 0:
-                particles.remove(p)
 
         pygame.display.flip()
         clock.tick(60)
