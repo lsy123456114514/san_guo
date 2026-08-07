@@ -685,14 +685,14 @@ def draw_weather_system(surface, font_big, font_main, font_small, weather_system
             # 调整字体大小
             scale_factor = max_width / weather_text.get_width()
             new_font_size = int(font_main.get_height() * scale_factor)
-            scaled_font = pygame.font.SysFont(font_main.get_name(), new_font_size)
+            scaled_font = pygame.font.Font(get_system_font_name(), new_font_size)
             weather_text = scaled_font.render(f"当前天气: {current_weather['name']}", True, current_weather['color'])
         
         if weather_desc.get_width() > max_width:
             # 调整字体大小
             scale_factor = max_width / weather_desc.get_width()
             new_font_size = int(font_small.get_height() * scale_factor)
-            scaled_font = pygame.font.SysFont(font_small.get_name(), new_font_size)
+            scaled_font = pygame.font.Font(get_system_font_name(), new_font_size)
             weather_desc = scaled_font.render(current_weather['description'], True, COLORS["text_white"])
         
         # 计算绘制位置
@@ -720,7 +720,7 @@ def draw_weather_system(surface, font_big, font_main, font_small, weather_system
                 # 调整字体大小
                 scale_factor = max_width / effect_text.get_width()
                 new_font_size = int(font_small.get_height() * scale_factor)
-                scaled_font = pygame.font.SysFont(font_small.get_name(), new_font_size)
+                scaled_font = pygame.font.Font(get_system_font_name(), new_font_size)
                 effect_text = scaled_font.render(f"{effect_name}: {effect_value}", True, COLORS["text_white"])
             
             surface.blit(effect_text, (margin, effect_y))
@@ -740,14 +740,14 @@ def draw_weather_system(surface, font_big, font_main, font_small, weather_system
             # 调整字体大小
             scale_factor = max_width / holiday_text.get_width()
             new_font_size = int(font_main.get_height() * scale_factor)
-            scaled_font = pygame.font.SysFont(font_main.get_name(), new_font_size)
+            scaled_font = pygame.font.Font(get_system_font_name(), new_font_size)
             holiday_text = scaled_font.render(f"当前节日: {current_holiday['name']}", True, current_holiday['color'])
         
         if holiday_desc.get_width() > max_width:
             # 调整字体大小
             scale_factor = max_width / holiday_desc.get_width()
             new_font_size = int(font_small.get_height() * scale_factor)
-            scaled_font = pygame.font.SysFont(font_small.get_name(), new_font_size)
+            scaled_font = pygame.font.Font(get_system_font_name(), new_font_size)
             holiday_desc = scaled_font.render(current_holiday['description'], True, COLORS["text_white"])
         
         # 计算绘制位置
@@ -774,7 +774,7 @@ def draw_weather_system(surface, font_big, font_main, font_small, weather_system
                 # 调整字体大小
                 scale_factor = max_width / effect_text.get_width()
                 new_font_size = int(font_small.get_height() * scale_factor)
-                scaled_font = pygame.font.SysFont(font_small.get_name(), new_font_size)
+                scaled_font = pygame.font.Font(get_system_font_name(), new_font_size)
                 effect_text = scaled_font.render(f"{effect_name}: {effect_value}", True, COLORS["text_white"])
             
             surface.blit(effect_text, (margin, effect_y))
@@ -793,7 +793,7 @@ def draw_weather_system(surface, font_big, font_main, font_small, weather_system
             # 调整字体大小
             scale_factor = max_width / total_effects_text.get_width()
             new_font_size = int(font_main.get_height() * scale_factor)
-            scaled_font = pygame.font.SysFont(font_main.get_name(), new_font_size)
+            scaled_font = pygame.font.Font(get_system_font_name(), new_font_size)
             total_effects_text = scaled_font.render("总效果:", True, COLORS["accent_blue"])
         
         # 计算绘制位置
@@ -819,7 +819,7 @@ def draw_weather_system(surface, font_big, font_main, font_small, weather_system
                 # 调整字体大小
                 scale_factor = max_width / effect_text.get_width()
                 new_font_size = int(font_small.get_height() * scale_factor)
-                scaled_font = pygame.font.SysFont(font_small.get_name(), new_font_size)
+                scaled_font = pygame.font.Font(get_system_font_name(), new_font_size)
                 effect_text = scaled_font.render(f"{effect_name}: {effect_value}", True, COLORS["text_white"])
             
             surface.blit(effect_text, (margin, effect_y))

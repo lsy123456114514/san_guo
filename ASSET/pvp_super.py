@@ -17,7 +17,7 @@ from ASSET.game_data import data, save, get_system_font_name
 try:
     from ASSET.secure_network import SecureNetwork
     from ASSET.p2p_ngrok import P2PNgrok
-except:
+except Exception:
     pass
 
 # 颜色主题
@@ -52,7 +52,7 @@ class Particle:
         self.size = max(0.5, self.size - 0.05)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
         pygame.draw.circle(surface, (*self.color[:3], alpha), (int(self.x), int(self.y)), int(self.size))
 
 

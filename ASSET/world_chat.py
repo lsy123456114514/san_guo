@@ -51,7 +51,7 @@ class Particle:
         self.size = max(0.5, self.size - 0.05)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
         temp_surface = pygame.Surface((int(self.size * 2), int(self.size * 2)), pygame.SRCALPHA)
         pygame.draw.circle(temp_surface, (*self.color, alpha), (int(self.size), int(self.size)), int(self.size))
         surface.blit(temp_surface, (int(self.x - self.size), int(self.y - self.size)))
@@ -262,7 +262,7 @@ class ChatClient:
         """发送数据"""
         try:
             self.sock.sendto(json.dumps(data).encode('utf-8'), self.server_addr)
-        except:
+        except Exception:
             pass
     
     def disconnect(self):

@@ -31,7 +31,7 @@ class NgrokTunnel:
             result = subprocess.run(['ngrok', 'version'], 
                                  capture_output=True, text=True, timeout=5)
             return result.returncode == 0
-        except:
+        except Exception:
             return False
     
     def download_ngrok(self) -> bool:
@@ -87,7 +87,7 @@ class NgrokTunnel:
                         tunnels = data.get('tunnels', [])
                         if tunnels:
                             return tunnels[0]
-                except:
+                except Exception:
                     pass
                 time.sleep(0.5)
             return None
@@ -101,7 +101,7 @@ class NgrokTunnel:
             if url.startswith('tcp://'):
                 parts = url.split(':')
                 return int(parts[-1])
-        except:
+        except Exception:
             pass
         return None
     
@@ -115,7 +115,7 @@ class NgrokTunnel:
                 parts = self.tunnel_url.replace('tcp://', '')
                 host, port_str = parts.split(':')
                 return (host, int(port_str))
-        except:
+        except Exception:
             pass
         return None
     
@@ -126,10 +126,10 @@ class NgrokTunnel:
             try:
                 self.ngrok_process.terminate()
                 self.ngrok_process.wait(timeout=2)
-            except:
+            except Exception:
                 try:
                     self.ngrok_process.kill()
-                except:
+                except Exception:
                     pass
             self.ngrok_process = None
         self.tunnel_url = None
@@ -187,7 +187,7 @@ class P2PNgrok:
             ip = s.getsockname()[0]
             s.close()
             return ip
-        except:
+        except Exception:
             return '127.0.0.1'
     
     def _receive_loop(self):
@@ -254,7 +254,7 @@ class P2PNgrok:
         if self.local_socket:
             try:
                 self.local_socket.close()
-            except:
+            except Exception:
                 pass
         
         if self.thread and self.thread.is_alive():

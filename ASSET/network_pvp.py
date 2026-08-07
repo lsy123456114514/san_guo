@@ -140,7 +140,7 @@ class NetworkPVP:
             ip = s.getsockname()[0]
             s.close()
             return ip
-        except:
+        except Exception:
             return '127.0.0.1'
     
     def stop(self):
@@ -150,7 +150,7 @@ class NetworkPVP:
         if self.sock:
             try:
                 self.sock.close()
-            except:
+            except Exception:
                 pass
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=1.0)

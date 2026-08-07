@@ -4,7 +4,7 @@ import json
 import random
 import math
 from datetime import datetime, timedelta
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, get_system_font_name
 from ASSET import safe_exit
 
 # 颜色主题
@@ -111,7 +111,7 @@ class Particle:
         self.size = max(0.5, self.size - 0.05)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
         color = (*self.color[:3], alpha)
         pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
 
@@ -137,22 +137,6 @@ def draw_title(surface, text, y, screen_width):
     underline_x = (screen_width - underline_width) // 2
     pygame.draw.line(surface, COLORS["accent_gold"], 
                    (underline_x, y + 35), (underline_x + underline_width, y + 35), 3)
-
-def get_system_font_name():
-    """获取系统字体名称"""
-    if 'ANDROID_DATA' in os.environ:
-        return None
-    
-    # 尝试常见的中文字体
-    fonts = ["Microsoft YaHei", "SimHei", "Arial", "sans-serif"]
-    for font in fonts:
-        try:
-            test_font = pygame.font.SysFont(font, 24)
-            if test_font:
-                return font
-        except Exception:
-            pass
-    return None
 
 def get_today_date():
     """获取今天的日期字符串"""
@@ -226,11 +210,17 @@ def check_in():
     
     # 发放奖励
     if "金元宝" in reward:
-        amount = int(reward.split("×")[1].split()[0])
+        try:
+            amount = int(reward.split("×")[1].split()[0])
+        except (IndexError, ValueError):
+            amount = 50
         data['resources']['金元宝'] = data['resources'].get('金元宝', 0) + amount
-    
+
     if "时间卡" in reward:
-        amount = int(reward.split("+")[-1].split("×")[1])
+        try:
+            amount = int(reward.split("+")[-1].split("×")[1])
+        except (IndexError, ValueError):
+            amount = 1
         data['resources']['时间卡'] = data['resources'].get('时间卡', 0) + amount
     
     # 记录奖励

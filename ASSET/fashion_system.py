@@ -59,7 +59,7 @@ def draw_gradient_background(surface, color1, color2):
 
 def draw_title(surface, text, y, width):
     """绘制标题"""
-    font = pygame.font.SysFont(get_system_font_name(), 48)
+    font = pygame.font.Font(get_system_font_name(), 48)
     text_surf = font.render(text, True, COLORS["accent_gold"])
     text_rect = text_surf.get_rect(center=(width // 2, y))
     surface.blit(text_surf, text_rect)
@@ -156,13 +156,13 @@ def draw_fashion_preview(screen, category, fashion_id, x, y, width, height):
     
     # 时装名称
     fashion_name = FASHION_ITEMS[f"{category}_skins"][fashion_id]["name"]
-    font = pygame.font.SysFont(get_system_font_name(), 24)
+    font = pygame.font.Font(get_system_font_name(), 24)
     name_surf = font.render(fashion_name, True, COLORS["accent_gold"])
     screen.blit(name_surf, (x + 20, y + 20))
     
     # 时装描述
     description = FASHION_ITEMS[f"{category}_skins"][fashion_id]["description"]
-    desc_font = pygame.font.SysFont(get_system_font_name(), 16)
+    desc_font = pygame.font.Font(get_system_font_name(), 16)
     desc_surf = desc_font.render(description, True, COLORS["text_white"])
     screen.blit(desc_surf, (x + 20, y + 50))
     
@@ -308,7 +308,7 @@ def fashion_shop(screen, font_main, font_small, clock):
         effects = get_fashion_effects()
         if effects:
             effect_y = screen.get_height() - 150
-            font = pygame.font.SysFont(get_system_font_name(), 20)
+            font = pygame.font.Font(get_system_font_name(), 20)
             effect_title = font.render("当前时装效果:", True, COLORS["accent_gold"])
             screen.blit(effect_title, (100, effect_y))
             effect_y += 30

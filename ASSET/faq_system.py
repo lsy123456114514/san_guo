@@ -174,6 +174,7 @@ def main():
     running = True
     selected_faq = None
     scroll_y = 0
+    dragging = False
     
     while running:
         # 渐变背景
@@ -292,16 +293,19 @@ def main():
                     scroll_bar_height = (faq_list_area.height / (len(FAQs) * 60 + (220 if selected_faq else 0))) * faq_list_area.height
                     scroll_bar = pygame.Rect(faq_list_area.right - 15, faq_list_area.y, 10, faq_list_area.height)
                     if scroll_bar.collidepoint(mouse_pos):
-                        # 拖动滚动条
+                        # 开始拖动滚动条
                         dragging = True
-                        while dragging:
-                            for drag_event in pygame.event.get():
-                                if drag_event.type == pygame.MOUSEBUTTONUP:
-                                    dragging = False
-                                elif drag_event.type == pygame.MOUSEMOTION:
-                                    drag_y = drag_event.pos[1]
-                                    scroll_ratio = (drag_y - faq_list_area.y) / faq_list_area.height
-                                    scroll_y = max(0, min(max_scroll, scroll_ratio * max_scroll))
+
+            # 鼠标释放：停止拖动
+            if event.type == pygame.MOUSEBUTTONUP:
+                dragging = False
+
+            # 鼠标拖动：更新滚动位置
+            if event.type == pygame.MOUSEMOTION and dragging:
+                drag_y = event.pos[1]
+                if faq_list_area.height > 0:
+                    scroll_ratio = (drag_y - faq_list_area.y) / faq_list_area.height
+                    scroll_y = max(0, min(max_scroll, scroll_ratio * max_scroll))
                         
             # 鼠标滚轮滚动
             if event.type == pygame.MOUSEWHEEL:

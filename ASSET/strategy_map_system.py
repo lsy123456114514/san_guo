@@ -293,7 +293,7 @@ class SeasonSystem:
         """获取赛季进度（0-100）"""
         elapsed = time.time() - data["season"]["season_start_time"]
         total = data["season"]["season_duration"]
-        return min(100, int((elapsed / total) * 100))
+        return min(100, int((elapsed / total) * 100)) if total > 0 else 0
     
     def get_time_remaining(self):
         """获取剩余时间（秒）"""

@@ -74,7 +74,7 @@ class Particle:
         self.size = max(0.5, self.size - 0.05)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
         # 只使用RGB部分，确保颜色参数有效
         color = self.color[:3]  # 只取RGB值，去掉alpha通道
         pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
@@ -95,7 +95,7 @@ class FloatingText:
         self.life -= 1
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
         text_surf = self.font.render(self.text, True, self.color)
         text_surf.set_alpha(alpha)
         surface.blit(text_surf, (int(self.x), int(self.y)))

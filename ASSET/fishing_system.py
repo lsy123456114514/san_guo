@@ -492,7 +492,7 @@ def main():
                         # 计算进度
                         total_time = task["end_time"] - task["start_time"]
                         elapsed_time = time.time() - task["start_time"]
-                        progress = min(1.0, elapsed_time / total_time)
+                        progress = min(1.0, elapsed_time / total_time) if total_time > 0 else 1.0
                         remaining_time = max(0, int(task["end_time"] - time.time()))
                         
                         # 显示任务文本背景

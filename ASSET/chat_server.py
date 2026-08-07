@@ -7,6 +7,7 @@
 """
 
 import socket
+import sys
 import threading
 import json
 import time
@@ -213,7 +214,7 @@ class ChatServer:
         if self.sock:
             try:
                 self.sock.close()
-            except:
+            except Exception:
                 pass
         print("\n🛑 服务器已停止")
 

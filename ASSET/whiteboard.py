@@ -163,16 +163,20 @@ class Whiteboard:
     
     def init_fonts(self):
         """初始化字体，小屏幕使用更小的字体"""
+        font_size = 28 if self.width < 1024 else 32
+        font_small_size = 18 if self.width < 1024 else 20
         try:
-            font_size = 28 if self.width < 1024 else 32
-            font_small_size = 18 if self.width < 1024 else 20
-            self.font = pygame.font.SysFont("Microsoft YaHei", font_size)
-            self.font_small = pygame.font.SysFont("Microsoft YaHei", font_small_size)
-        except:
-            font_size = 24 if self.width < 1024 else 32
-            font_small_size = 16 if self.width < 1024 else 20
-            self.font = pygame.font.Font(None, font_size)
-            self.font_small = pygame.font.Font(None, font_small_size)
+            from ASSET.game_data import get_system_font_name
+            _fn = get_system_font_name()
+            self.font = pygame.font.Font(_fn, font_size)
+            self.font_small = pygame.font.Font(_fn, font_small_size)
+        except Exception:
+            try:
+                self.font = pygame.font.SysFont("Microsoft YaHei", font_size)
+                self.font_small = pygame.font.SysFont("Microsoft YaHei", font_small_size)
+            except Exception:
+                self.font = pygame.font.Font(None, font_size)
+                self.font_small = pygame.font.Font(None, font_small_size)
     
     def create_buttons(self):
         """创建工具按钮，自适应布局"""

@@ -938,13 +938,15 @@ class DictionarySystem:
             # 下一个单词
             next_rect = pygame.Rect(screen_width // 2 + 50, 420, 100, 40)
             if next_rect.collidepoint(x, y):
-                self.current_word_index = (self.current_word_index + 1) % len(WORD_LIST)
+                if len(WORD_LIST) > 0:
+                    self.current_word_index = (self.current_word_index + 1) % len(WORD_LIST)
                 self.show_meaning = False
             
             # 上一个单词
             prev_rect = pygame.Rect(screen_width // 2 - 150, 420, 100, 40)
             if prev_rect.collidepoint(x, y):
-                self.current_word_index = (self.current_word_index - 1) % len(WORD_LIST)
+                if len(WORD_LIST) > 0:
+                    self.current_word_index = (self.current_word_index - 1) % len(WORD_LIST)
                 self.show_meaning = False
             
             # 返回主界面
@@ -1237,7 +1239,7 @@ class DictionarySystem:
         self.screen.blit(next_surf, next_text_rect)
         
         # 进度
-        progress = (self.current_word_index + 1) / len(WORD_LIST)
+        progress = (self.current_word_index + 1) / max(len(WORD_LIST), 1)
         progress_width = screen_width - 200
         progress_rect = pygame.Rect(100, 480, progress_width, 10)
         pygame.draw.rect(self.screen, COLORS["border"], progress_rect, border_radius=5)

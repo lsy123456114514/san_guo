@@ -9,6 +9,21 @@ from ASSET.weather_system import WeatherSystem
 from ASSET.event_system import EventSystem
 from ASSET import safe_exit
 
+# 字体缓存（避免每帧创建 Font 对象）
+_font_cache = {}
+def _get_cached_font(size):
+    """获取缓存的字体对象"""
+    if size not in _font_cache:
+        try:
+            fn = get_system_font_name()
+            if fn:
+                _font_cache[size] = pygame.font.Font(fn, size)
+            else:
+                _font_cache[size] = pygame.font.Font(None, size)
+        except Exception:
+            _font_cache[size] = pygame.font.Font(None, size)
+    return _font_cache[size]
+
 def update_battle_stats(win, player_heroes, enemy_heroes):
     """更新战斗统计数据到存档"""
     if "battle_stats" not in data:
@@ -76,7 +91,7 @@ class Particle:
         self.size = max(0.5, self.size - 0.03)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
         pygame.draw.circle(surface, self.color, (int(self.x), int(self.y)), int(self.size))
 
 class FloatingText:
@@ -100,7 +115,7 @@ class FloatingText:
             self.scale = max(1.0, self.scale - 0.02)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
         text_surf = self.font.render(self.text, True, self.color)
         scaled_size = (int(text_surf.get_width() * self.scale), int(text_surf.get_height() * self.scale))
         scaled_surf = pygame.transform.scale(text_surf, scaled_size)
@@ -197,7 +212,7 @@ def draw_gradient_background(surface, color1, color2):
 
 def draw_health_bar(surface, x, y, width, height, current, maximum, color):
     """绘制血条"""
-    ratio = max(0, current / maximum)
+    ratio = max(0, current / maximum) if maximum > 0 else 0
     
     # 背景
     pygame.draw.rect(surface, COLORS["hp_bg"], (x, y, width, height), border_radius=5)
@@ -216,7 +231,7 @@ def draw_health_bar(surface, x, y, width, height, current, maximum, color):
     pygame.draw.rect(surface, COLORS["text_white"], (x, y, width, height), 2, border_radius=5)
     
     # 数值
-    font = pygame.font.Font(None, 24)
+    font = _get_cached_font(24)
     text = font.render(f"{current}/{maximum}", True, COLORS["text_white"])
     text_rect = text.get_rect(center=(x + width // 2, y + height // 2))
     surface.blit(text, text_rect)
@@ -234,7 +249,7 @@ def draw_character_card(surface, x, y, is_player, hp, max_hp, level, font):
     
     # 角色图标
     icon = "🛡️" if is_player else "👹"
-    icon_font = pygame.font.Font(None, 80)
+    icon_font = _get_cached_font(80)
     icon_surf = icon_font.render(icon, True, COLORS["text_white"])
     icon_rect = icon_surf.get_rect(center=(x + card_width // 2, y + 70))
     surface.blit(icon_surf, icon_rect)
@@ -595,7 +610,7 @@ def draw_minion(surface, x, y, minion, is_player):
     
     # 小弟图标
     icon = "👾"
-    icon_font = pygame.font.Font(None, 24)
+    icon_font = _get_cached_font(24)
     icon_surf = icon_font.render(icon, True, COLORS["text_white"])
     
     # 小弟背景
@@ -641,7 +656,7 @@ def draw_hero_card(surface, x, y, hero, is_player, font_normal, font_small):
 
     # 武将图标
     icon = HERO_ICONS.get(hero.name, "👤")
-    icon_font = pygame.font.Font(None, 60)
+    icon_font = _get_cached_font(60)
     icon_surf = icon_font.render(icon, True, COLORS["text_white"])
     icon_rect = icon_surf.get_rect(center=(x + card_width // 2, y + 60))
     surface.blit(icon_surf, icon_rect)
@@ -690,7 +705,7 @@ def draw_hero_card(surface, x, y, hero, is_player, font_normal, font_small):
         surface.blit(minion_surf, minion_rect)
 
     # 血条
-    hp_ratio = hero.hp / hero.max_hp
+    hp_ratio = hero.hp / hero.max_hp if hero.max_hp > 0 else 0
     hp_width = card_width - 30
     hp_height = 15
     hp_x = x + 15
@@ -1407,7 +1422,7 @@ def main():
             # 绘制怒气条
             if player_heroes:
                 main_hero = player_heroes[0]
-                rage_ratio = main_hero.rage / main_hero.max_rage
+                rage_ratio = main_hero.rage / main_hero.max_rage if main_hero.max_rage > 0 else 0
                 rage_width = 200
                 rage_height = 20
                 rage_x = SCREEN_WIDTH // 2 - rage_width // 2

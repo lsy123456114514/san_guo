@@ -3,6 +3,7 @@ import math
 import random
 import json
 import os
+import sys
 import time
 from ASSET.game_data import data, save, get_system_font_name, load_sound
 from ASSET import safe_exit

@@ -331,7 +331,7 @@ class SecureNetwork:
             ip = s.getsockname()[0]
             s.close()
             return ip
-        except:
+        except Exception:
             return '127.0.0.1'
     
     def stop(self):
@@ -341,7 +341,7 @@ class SecureNetwork:
         if self.socket:
             try:
                 self.socket.close()
-            except:
+            except Exception:
                 pass
         print("🛑 安全网络模块已停止")
 

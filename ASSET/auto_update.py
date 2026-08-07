@@ -58,9 +58,11 @@ class AutoUpdater:
             self.clock = pygame.time.Clock()
         
         try:
-            self.font = pygame.font.SysFont("Microsoft YaHei", 24)
-            self.font_small = pygame.font.SysFont("Microsoft YaHei", 16)
-        except:
+            from ASSET.game_data import get_system_font_name
+            _fn = get_system_font_name()
+            self.font = pygame.font.Font(_fn, 24)
+            self.font_small = pygame.font.Font(_fn, 16)
+        except Exception:
             self.font = pygame.font.Font(None, 24)
             self.font_small = pygame.font.Font(None, 16)
     
@@ -155,7 +157,7 @@ class AutoUpdater:
                 try:
                     version = filename.replace('.exe', '').split('_v')[-1]
                     versions.append((version, filename))
-                except:
+                except Exception:
                     pass
             
             if not versions:
@@ -191,7 +193,7 @@ class AutoUpdater:
             # 获取文件大小
             try:
                 file_size = ftp.size(remote_path)
-            except:
+            except Exception:
                 file_size = 0
             
             # 下载文件

@@ -1,6 +1,7 @@
 import json
 import os
 import platform
+import sys
 import pygame
 
 def hide_file(filepath):
@@ -185,13 +186,41 @@ SETTINGS = {
 }
 
 def get_system_font_name():
-    """跨系统中文字体适配（含安卓）- 兜底方案"""
+    """跨系统中文字体适配（含安卓）— 优先使用打包的字体文件"""
+    # 打开日志文件
     try:
         log_file = open("debug.log", "a", encoding="utf-8")
         hide_file("debug.log")
     except Exception:
         log_file = None
-    
+
+    # 优先使用打包的字体文件（确保在其他设备上也能显示中文）
+    try:
+        if hasattr(sys, '_MEIPASS'):
+            base_path = sys._MEIPASS
+        else:
+            base_path = os.path.dirname(os.path.abspath(__file__))
+
+        font_dir = os.path.join(base_path, 'fonts')
+        if os.path.isdir(font_dir):
+            for f in os.listdir(font_dir):
+                if f.endswith('.ttf'):
+                    font_path = os.path.join(font_dir, f)
+                    if log_file:
+                        log_file.write(f"选择打包字体: {font_path}\n")
+                        log_file.close()
+                    return font_path
+    except Exception as e:
+        if log_file:
+            try:
+                log_file.write(f"打包字体加载失败: {e}\n")
+            except Exception:
+                pass
+            finally:
+                log_file.close()
+                log_file = None
+
+    # 回退到系统字体查找
     s = platform.system()
     if s == "Windows":
         font_list = [
@@ -205,15 +234,15 @@ def get_system_font_name():
         for font_name in font_list:
             try:
                 if font_name:
-                    font = pygame.font.SysFont(font_name, 12)
+                    font = pygame.font.Font(font_name, 12)
                 else:
                     font = pygame.font.Font(None, 12)
-                
+
                 test_text = "测试中文"
                 test_surface = font.render(test_text, True, (255, 255, 255))
                 if test_surface and test_surface.get_width() > 0:
                     if log_file:
-                        log_file.write(f"选择字体: {font_name if font_name else '默认字体'}\n")
+                        log_file.write(f"选择系统字体: {font_name if font_name else '默认字体'}\n")
                         log_file.close()
                     return font_name
             except Exception as e:
@@ -233,7 +262,7 @@ def get_system_font_name():
             log_file.write("选择字体: DroidSansFallback\n")
             log_file.close()
         return "DroidSansFallback"
-    
+
     if log_file:
         log_file.close()
     return None

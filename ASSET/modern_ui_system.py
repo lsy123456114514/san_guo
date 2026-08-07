@@ -52,11 +52,14 @@ class ModernUI:
     def _init_fonts(self):
         """初始化字体"""
         try:
-            self.font_large = pygame.font.SysFont("Microsoft YaHei", 24, bold=True)
-            self.font_medium = pygame.font.SysFont("Microsoft YaHei", 18)
-            self.font_small = pygame.font.SysFont("Microsoft YaHei", 14)
-            self.font_tiny = pygame.font.SysFont("Microsoft YaHei", 12)
-        except:
+            from ASSET.game_data import get_system_font_name
+            _fn = get_system_font_name()
+            self.font_large = pygame.font.Font(_fn, 24)
+            self.font_large.set_bold(True)
+            self.font_medium = pygame.font.Font(_fn, 18)
+            self.font_small = pygame.font.Font(_fn, 14)
+            self.font_tiny = pygame.font.Font(_fn, 12)
+        except Exception:
             self.font_large = pygame.font.Font(None, 36)
             self.font_medium = pygame.font.Font(None, 24)
             self.font_small = pygame.font.Font(None, 18)
@@ -337,10 +340,11 @@ class ModernUI:
         
         daily_reward = data.get("daily_reward", {})
         consecutive = daily_reward.get("consecutive_days", 0)
+        checked_in = daily_reward.get("last_checkin_date") == time.strftime("%Y-%m-%d")
         goals.append({
             "name": f"每日签到 ({consecutive}天)",
-            "completed": daily_reward.get("last_checkin_date") == time.strftime("%Y-%m-%d"),
-            "progress": 1 if goals[-1]["completed"] else 0,
+            "completed": checked_in,
+            "progress": 1 if checked_in else 0,
             "target": 1
         })
         
