@@ -14,6 +14,7 @@ import time
 import urllib.request
 import urllib.error
 import hashlib
+import pygame
 
 from ASSET.game_data import logger, draw_gradient_bg, cull_dead, get_font
 

@@ -1,3 +1,5 @@
+"""特效系统 - 战斗特效、粒子动画与屏幕震动"""
+
 import pygame
 import random
 import math
@@ -151,6 +153,7 @@ class Particle:
             logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class LightningEffect:
+    """闪电特效 - 多分叉闪电路径与脉冲闪烁"""
     def __init__(self, x, y, duration=1000, forks=3):
         self.x = x
         self.y = y
@@ -304,6 +307,7 @@ class SmokeEffect:
                 logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class IceEffect:
+    """冰霜特效 - 冰霜圆环扩散与冰晶旋转"""
     def __init__(self, x, y, duration=2000, radius=50):
         self.x = x
         self.y = y
@@ -368,6 +372,7 @@ class IceEffect:
                 logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class RainbowEffect:
+    """彩虹特效 - 七色弧形渐变与缩放动画"""
     def __init__(self, x, y, duration=3000, height=100):
         self.x = x
         self.y = y
@@ -421,6 +426,7 @@ class RainbowEffect:
                 pygame.draw.lines(surface, (*color[:3], alpha), False, points, width)
 
 class StarsEffect:
+    """星辰特效 - 星点辐射扩散与淡出"""
     def __init__(self, x, y, duration=2000, count=20):
         self.x = x
         self.y = y
@@ -472,6 +478,7 @@ class StarsEffect:
                 logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class ExplosionEffect:
+    """爆炸特效 - 全方向粒子迸射与衰减"""
     def __init__(self, x, y, duration=1500, power=1.0):
         self.x = x
         self.y = y
@@ -559,6 +566,7 @@ class HealEffect:
                 logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class PoisonEffect:
+    """中毒特效 - 毒气云扩散与气泡上升"""
     def __init__(self, x, y, duration=3000, radius=60):
         self.x = x
         self.y = y
@@ -672,11 +680,10 @@ class MeteorEffect:
                 'max_life': 50
             })
         
-        for particle in self.trail[:]:
+        for particle in self.trail:
             particle['life'] -= 1
             particle['size'] *= 0.95
-            if particle['life'] <= 0 or particle['size'] < 1:
-                self.trail.remove(particle)
+        self.trail[:] = [particle for particle in self.trail if particle['life'] > 0 and particle['size'] >= 1]
     
     def is_finished(self):
         return pygame.time.get_ticks() - self.start_time >= self.duration
@@ -704,6 +711,7 @@ class MeteorEffect:
                 logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class AuroraEffect:
+    """极光特效 - 多层正弦波动光带"""
     def __init__(self, x, y, duration=5000, width=300):
         self.x = x
         self.y = y

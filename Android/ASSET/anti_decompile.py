@@ -6,7 +6,7 @@ import hashlib
 import time
 import random
 import traceback
-from ASSET.game_data import draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import draw_gradient_bg, cull_dead, get_font, logger
 
 # 反反编译保护模块
 class AntiDecompile:
@@ -162,7 +162,6 @@ def protect_function(func):
             return result
         except Exception as e:
             # 捕获异常，防止调试器捕获，但显示详细错误
-            import traceback
             print(f"函数 {func.__name__} 执行异常: {str(e)}")
             print("详细错误信息:")
             traceback.print_exc()

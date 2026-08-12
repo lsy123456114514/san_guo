@@ -1,10 +1,12 @@
+"""3D 世界地图（MC 模式）- 方块放置、摄像机、热键栏"""
+
 import pygame
 import math
 import random
 import json
 import os
 import time
-from ASSET.game_data import data, save, get_system_font_name, load_sound
+from ASSET.game_data import data, save, get_system_font_name, load_sound, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 
 MC_WORLD_KEY = "mc_world"
@@ -24,7 +26,7 @@ try:
     from renderer_bindings import renderer, TreeData, LocationData, NPCData, EnemyData, GeneralData, PetData, PlayerData, FollowerData, ProjectileData, PickupData, TechBlockData, ParticleData
     cpp_renderer_available = renderer.is_available
 except Exception as e:
-    print(f"无法加载C++渲染器: {e}")
+    logger.info(f"无法加载C++渲染器: {e}")
     cpp_renderer_available = False
 
 # 颜色定义
@@ -69,13 +71,6 @@ class GameMap3D:
         self.message = None
         self.message_timer = 0
         
-        # NPC系统
-        self.npcs = []
-        self.show_npc_dialog = False
-        self.current_npc = None
-        self.npc_dialog_text = ""
-        self.npc_dialog_options = []
-        
         # 物理参数
         self.velocity = [0, 0, 0]  # x, y, z 方向速度
         self.gravity = -0.2  # 重力加速度
@@ -106,16 +101,48 @@ class GameMap3D:
         self.inventory = [None] * self.inventory_slots
         self.max_stack_size = 64
         
-        # 物品类型定义
+        # 物品类型定义（MC 1.12.2风格）
         self.item_types = {
-            "方块类": ["泥土", "石头", "木头", "草地", "沙子", "水", "玻璃", "砖块"],
-            "资源类": ["水", "煤炭", "木头", "食物", "金元宝", "时间卡", "宠物食物"],
-            "武器类": ["手枪", "步枪", "狙击枪", "机枪", "弓", "弩"],
-            "弹药类": ["普通子弹", "高级子弹", "稀有子弹", "箭矢"],
-            "武将卡": ["刘备卡", "关羽卡", "张飞卡", "赵云卡", "诸葛亮卡", "曹操卡"],
-            "食物类": ["面包", "苹果", "烤肉", "药草", "零食"],
-            "工具类": ["镐子", "斧头", "铲子", "锄头", "钓鱼竿"],
-            "材料类": ["铁锭", "铜锭", "金锭", "皮革", "布料"]
+            "方块类": ["泥土", "石头", "圆石", "木头", "草地", "沙子", "砂砾", "水", "岩浆", 
+                      "玻璃", "砖块", "砖块方块", "木板", "橡木台阶", "石台阶", "砖台阶",
+                      "楼梯", "石楼梯", "砖楼梯", "栅栏", "栅栏门", "梯子", "门", "压力板",
+                      "石压力板", "按钮", "橡木按钮", "玻璃面板", "混凝土粉末", "陶瓦", "带釉陶瓦"],
+            "资源类": ["煤炭", "铁矿石", "金矿石", "钻石矿石", "红石矿石", "绿宝石矿石",
+                      "下界石英", "黑曜石", "末地石", "灵魂沙", "沙砾", "粘土", "甘蔗", 
+                      "小麦", "胡萝卜", "土豆", "甜菜根", "南瓜", "西瓜", "可可豆", "仙人掌",
+                      "羊毛", "线", "羽毛", "鸡蛋", "骨头", "皮革", "兔子皮", "粘液球",
+                      "烈焰棒", "烈焰粉", "末影珍珠", "恶魂之泪", "龙息", "下界之星", "青金石"],
+            "武器类": ["木剑", "石剑", "铁剑", "金剑", "钻石剑", "弓", "弩", "盾牌", "三叉戟"],
+            "工具类": ["木头镐子", "石头镐子", "铁镐", "金镐", "钻石镐",
+                      "木头斧头", "石头斧头", "铁斧", "金斧", "钻石斧",
+                      "木头铲子", "石头铲子", "铁铲", "金铲", "钻石铲",
+                      "木头锄", "石头锄", "铁锄", "金锄", "钻石锄",
+                      "钓鱼竿", "剪刀", "打火石"],
+            "食物类": ["面包", "蛋糕", "曲奇", "南瓜派", "甜菜汤", "蘑菇煲", "炖兔肉",
+                      "胡萝卜蛋糕", "糖", "胡萝卜", "土豆", "烤土豆",
+                      "牛肉", "猪肉", "羊肉", "鸡肉", "兔肉",
+                      "熟牛肉", "熟猪肉", "熟羊肉", "熟鸡肉", "熟兔肉",
+                      "苹果", "西瓜", "金苹果", "附魔金苹果"],
+            "染料类": ["骨粉", "墨囊", "红色染料", "橙色染料", "黄色染料", "绿色染料",
+                      "青色染料", "蓝色染料", "紫色染料", "品红色染料", "粉色染料",
+                      "棕色染料", "灰色染料", "淡灰色染料", "黄绿色染料", "淡蓝色染料"],
+            "羊毛类": ["白色羊毛", "橙色羊毛", "品红色羊毛", "淡蓝色羊毛", "黄色羊毛",
+                      "黄绿色羊毛", "粉色羊毛", "灰色羊毛", "淡灰色羊毛", "青色羊毛",
+                      "紫色羊毛", "蓝色羊毛", "棕色羊毛", "绿色羊毛", "红色羊毛", "黑色羊毛"],
+            "机械类": ["活塞", "粘性活塞", "红石中继器", "红石比较器", "红石火把", "红石灯",
+                      "发射器", "投掷器", "漏斗", "箱子", "陷阱箱", "木桶", "酿造台",
+                      "炼药锅", "铁砧", "砂轮", "织布机", "制图台", "烟熏炉", "高炉",
+                      "营火", "灵魂营火", "矿车", "储物矿车", "漏斗矿车", "动力矿车",
+                      "船", "深色橡木船", "云杉船", "白桦船", "丛林木船", "金合欢船"],
+            "装饰类": ["画", "物品展示框", "旗帜", "花盆", "末地烛", "灯笼", "灵魂灯笼",
+                      "钟", "测重压力板", "绊线钩"],
+            "特殊类": ["信标", "龙蛋", "结构方块", "命令方块", "调试棒", "知识之书",
+                      "附魔书", "书与笔", "经验瓶"],
+            "药水类": ["水瓶", "粗制药水", "治疗药水", "抗火药水", "迅捷药水", "力量药水",
+                      "再生药水", "隐身药水", "夜视药水", "水下呼吸药水"],
+            "武将卡": ["刘备卡", "关羽卡", "张飞卡", "赵云卡", "诸葛亮卡", "曹操卡",
+                      "马超卡", "黄忠卡", "魏延卡", "庞统卡", "孙权卡", "周瑜卡"],
+            "弹药类": ["普通子弹", "高级子弹", "稀有子弹", "箭矢"]
         }
         
         # 背包界面状态
@@ -124,48 +151,253 @@ class GameMap3D:
         self.drag_source = None
         self.inventory_category = "全部"
         
-        # 合成系统（完整MC风格配方）
+        # 合成系统（完整MC 1.12.2风格配方）
         self.crafting_recipes = {
             # 工具
             "木头镐子": {"木头": 3, "木棍": 2},
             "石头镐子": {"圆石": 3, "木棍": 2},
             "铁镐": {"铁锭": 3, "木棍": 2},
+            "金镐": {"金锭": 3, "木棍": 2},
+            "钻石镐": {"钻石": 3, "木棍": 2},
             "木头斧头": {"木头": 3, "木棍": 2},
             "石头斧头": {"圆石": 3, "木棍": 2},
             "铁斧": {"铁锭": 3, "木棍": 2},
+            "金斧": {"金锭": 3, "木棍": 2},
+            "钻石斧": {"钻石": 3, "木棍": 2},
             "木头铲子": {"木头": 1, "木棍": 2},
             "石头铲子": {"圆石": 1, "木棍": 2},
             "铁铲": {"铁锭": 1, "木棍": 2},
+            "金铲": {"金锭": 1, "木棍": 2},
+            "钻石铲": {"钻石": 1, "木棍": 2},
             "木头锄": {"木头": 2, "木棍": 2},
             "石头锄": {"圆石": 2, "木棍": 2},
             "铁锄": {"铁锭": 2, "木棍": 2},
+            "金锄": {"金锭": 2, "木棍": 2},
+            "钻石锄": {"钻石": 2, "木棍": 2},
             # 武器
             "木剑": {"木头": 2, "木棍": 1},
             "石剑": {"圆石": 2, "木棍": 1},
             "铁剑": {"铁锭": 2, "木棍": 1},
+            "金剑": {"金锭": 2, "木棍": 1},
+            "钻石剑": {"钻石": 2, "木棍": 1},
             "弓": {"线": 3, "木棍": 3},
+            "弩": {"铁锭": 2, "线": 3, "绊线钩": 1},
+            "盾牌": {"木板": 6, "铁锭": 1},
             # 建筑
             "木板": {"木头": 1},
             "木棍": {"木板": 2},
             "砖块": {"粘土": 4},
+            "砖块方块": {"砖块": 4},
             "玻璃": {"沙子": 1},
+            "玻璃面板": {"玻璃": 6},
             "梯子": {"木棍": 7},
             "门": {"木板": 6},
             "栅栏": {"木棍": 4},
+            "栅栏门": {"木棍": 4, "木板": 2},
+            "橡木台阶": {"木板": 6},
+            "石台阶": {"圆石": 6},
+            "砖台阶": {"砖块方块": 6},
+            "楼梯": {"木板": 5},
+            "石楼梯": {"圆石": 6},
+            "砖楼梯": {"砖块方块": 6},
+            "压力板": {"木板": 2},
+            "石压力板": {"石头": 2},
+            "按钮": {"石头": 1},
+            "橡木按钮": {"木板": 1},
+            "栅栏门": {"木棍": 4, "木板": 2},
+            # 1.12.2新增建筑方块
+            "混凝土粉末": {"沙子": 4, "砂砾": 4, "染料": 1},
+            "陶瓦": {"粘土": 1},
+            "带釉陶瓦": {"陶瓦": 1},
+            # 羊毛染色
+            "白色羊毛": {"羊毛": 1},
+            "橙色羊毛": {"白色羊毛": 1, "橙色染料": 1},
+            "品红色羊毛": {"白色羊毛": 1, "品红色染料": 1},
+            "淡蓝色羊毛": {"白色羊毛": 1, "淡蓝色染料": 1},
+            "黄色羊毛": {"白色羊毛": 1, "黄色染料": 1},
+            "黄绿色羊毛": {"白色羊毛": 1, "黄绿色染料": 1},
+            "粉色羊毛": {"白色羊毛": 1, "粉色染料": 1},
+            "灰色羊毛": {"白色羊毛": 1, "灰色染料": 1},
+            "淡灰色羊毛": {"白色羊毛": 1, "淡灰色染料": 1},
+            "青色羊毛": {"白色羊毛": 1, "青色染料": 1},
+            "紫色羊毛": {"白色羊毛": 1, "紫色染料": 1},
+            "蓝色羊毛": {"白色羊毛": 1, "蓝色染料": 1},
+            "棕色羊毛": {"白色羊毛": 1, "棕色染料": 1},
+            "绿色羊毛": {"白色羊毛": 1, "绿色染料": 1},
+            "红色羊毛": {"白色羊毛": 1, "红色染料": 1},
+            "黑色羊毛": {"白色羊毛": 1, "黑色染料": 1},
+            # 染料
+            "骨粉": {"骨头": 1},
+            "墨囊": {"鱿鱼": 1},
+            "红色染料": {"虞美人": 1},
+            "橙色染料": {"橙色郁金香": 1},
+            "黄色染料": {"向日葵": 1},
+            "绿色染料": {"仙人掌绿": 1},
+            "青色染料": {"绿色染料": 1, "淡蓝色染料": 1},
+            "蓝色染料": {"矢车菊": 1},
+            "紫色染料": {"蓝色染料": 1, "红色染料": 1},
+            "品红色染料": {"紫色染料": 1, "粉色染料": 1},
+            "粉色染料": {"粉红色郁金香": 1},
+            "棕色染料": {"可可豆": 1},
+            "灰色染料": {"墨囊": 1, "骨粉": 2},
+            "淡灰色染料": {"骨粉": 1, "灰色染料": 1},
+            "黄绿色染料": {"仙人掌绿": 2},
+            "淡蓝色染料": {"蓝花楹": 1},
             # 食物
             "面包": {"小麦": 3},
             "蛋糕": {"小麦": 3, "鸡蛋": 2, "牛奶": 1, "糖": 1},
+            "曲奇": {"小麦": 2, "可可豆": 1},
+            "西瓜": {"西瓜种子": 1},
+            "南瓜派": {"南瓜": 1, "鸡蛋": 1, "糖": 1},
+            "甜菜汤": {"甜菜根": 3, "碗": 1},
+            "蘑菇煲": {"棕色蘑菇": 1, "红色蘑菇": 1, "碗": 1},
+            "炖兔肉": {"兔子": 1, "胡萝卜": 1, "烤土豆": 1, "碗": 1},
+            "糖": {"甘蔗": 1},
+            "胡萝卜": {"胡萝卜": 1},
+            "土豆": {"土豆": 1},
+            "烤土豆": {"土豆": 1},
+            "胡萝卜蛋糕": {"胡萝卜": 2, "糖": 3, "鸡蛋": 1, "小麦": 3},
             # 材料
             "铁锭": {"铁矿石": 1, "煤炭": 1},
             "金锭": {"金矿石": 1, "煤炭": 1},
+            "钻石": {"钻石矿石": 1},
             "线": {"羊毛": 1},
             "纸": {"甘蔗": 3},
             "书": {"纸": 3, "皮革": 1},
+            "书与笔": {"书": 1, "羽毛": 1, "墨囊": 1},
+            "附魔书": {"书": 1, "青金石": 3, "经验瓶": 1},
+            "皮革": {"兔子皮": 4},
+            "兔子皮": {"兔子": 1},
+            "粘液球": {"史莱姆": 1},
+            "烈焰棒": {"烈焰人": 1},
+            "烈焰粉": {"烈焰棒": 1},
+            "末影珍珠": {"末影人": 1},
+            "恶魂之泪": {"恶魂": 1},
+            "龙息": {"末影龙": 1},
+            "下界之星": {"凋灵": 1},
+            "骨粉": {"骨头": 1},
+            "骨头": {"骷髅": 1},
+            "羽毛": {"鸡": 1},
+            "鸡蛋": {"鸡": 1},
+            "皮革": {"牛": 1},
+            "牛肉": {"牛": 1},
+            "猪肉": {"猪": 1},
+            "羊肉": {"羊": 1},
+            "鸡肉": {"鸡": 1},
+            "兔肉": {"兔子": 1},
+            "熟牛肉": {"牛肉": 1, "煤炭": 1},
+            "熟猪肉": {"猪肉": 1, "煤炭": 1},
+            "熟羊肉": {"羊肉": 1, "煤炭": 1},
+            "熟鸡肉": {"鸡肉": 1, "煤炭": 1},
+            "熟兔肉": {"兔肉": 1, "煤炭": 1},
+            # 机械/红石
+            "活塞": {"木板": 3, "圆石": 4, "铁锭": 1, "红石": 1},
+            "粘性活塞": {"活塞": 1, "粘液球": 1},
+            "红石中继器": {"红石火把": 2, "圆石": 3, "红石": 1},
+            "红石比较器": {"红石火把": 3, "石英": 1, "下界石英": 1},
+            "红石火把": {"红石": 1, "木棍": 1},
+            "红石灯": {"红石": 4, "玻璃": 1},
+            "发射器": {"圆石": 7, "弓": 1, "红石": 1},
+            "投掷器": {"圆石": 7, "红石": 1},
+            "漏斗": {"铁锭": 5, "箱子": 1},
+            "箱子": {"木板": 8},
+            "陷阱箱": {"箱子": 1, "绊线钩": 1},
+            "木桶": {"木板": 8},
+            "酿造台": {"烈焰棒": 1, "圆石": 3},
+            "炼药锅": {"铁锭": 7},
+            "铁砧": {"铁块": 3, "铁锭": 4},
+            "砂轮": {"石头": 2, "木板": 1},
+            "织布机": {"木板": 3, "线": 2},
+            "制图台": {"木板": 4, "纸": 2},
+            "烟熏炉": {"圆石": 8, "熔炉": 1},
+            "高炉": {"圆石": 8, "熔炉": 1},
+            "营火": {"原木": 3, "木棍": 1, "煤炭": 1},
+            "灵魂营火": {"灵魂沙": 3, "木棍": 1, "煤炭": 1},
+            # 运输
+            "矿车": {"铁锭": 5},
+            "储物矿车": {"矿车": 1, "箱子": 1},
+            "漏斗矿车": {"矿车": 1, "漏斗": 1},
+            "动力矿车": {"矿车": 1, "熔炉": 1},
+            "船": {"木板": 5},
+            "深色橡木船": {"深色橡木木板": 5},
+            "云杉船": {"云杉木板": 5},
+            "白桦船": {"白桦木板": 5},
+            "丛林木船": {"丛林木木板": 5},
+            "金合欢船": {"金合欢木板": 5},
+            # 装饰
+            "画": {"木棍": 8, "羊毛": 1},
+            "物品展示框": {"木棍": 8, "皮革": 1},
+            "旗帜": {"羊毛": 6, "木棍": 1},
+            "花盆": {"红砖": 3},
+            "末地烛": {"末地石砖": 1, "烈焰棒": 1},
+            "灯笼": {"铁锭": 8, "火把": 1},
+            "灵魂灯笼": {"铁锭": 8, "灵魂火把": 1},
+            "钟": {"铜锭": 4},
+            "测重压力板": {"铁锭": 2},
+            "绊线钩": {"铁锭": 1, "线": 1},
+            # 1.12.2特色物品
+            "信标": {"下界之星": 1, "玻璃": 5, "黑曜石": 3},
+            "龙蛋": {"末影龙": 1},
+            "结构方块": {"结构空位": 1},
+            "命令方块": {"命令方块": 1},
+            "调试棒": {"调试棒": 1},
+            "知识之书": {"知识之书": 1},
             # 三国特色
             "武将召唤台": {"金锭": 4, "木头": 4, "武将卡": 1},
             "武器架": {"木头": 6},
             "弹药箱": {"木头": 8, "铁锭": 2}
         }
+        
+        # 🧪 附魔系统（MC 1.12.2风格）
+        self.enchantments = {
+            # 武器附魔
+            "锋利": {"max_level": 5, "description": "增加近战伤害", "type": "weapon"},
+            "亡灵杀手": {"max_level": 5, "description": "对亡灵生物造成额外伤害", "type": "weapon"},
+            "节肢杀手": {"max_level": 5, "description": "对节肢生物造成额外伤害", "type": "weapon"},
+            "击退": {"max_level": 2, "description": "击退敌人", "type": "weapon"},
+            "火焰附加": {"max_level": 2, "description": "点燃敌人", "type": "weapon"},
+            "抢夺": {"max_level": 3, "description": "增加掉落物", "type": "weapon"},
+            # 工具附魔
+            "效率": {"max_level": 5, "description": "加快挖掘速度", "type": "tool"},
+            "精准采集": {"max_level": 1, "description": "获取方块本身", "type": "tool"},
+            "耐久": {"max_level": 3, "description": "减少工具损耗", "type": "tool"},
+            "时运": {"max_level": 3, "description": "增加稀有掉落", "type": "tool"},
+            " silk_touch": {"max_level": 1, "description": "精准采集", "type": "tool"},
+            # 弓箭附魔
+            "力量": {"max_level": 5, "description": "增加弓箭伤害", "type": "bow"},
+            "冲击": {"max_level": 2, "description": "击退箭矢目标", "type": "bow"},
+            "火矢": {"max_level": 1, "description": "箭矢点燃目标", "type": "bow"},
+            "无限": {"max_level": 1, "description": "无限箭矢", "type": "bow"},
+            "穿刺": {"max_level": 4, "description": "对水生生物伤害", "type": "bow"},
+            # 护甲附魔
+            "保护": {"max_level": 4, "description": "减少所有伤害", "type": "armor"},
+            "火焰保护": {"max_level": 4, "description": "减少火焰伤害", "type": "armor"},
+            "爆炸保护": {"max_level": 4, "description": "减少爆炸伤害", "type": "armor"},
+            "弹射物保护": {"max_level": 4, "description": "减少远程伤害", "type": "armor"},
+            "摔落保护": {"max_level": 4, "description": "减少摔落伤害", "type": "armor"},
+            "深海探索者": {"max_level": 3, "description": "水下移动更快", "type": "armor"},
+            "冰霜行者": {"max_level": 2, "description": "在水上行走", "type": "armor"},
+            "荆棘": {"max_level": 3, "description": "反弹伤害", "type": "armor"},
+            # 其他附魔
+            "经验修补": {"max_level": 1, "description": "用经验修复物品", "type": "all"},
+            "绑定诅咒": {"max_level": 1, "description": "无法移除物品", "type": "curse"},
+            "消失诅咒": {"max_level": 1, "description": "死亡时消失", "type": "curse"}
+        }
+        
+        # ⚡ 信标效果（MC 1.12.2风格）
+        self.beacon_effects = {
+            "速度": {"level": 2, "range": 50, "description": "增加移动速度"},
+            "跳跃提升": {"level": 2, "range": 50, "description": "增加跳跃高度"},
+            "力量": {"level": 2, "range": 50, "description": "增加近战伤害"},
+            "抗性提升": {"level": 2, "range": 50, "description": "减少伤害"},
+            "生命恢复": {"level": 2, "range": 50, "description": "缓慢恢复生命"},
+            "急迫": {"level": 1, "range": 50, "description": "加快挖掘速度"},
+            "幸运": {"level": 1, "range": 50, "description": "增加掉落率"}
+        }
+        
+        # 当前激活的信标效果
+        self.active_beacon_effect = None
+        self.beacon_range = 0
         
         # 合成网格（3x3）
         self.crafting_grid = [[None for _ in range(3)] for _ in range(3)]
@@ -238,12 +470,104 @@ class GameMap3D:
         self.flying = False
         self.fly_speed = 0.1
         
+        # 🐾 MC 1.12.2生物类型系统
+        self.mob_types = {
+            # 被动生物
+            "passive": [
+                {"name": "鸡", "health": 4, "drop": ["鸡肉", "羽毛", "鸡蛋"], "spawn_biome": "所有"},
+                {"name": "牛", "health": 10, "drop": ["牛肉", "皮革"], "spawn_biome": "平原、森林"},
+                {"name": "猪", "health": 10, "drop": ["猪肉"], "spawn_biome": "平原、森林"},
+                {"name": "羊", "health": 8, "drop": ["羊肉", "羊毛"], "spawn_biome": "平原、草原"},
+                {"name": "兔子", "health": 3, "drop": ["兔肉", "兔子皮"], "spawn_biome": "森林、平原"},
+                {"name": "马", "health": 15-30, "drop": ["皮革"], "spawn_biome": "平原、草原"},
+                {"name": "驴", "health": 15, "drop": ["皮革"], "spawn_biome": "平原"},
+                {"name": "骡", "health": 15, "drop": ["皮革"], "spawn_biome": "平原"},
+                {"name": "羊驼", "health": 15, "drop": ["皮革"], "spawn_biome": "沙漠、热带草原"},
+                {"name": "狼", "health": 8, "drop": ["骨头"], "spawn_biome": "森林、针叶林"},
+                {"name": "猫", "health": 10, "drop": [], "spawn_biome": "村庄"},
+                {"name": "鹦鹉", "health": 6, "drop": ["羽毛"], "spawn_biome": "丛林"},
+                {"name": "蝙蝠", "health": 6, "drop": [], "spawn_biome": "洞穴"},
+                {"name": "鱿鱼", "health": 10, "drop": ["墨囊"], "spawn_biome": "海洋"},
+                {"name": "海龟", "health": 30, "drop": ["海龟壳"], "spawn_biome": "沙滩"},
+                {"name": "熊猫", "health": 20, "drop": ["竹子"], "spawn_biome": "竹林"},
+                {"name": "狐狸", "health": 10, "drop": ["兔子皮"], "spawn_biome": "针叶林、积雪针叶林"},
+                {"name": "蜜蜂", "health": 10, "drop": ["蜂蜜瓶"], "spawn_biome": "森林、花林"},
+                {"name": "海豚", "health": 10, "drop": ["生鱼"], "spawn_biome": "海洋"},
+                {"name": "河豚", "health": 1, "drop": ["河豚"], "spawn_biome": "温暖海洋"},
+                {"name": "热带鱼", "health": 1, "drop": ["热带鱼"], "spawn_biome": "温暖海洋"},
+                {"name": "鳕鱼", "health": 3, "drop": ["鳕鱼"], "spawn_biome": "海洋"},
+                {"name": "三文鱼", "health": 3, "drop": ["三文鱼"], "spawn_biome": "冷水海洋、河流"},
+                {"name": "鲑鱼", "health": 3, "drop": ["鲑鱼"], "spawn_biome": "冷水海洋"},
+                {"name": "美西螈", "health": 14, "drop": ["美西螈"], "spawn_biome": "繁茂洞穴"},
+                {"name": "发光鱿鱼", "health": 10, "drop": ["荧光墨囊"], "spawn_biome": "地下洞穴"},
+                {"name": "骆驼", "health": 30, "drop": ["皮革"], "spawn_biome": "沙漠"},
+                {"name": "嗅探兽", "health": 30, "drop": ["远古种子"], "spawn_biome": "远古城市"}
+            ],
+            # 中立生物
+            "neutral": [
+                {"name": "末影人", "health": 40, "drop": ["末影珍珠"], "spawn_biome": "末地、地下"},
+                {"name": "蜘蛛", "health": 16, "drop": ["线", "蜘蛛眼"], "spawn_biome": "地下、夜晚"},
+                {"name": "洞穴蜘蛛", "health": 12, "drop": ["线", "蜘蛛眼"], "spawn_biome": "废弃矿井"},
+                {"name": "僵尸猪人", "health": 20, "drop": ["金锭", "腐肉"], "spawn_biome": "下界"},
+                {"name": "猪灵", "health": 20, "drop": ["金锭"], "spawn_biome": "下界"},
+                {"name": "猪灵蛮兵", "health": 50, "drop": ["下界合金锭"], "spawn_biome": "下界堡垒"},
+                {"name": "北极熊", "health": 30, "drop": ["生羊肉"], "spawn_biome": "雪原"},
+                {"name": "狼", "health": 8, "drop": ["骨头"], "spawn_biome": "森林"},
+                {"name": "铁傀儡", "health": 100, "drop": ["铁锭"], "spawn_biome": "村庄"},
+                {"name": "雪傀儡", "health": 4, "drop": ["雪球"], "spawn_biome": "雪地"}
+            ],
+            # 敌对生物
+            "hostile": [
+                {"name": "僵尸", "health": 20, "drop": ["腐肉", "铁锭"], "spawn_biome": "夜晚、地下"},
+                {"name": "骷髅", "health": 20, "drop": ["骨头", "箭矢"], "spawn_biome": "夜晚、地下"},
+                {"name": "苦力怕", "health": 20, "drop": ["火药"], "spawn_biome": "夜晚、地下"},
+                {"name": "史莱姆", "health": 4-16, "drop": ["粘液球"], "spawn_biome": "沼泽、地下"},
+                {"name": "恶魂", "health": 10, "drop": ["恶魂之泪", "火药"], "spawn_biome": "下界"},
+                {"name": "烈焰人", "health": 20, "drop": ["烈焰棒"], "spawn_biome": "下界堡垒"},
+                {"name": "岩浆怪", "health": 4-16, "drop": ["岩浆膏"], "spawn_biome": "下界"},
+                {"name": "女巫", "health": 26, "drop": ["药水", "红石"], "spawn_biome": "沼泽小屋"},
+                {"name": "守卫者", "health": 30, "drop": ["海晶碎片"], "spawn_biome": "海底遗迹"},
+                {"name": "远古守卫者", "health": 80, "drop": ["海晶碎片", "海绵"], "spawn_biome": "海底遗迹"},
+                {"name": "凋灵骷髅", "health": 20, "drop": ["凋灵骷髅头", "石剑"], "spawn_biome": "下界堡垒"},
+                {"name": "流浪者", "health": 20, "drop": ["骨头", "箭矢"], "spawn_biome": "雪原"},
+                {"name": "尸壳", "health": 20, "drop": ["腐肉", "金锭"], "spawn_biome": "沙漠"},
+                {"name": "幻翼", "health": 20, "drop": ["幻翼膜"], "spawn_biome": "高空（长时间不睡觉）"},
+                {"name": "掠夺者", "health": 24, "drop": ["弩", "箭矢"], "spawn_biome": "掠夺者前哨站"},
+                {"name": "卫道士", "health": 24, "drop": ["铁斧"], "spawn_biome": "林地府邸"},
+                {"name": "唤魔者", "health": 24, "drop": ["不死图腾"], "spawn_biome": "林地府邸"},
+                {"name": "潜影贝", "health": 30, "drop": ["潜影壳"], "spawn_biome": "末地城"},
+                {"name": "劫掠兽", "health": 100, "drop": ["皮革", "铁锭"], "spawn_biome": "袭击事件"},
+                {"name": "监守者", "health": 500, "drop": ["回响碎片"], "spawn_biome": "深暗之域"},
+                {"name": "末影龙", "health": 200, "drop": ["经验", "龙蛋"], "spawn_biome": "末地"},
+                {"name": "凋灵", "health": 300, "drop": ["下界之星"], "spawn_biome": "下界"}
+            ],
+            # 1.12.2新增生物
+            "special_1_12": [
+                {"name": "鹦鹉", "health": 6, "drop": ["羽毛"], "spawn_biome": "丛林"},
+                {"name": "北极熊", "health": 30, "drop": ["生羊肉"], "spawn_biome": "雪原"},
+                {"name": "狐狸", "health": 10, "drop": ["兔子皮"], "spawn_biome": "针叶林"},
+                {"name": "幻翼", "health": 20, "drop": ["幻翼膜"], "spawn_biome": "高空"},
+                {"name": "掠夺者", "health": 24, "drop": ["弩"], "spawn_biome": "前哨站"},
+                {"name": "卫道士", "health": 24, "drop": ["铁斧"], "spawn_biome": "林地府邸"},
+                {"name": "唤魔者", "health": 24, "drop": ["不死图腾"], "spawn_biome": "林地府邸"},
+                {"name": "劫掠兽", "health": 100, "drop": ["皮革"], "spawn_biome": "袭击"}
+            ]
+        }
+        
+        # 当前生物列表
+        self.active_mobs = []
+        
         # MC风格命令系统
         self.command_input = ""
         self.show_command = False
         self.command_history = []
         
-        # 彩蛋系统（100个彩蛋！）
+        # 自动存档系统
+        self.auto_save_interval = 300  # 每5分钟自动存档（300秒）
+        self.auto_save_timer = 0
+        self.last_auto_save_time = time.time()
+        
+        # 彩蛋系统（150个彩蛋！）
         self.eggs = {
             "notch": {"found": False, "hint": "找到Notch的头像"},
             "herobrine": {"found": False, "hint": "在夜晚遇到Herobrine"},
@@ -359,21 +683,412 @@ class GameMap3D:
             "easter_egg": {"found": False, "hint": "找到复活节彩蛋"},
             "birthday": {"found": False, "hint": "庆祝生日"},
             "anniversary": {"found": False, "hint": "庆祝一周年"},
-            "secret_command": {"found": False, "hint": "发现隐藏命令"}
+            "secret_command": {"found": False, "hint": "发现隐藏命令"},
+            "secret_room": {"found": False, "hint": "找到一个秘密房间"},
+            "hidden_treasure": {"found": False, "hint": "找到隐藏的宝藏"},
+            "mysterious_cave": {"found": False, "hint": "发现一个神秘洞穴"},
+            "ancient_ruins": {"found": False, "hint": "探索古代遗迹"},
+            "floating_island": {"found": False, "hint": "找到一个浮空岛"},
+            "underwater_base": {"found": False, "hint": "建造一个水下基地"},
+            "sky_base": {"found": False, "hint": "建造一个天空基地"},
+            "underground_bunker": {"found": False, "hint": "建造一个地下 bunker"},
+            "tree_house": {"found": False, "hint": "建造一个树屋"},
+            "desert_base": {"found": False, "hint": "在沙漠建造基地"},
+            "ice_base": {"found": False, "hint": "在冰原建造基地"},
+            "jungle_base": {"found": False, "hint": "在丛林建造基地"},
+            "mountain_base": {"found": False, "hint": "在山脉建造基地"},
+            "volcano_base": {"found": False, "hint": "在火山建造基地"},
+            "portal_base": {"found": False, "hint": "建造传送门基地"},
+            "nether_fortress": {"found": False, "hint": "找到地狱堡垒"},
+            "bastion_remnant": {"found": False, "hint": "找到荒漠前哨"},
+            "end_city": {"found": False, "hint": "找到末地城"},
+            "deep_dark": {"found": False, "hint": "探索深暗之域"},
+            "mangrove_swamp": {"found": False, "hint": "探索红树林沼泽"},
+            "cherry_grove": {"found": False, "hint": "找到樱花林"},
+            "suspicious_sand": {"found": False, "hint": "挖掘可疑沙子"},
+            " Suspicious_gravel": {"found": False, "hint": "挖掘可疑砂砾"},
+            "ancient_city": {"found": False, "hint": "进入远古城市"},
+            "warden": {"found": False, "hint": "遭遇监守者"},
+            "allay": {"found": False, "hint": "找到一只同伴"},
+            "axolotl": {"found": False, "hint": "找到一只美西螈"},
+            "glow_squid": {"found": False, "hint": "找到一只发光鱿鱼"},
+            "goat": {"found": False, "hint": "找到一只山羊"},
+            "frog": {"found": False, "hint": "找到一只青蛙"},
+            "tadpole": {"found": False, "hint": "找到一只蝌蚪"},
+            "sniffer": {"found": False, "hint": "找到一只嗅探兽"},
+            "camel": {"found": False, "hint": "找到一只骆驼"},
+            "horse_armor": {"found": False, "hint": "制作马铠"},
+            "horse_bridge": {"found": False, "hint": "骑马跑1000格"},
+            "boat_base": {"found": False, "hint": "建造船坞"},
+            "minecart_base": {"found": False, "hint": "建造矿车轨道"},
+            "railway": {"found": False, "hint": "建造铁路"},
+            "hopper_minecart": {"found": False, "hint": "制作漏斗矿车"},
+            "command_block": {"found": False, "hint": "获得命令方块"},
+            "structure_block": {"found": False, "hint": "获得结构方块"},
+            "debug_stick": {"found": False, "hint": "获得调试棒"},
+            "knowledge_book": {"found": False, "hint": "获得知识之书"},
+            "spawner": {"found": False, "hint": "找到刷怪笼"},
+            "dragon_egg": {"found": False, "hint": "获得龙蛋"},
+            "nether_star": {"found": False, "hint": "获得下界之星"},
+            "elytra": {"found": False, "hint": "获得鞘翅"},
+            "shulker_box": {"found": False, "hint": "获得潜影盒"},
+            "totem_undying": {"found": False, "hint": "获得不死图腾"},
+            "heart_of_the_sea": {"found": False, "hint": "获得海洋之心"},
+            "trident": {"found": False, "hint": "获得三叉戟"},
+            "crossbow": {"found": False, "hint": "制作弩"},
+            "shield": {"found": False, "hint": "制作盾牌"},
+            "turtle_helmet": {"found": False, "hint": "制作海龟壳"},
+            "棱彩染料": {"found": False, "hint": "收集所有棱彩染料"},
+            "马匹速度": {"found": False, "hint": "驯服最快的马"},
+            "马匹跳跃": {"found": False, "hint": "驯服跳得最高的马"},
+            "骆驼冲刺": {"found": False, "hint": "骑骆驼冲刺"},
+            "蜜蜂授粉": {"found": False, "hint": "给花朵授粉"},
+            "蜜蜂蜂蜜": {"found": False, "hint": "收集蜂蜜"},
+            "村民职业": {"found": False, "hint": "让村民获得所有职业"},
+            "僵尸围城": {"found": False, "hint": "在僵尸围城中幸存"},
+            "凋灵围城": {"found": False, "hint": "在凋灵围城中幸存"},
+            "激流三叉戟": {"found": False, "hint": "用三叉戟激活激流"},
+            "闪电苦力怕": {"found": False, "hint": "让苦力怕被闪电击中"},
+            "高压爬行者": {"found": False, "hint": "击杀高压爬行者"},
+            "闪电指令": {"found": False, "hint": "使用闪电指令"},
+            "猪灵交易": {"found": False, "hint": "与猪灵交易"},
+            "猪灵布林": {"found": False, "hint": "给猪灵金锭让它变敌意"},
+            "下界要塞": {"found": False, "hint": "找到下界要塞"},
+            "灵魂沙峡谷": {"found": False, "hint": "探索灵魂沙峡谷"},
+            "玄武岩三角洲": {"found": False, "hint": "探索玄武岩三角洲"},
+            "诡异森林": {"found": False, "hint": "探索诡异森林"},
+            "绯红森林": {"found": False, "hint": "探索绯红森林"}
         }
         self.herobrine_active = False
         self.herobrine_pos = None
         self.herobrine_timer = 0
+        
+        # 🎮 作弊码系统（经典按键序列）
+        self.cheat_code_buffer = []  # 按键序列缓冲区
+        self.cheat_code_max_length = 20  # 最大缓冲长度
+        self.cheat_code_input_timer = 0  # 输入计时器
+        self.cheat_code_input_timeout = 2.0  # 输入超时时间（秒）
+        self.last_cheat_key_time = time.time()
+        
+        # 🎯 作弊码定义（经典+创意）
+        self.cheat_codes = {
+            # 经典Konami代码风格
+            "konami": {
+                "sequence": ["up", "up", "down", "down", "left", "right", "left", "right", "b", "a"],
+                "name": "Konami大师",
+                "effect": "full_power",
+                "message": "🎉 Konami代码激活！你获得了无限力量！",
+                "reward": {"health": 999, "hunger": 999, "experience": 9999, "level": 100}
+            },
+            # 简化版Konami
+            "konami_simple": {
+                "sequence": ["up", "up", "down", "down", "left", "right"],
+                "name": "半Konami",
+                "effect": "half_power",
+                "message": "✨ 半Konami代码！获得中等加成！",
+                "reward": {"health": 50, "hunger": 50, "experience": 500}
+            },
+            # 三国主题
+            "three_kingdoms": {
+                "sequence": ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
+                "name": "三国九鼎",
+                "effect": "summon_generals",
+                "message": "⚔️ 九鼎归一！召唤三国武将！",
+                "reward": {"generals": ["刘备", "关羽", "张飞", "赵云", "诸葛亮"]}
+            },
+            # 神秘数字
+            "mystery_number": {
+                "sequence": ["7", "8", "9", "1", "1", "4", "5", "1", "4"],
+                "name": "神秘数字",
+                "effect": "mystery",
+                "message": "🔮 神秘数字序列！解锁隐藏彩蛋！",
+                "reward": {"eggs_unlocked": 10, "secret_items": ["神秘宝石", "远古遗物"]}
+            },
+            # 42宇宙答案
+            "universe_answer": {
+                "sequence": ["4", "2"],
+                "name": "宇宙答案",
+                "effect": "developer_mode",
+                "message": "🌌 42是宇宙的终极答案！开发者模式已激活！",
+                "reward": {"developer_mode": True, "secret_commands": True}
+            },
+            # MC风格
+            "minecraft_classic": {
+                "sequence": ["m", "c", "1", "2"],
+                "name": "MC经典",
+                "effect": "mc_mode",
+                "message": "⛏️ Minecraft经典模式激活！",
+                "reward": {"creative_mode": True, "all_blocks": True}
+            },
+            # 无敌模式
+            "god_mode": {
+                "sequence": ["g", "o", "d"],
+                "name": "上帝模式",
+                "effect": "invincible",
+                "message": "👑 上帝模式！你已无敌！",
+                "reward": {"invincible": True, "health": 9999}
+            },
+            # 超级速度
+            "speed_hack": {
+                "sequence": ["s", "p", "e", "e", "d"],
+                "name": "超级速度",
+                "effect": "super_speed",
+                "message": "⚡ 超级速度！你跑得比闪电还快！",
+                "reward": {"speed": 10.0, "fly_speed": 5.0}
+            },
+            # 彩蛋猎人
+            "egg_hunter": {
+                "sequence": ["e", "g", "g"],
+                "name": "彩蛋猎人",
+                "effect": "reveal_eggs",
+                "message": "🥚 彩蛋猎人模式！所有彩蛋位置已显示！",
+                "reward": {"egg_hints": True, "egg_count": 150}
+            },
+            # 隐藏彩蛋
+            "secret_egg": {
+                "sequence": ["s", "e", "c", "r", "e", "t"],
+                "name": "秘密彩蛋",
+                "effect": "unlock_secret",
+                "message": "🔐 你发现了隐藏的秘密彩蛋！",
+                "reward": {"secret_egg": True, "hidden_items": ["秘密钥匙", "神秘宝箱"]}
+            },
+            # 随机惊喜
+            "random_surprise": {
+                "sequence": ["r", "a", "n", "d", "o", "m"],
+                "name": "随机惊喜",
+                "effect": "random_gift",
+                "message": "🎲 随机惊喜！你获得了神秘礼物！",
+                "reward": {"random": True}
+            },
+            # 满背包
+            "full_inventory": {
+                "sequence": ["f", "u", "l", "l"],
+                "name": "满背包",
+                "effect": "fill_inventory",
+                "message": "📦 背包已填满所有物品！",
+                "reward": {"full_inventory": True}
+            },
+            # 天气控制
+            "weather_master": {
+                "sequence": ["w", "e", "a", "t", "h", "e", "r"],
+                "name": "天气大师",
+                "effect": "weather_control",
+                "message": "🌤️ 天气大师！你可以自由控制天气！",
+                "reward": {"weather_control": True}
+            },
+            # 时间大师
+            "time_master": {
+                "sequence": ["t", "i", "m", "e"],
+                "name": "时间大师",
+                "effect": "time_control",
+                "message": "⏰ 时间大师！你可以自由控制时间！",
+                "reward": {"time_control": True}
+            },
+            # 超级跳跃
+            "super_jump": {
+                "sequence": ["j", "u", "m", "p"],
+                "name": "超级跳跃",
+                "effect": "high_jump",
+                "message": "🦘 超级跳跃！你可以跳到云端！",
+                "reward": {"jump_power": 5.0}
+            },
+            # 飞行模式
+            "fly_mode": {
+                "sequence": ["f", "l", "y"],
+                "name": "飞行模式",
+                "effect": "enable_fly",
+                "message": "🦋 飞行模式已激活！自由翱翔！",
+                "reward": {"can_fly": True, "flying": True}
+            },
+            # 全解锁
+            "unlock_all": {
+                "sequence": ["u", "n", "l", "o", "c", "k"],
+                "name": "全解锁",
+                "effect": "unlock_everything",
+                "message": "🔓 全解锁！所有成就和彩蛋已解锁！",
+                "reward": {"all_achievements": True, "all_eggs": True}
+            },
+            # 彩虹模式
+            "rainbow": {
+                "sequence": ["r", "a", "i", "n", "b", "o", "w"],
+                "name": "彩虹模式",
+                "effect": "rainbow_effect",
+                "message": "🌈 彩虹模式！世界变得绚丽多彩！",
+                "reward": {"rainbow_blocks": True, "rainbow_particles": True}
+            },
+            # 爆炸模式
+            "explosion_master": {
+                "sequence": ["b", "o", "o", "m"],
+                "name": "爆炸大师",
+                "effect": "explosion_power",
+                "message": "💥 爆炸大师！你的攻击带有爆炸效果！",
+                "reward": {"explosion_power": True}
+            },
+            # 隐身模式
+            "invisible": {
+                "sequence": ["i", "n", "v", "i", "s"],
+                "name": "隐身模式",
+                "effect": "invisible",
+                "message": "👻 隐身模式！怪物看不到你了！",
+                "reward": {"invisible": True}
+            },
+            # 夜视模式
+            "night_vision": {
+                "sequence": ["n", "v"],
+                "name": "夜视模式",
+                "effect": "night_vision",
+                "message": "👁️ 夜视模式！黑夜如同白昼！",
+                "reward": {"night_vision": True}
+            },
+            # 传送大师
+            "teleport_master": {
+                "sequence": ["t", "p"],
+                "name": "传送大师",
+                "effect": "teleport_power",
+                "message": "🌀 传送大师！你可以瞬间移动！",
+                "reward": {"teleport_power": True}
+            },
+            # 创造模式快捷
+            "creative_quick": {
+                "sequence": ["c", "r", "e", "a", "t", "i", "v", "e"],
+                "name": "创造模式",
+                "effect": "creative_mode",
+                "message": "🎨 创造模式已激活！尽情建造！",
+                "reward": {"game_mode": "creative"}
+            },
+            # 生存模式快捷
+            "survival_quick": {
+                "sequence": ["s", "u", "r", "v", "i", "v", "e"],
+                "name": "生存模式",
+                "effect": "survival_mode",
+                "message": "⚔️ 生存模式已激活！开始冒险！",
+                "reward": {"game_mode": "survival"}
+            },
+            # 满级
+            "max_level": {
+                "sequence": ["l", "v", "9", "9"],
+                "name": "满级大师",
+                "effect": "max_level",
+                "message": "🏆 满级大师！你已达到最高等级！",
+                "reward": {"level": 99, "experience": 999999}
+            },
+            # 无限资源
+            "infinite_resources": {
+                "sequence": ["i", "n", "f", "i", "n", "i", "t", "y"],
+                "name": "无限资源",
+                "effect": "infinite_items",
+                "message": "♾️ 无限资源！物品永不耗尽！",
+                "reward": {"infinite_items": True}
+            },
+            # 召唤神兽
+            "summon_beast": {
+                "sequence": ["b", "e", "a", "s", "t"],
+                "name": "召唤神兽",
+                "effect": "spawn_pet",
+                "message": "🐉 神兽降临！你获得了一只神兽宠物！",
+                "reward": {"pet": "神兽"}
+            },
+            # 音乐模式
+            "music_mode": {
+                "sequence": ["m", "u", "s", "i", "c"],
+                "name": "音乐模式",
+                "effect": "play_music",
+                "message": "🎵 音乐模式！享受美妙旋律！",
+                "reward": {"music_enabled": True}
+            },
+            # 调试模式
+            "debug_mode": {
+                "sequence": ["d", "e", "b", "u", "g"],
+                "name": "调试模式",
+                "effect": "debug_info",
+                "message": "🔧 调试模式！显示所有调试信息！",
+                "reward": {"debug_mode": True}
+            },
+            # 粒子大师
+            "particle_master": {
+                "sequence": ["p", "a", "r", "t", "i", "c", "l", "e"],
+                "name": "粒子大师",
+                "effect": "particle_effects",
+                "message": "✨ 粒子大师！绚丽粒子效果已激活！",
+                "reward": {"particle_effects": True, "max_particles": 1000}
+            },
+            # 神秘代码（隐藏）
+            "hidden_cheat": {
+                "sequence": ["h", "i", "d", "d", "e", "n"],
+                "name": "隐藏代码",
+                "effect": "hidden_power",
+                "message": "🎭 你发现了隐藏的神秘代码！",
+                "reward": {"hidden_power": True, "secret_mode": True}
+            },
+            # 终极代码
+            "ultimate": {
+                "sequence": ["u", "l", "t", "i", "m", "a", "t", "e"],
+                "name": "终极力量",
+                "effect": "ultimate_power",
+                "message": "🌟 终极力量！你已成为游戏之神！",
+                "reward": {"ultimate": True, "all_power": True}
+            }
+        }
+        
+        # 📍 特定位置触发彩蛋
+        self.secret_locations = {
+            "mystery_cave": {"pos": (100, -10, 200), "radius": 5, "egg": "mysterious_cave", "message": "发现神秘洞穴！"},
+            "floating_island": {"pos": (500, 100, 300), "radius": 10, "egg": "floating_island", "message": "发现浮空岛！"},
+            "treasure_spot": {"pos": (-50, 0, 150), "radius": 3, "egg": "hidden_treasure", "message": "发现隐藏宝藏！"},
+            "developer_sign": {"pos": (0, 50, 0), "radius": 2, "egg": "developer", "message": "发现开发者签名！"},
+            "notch_statue": {"pos": (300, 20, 400), "radius": 5, "egg": "notch", "message": "发现Notch雕像！"},
+            "herobrine_shrine": {"pos": (-200, -20, -100), "radius": 3, "egg": "herobrine", "message": "⚠️ 发现Herobrine神殿..."},
+            "ancient_ruins": {"pos": (600, 0, -200), "radius": 8, "egg": "ancient_ruins", "message": "发现古代遗迹！"},
+            "secret_base": {"pos": (1000, -50, 500), "radius": 10, "egg": "secret_base", "message": "发现秘密基地！"}
+        }
+        
+        # 🎯 已激活的作弊效果
+        self.active_cheat_effects = {
+            "invincible": False,
+            "super_speed": False,
+            "high_jump": False,
+            "invisible": False,
+            "night_vision": False,
+            "weather_control": False,
+            "time_control": False,
+            "teleport_power": False,
+            "infinite_items": False,
+            "explosion_power": False,
+            "rainbow_blocks": False,
+            "rainbow_particles": False,
+            "particle_effects": False,
+            "egg_hints": False,
+            "developer_mode": False,
+            "debug_mode": False,
+            "hidden_power": False,
+            "ultimate": False,
+            "secret_mode": False,
+            "music_enabled": False
+        }
+        
+        # 📊 作弊码统计
+        self.cheat_stats = {
+            "codes_entered": 0,
+            "codes_successful": 0,
+            "last_code": None,
+            "total_rewards": 0
+        }
         
         # 海浪效果
         self.wave_particles = []
         self.wave_timer = 0
         
         # 天气系统
-        self.weather = "clear"  # clear, rain, snow
+        self.weather = "clear"  # clear, rain, snow, thunder
         self.weather_timer = 0
         self.rain_particles = []
         self.snow_particles = []
+        self.thunder_timer = 0
+        self.is_thundering = False
+        
+        # 粒子效果系统
+        self.effect_particles = []  # 特效粒子（爆炸、附魔等）
+        self.dust_particles = []    # 尘埃粒子
         
         # 生物系统
         self.entities = []  # 存储所有实体
@@ -381,38 +1096,125 @@ class GameMap3D:
         self.animals = []   # 动物
         self.spawn_timer = 0
         
-        # 方块颜色定义 (MC风格)
+        # 方块颜色定义 (MC 1.12.2风格)
         self.block_colors = {
+            # 基础方块
             "泥土": (0.6, 0.4, 0.2),
             "石头": (0.5, 0.5, 0.5),
-            "木头": (0.5, 0.35, 0.15),
-            "草地": (0.3, 0.8, 0.2),
-            "沙子": (0.9, 0.85, 0.6),
-            "水": (0.2, 0.4, 0.8, 0.7),
-            "玻璃": (0.8, 0.9, 1.0, 0.4),
-            "砖块": (0.8, 0.3, 0.2),
-            "树叶": (0.2, 0.6, 0.15),
-            "橡木": (0.6, 0.4, 0.2),
             "圆石": (0.45, 0.45, 0.45),
+            "木头": (0.5, 0.35, 0.15),
+            "橡木": (0.6, 0.4, 0.2),
+            "木板": (0.65, 0.45, 0.25),
+            "草地": (0.3, 0.8, 0.2),
+            "树叶": (0.2, 0.6, 0.15),
+            "沙子": (0.9, 0.85, 0.6),
+            "砂砾": (0.5, 0.5, 0.5),
+            "水": (0.2, 0.4, 0.8, 0.7),
+            "岩浆": (1.0, 0.5, 0.0, 0.8),
+            "玻璃": (0.8, 0.9, 1.0, 0.4),
+            "玻璃面板": (0.85, 0.92, 1.0, 0.5),
+            "砖块": (0.8, 0.3, 0.2),
+            "砖块方块": (0.75, 0.25, 0.2),
+            "粘土": (0.7, 0.6, 0.5),
+            "陶瓦": (0.65, 0.55, 0.45),
+            "带釉陶瓦": (0.7, 0.6, 0.55),
+            "混凝土粉末": (0.55, 0.55, 0.55),
+            # 矿石
             "铁矿石": (0.55, 0.5, 0.5),
+            "金矿石": (0.8, 0.7, 0.3),
+            "钻石矿石": (0.3, 0.9, 0.9),
+            "红石矿石": (1.0, 0.2, 0.2),
+            "绿宝石矿石": (0.3, 0.9, 0.3),
             "煤炭": (0.2, 0.2, 0.2),
-            "金矿石": (0.8, 0.7, 0.3)
+            "青金石": (0.2, 0.2, 0.8),
+            "下界石英": (0.9, 0.9, 0.9),
+            # 下界方块
+            "黑曜石": (0.15, 0.15, 0.25),
+            "灵魂沙": (0.3, 0.25, 0.2),
+            "地狱岩": (0.5, 0.15, 0.15),
+            "下界疣": (0.6, 0.2, 0.2),
+            "石英块": (0.95, 0.95, 0.95),
+            "地狱砖块": (0.5, 0.2, 0.2),
+            # 末地方块
+            "末地石": (0.4, 0.4, 0.6),
+            "末地石砖": (0.35, 0.35, 0.5),
+            "末地烛": (0.95, 0.95, 0.95),
+            # 羊毛颜色
+            "白色羊毛": (0.95, 0.95, 0.95),
+            "橙色羊毛": (1.0, 0.5, 0.1),
+            "品红色羊毛": (0.85, 0.2, 0.85),
+            "淡蓝色羊毛": (0.5, 0.7, 1.0),
+            "黄色羊毛": (1.0, 1.0, 0.2),
+            "黄绿色羊毛": (0.6, 1.0, 0.2),
+            "粉色羊毛": (1.0, 0.5, 0.8),
+            "灰色羊毛": (0.5, 0.5, 0.5),
+            "淡灰色羊毛": (0.7, 0.7, 0.7),
+            "青色羊毛": (0.2, 0.8, 0.8),
+            "紫色羊毛": (0.5, 0.2, 0.8),
+            "蓝色羊毛": (0.2, 0.3, 0.8),
+            "棕色羊毛": (0.5, 0.35, 0.15),
+            "绿色羊毛": (0.3, 0.6, 0.2),
+            "红色羊毛": (0.8, 0.2, 0.2),
+            "黑色羊毛": (0.15, 0.15, 0.15),
+            # 建筑方块
+            "橡木台阶": (0.65, 0.45, 0.25),
+            "石台阶": (0.45, 0.45, 0.45),
+            "砖台阶": (0.75, 0.25, 0.2),
+            "楼梯": (0.65, 0.45, 0.25),
+            "石楼梯": (0.45, 0.45, 0.45),
+            "砖楼梯": (0.75, 0.25, 0.2),
+            "栅栏": (0.6, 0.4, 0.2),
+            "栅栏门": (0.65, 0.45, 0.25),
+            "梯子": (0.7, 0.7, 0.7),
+            "门": (0.65, 0.45, 0.25),
+            "压力板": (0.65, 0.45, 0.25),
+            "石压力板": (0.45, 0.45, 0.45),
+            "按钮": (0.45, 0.45, 0.45),
+            "橡木按钮": (0.65, 0.45, 0.25),
+            # 机械方块
+            "活塞": (0.6, 0.6, 0.6),
+            "粘性活塞": (0.6, 0.6, 0.8),
+            "红石中继器": (0.8, 0.6, 0.2),
+            "红石比较器": (0.7, 0.5, 0.3),
+            "红石火把": (1.0, 0.4, 0.1),
+            "红石灯": (1.0, 0.9, 0.5),
+            "发射器": (0.5, 0.5, 0.5),
+            "投掷器": (0.5, 0.5, 0.5),
+            "漏斗": (0.4, 0.4, 0.4),
+            "箱子": (0.7, 0.5, 0.3),
+            "陷阱箱": (0.5, 0.3, 0.5),
+            "木桶": (0.6, 0.4, 0.2),
+            "酿造台": (0.25, 0.25, 0.4),
+            "炼药锅": (0.5, 0.5, 0.5),
+            "铁砧": (0.7, 0.7, 0.7),
+            "砂轮": (0.5, 0.5, 0.5),
+            "织布机": (0.6, 0.4, 0.2),
+            "制图台": (0.6, 0.4, 0.2),
+            "烟熏炉": (0.4, 0.4, 0.4),
+            "高炉": (0.4, 0.4, 0.4),
+            "营火": (0.3, 0.2, 0.1),
+            "灵魂营火": (0.4, 0.3, 0.2),
+            # 装饰方块
+            "花盆": (0.75, 0.35, 0.2),
+            "灯笼": (0.9, 0.9, 0.8),
+            "灵魂灯笼": (0.8, 0.9, 0.9),
+            "钟": (0.7, 0.7, 0.7),
+            "测重压力板": (0.6, 0.6, 0.6),
+            # 特殊方块
+            "信标": (0.9, 0.95, 1.0),
+            "龙蛋": (0.5, 0.2, 0.7),
+            "命令方块": (0.2, 0.6, 1.0),
+            "结构方块": (0.8, 0.6, 0.2),
+            "调试棒": (0.3, 0.8, 0.3)
         }
         
     def initialize(self):
         """初始化3D地图"""
         if not opengl_available:
-            print("错误: OpenGL不可用，无法启动3D地图")
+            logger.info("错误: OpenGL不可用，无法启动3D地图")
             return False
         
         try:
-            # 保存当前显示尺寸，以便退出时恢复
-            current_surface = pygame.display.get_surface()
-            if current_surface:
-                self.original_display_size = current_surface.get_size()
-            else:
-                self.original_display_size = (SCREEN_WIDTH, SCREEN_HEIGHT)
-            
             # 初始化pygame
             pygame.init()
             
@@ -441,7 +1243,7 @@ class GameMap3D:
                 else:
                     self.font_main = pygame.font.Font(None, 40)
                     self.font_small = pygame.font.Font(None, 24)
-            except Exception:
+            except Exception as _e:
                 self.font_main = pygame.font.Font(None, 40)
                 self.font_small = pygame.font.Font(None, 24)
             
@@ -463,12 +1265,9 @@ class GameMap3D:
             # 生成树木
             self.generate_trees()
             
-            # 生成NPC
-            self.generate_npcs()
-            
             return True
         except Exception as e:
-            print(f"初始化错误: {e}")
+            logger.info(f"初始化错误: {e}")
             return False
     
     def show_performance_warning(self):
@@ -493,12 +1292,12 @@ class GameMap3D:
             username = data.get("username", "")
             password = data.get("password", "")
             if not username or not password:
-                print("错误: 未登录，无法加载地图数据")
+                logger.info("错误: 未登录，无法加载地图数据")
                 return
             
             map_path = self.get_map_data_path()
             if not os.path.exists(map_path):
-                print("地图数据文件不存在，将生成新地图")
+                logger.info("地图数据文件不存在，将生成新地图")
                 self.locations = self.generate_locations(MAX_LOCATIONS)
                 self.save_map_data(self.locations)
             else:
@@ -507,13 +1306,13 @@ class GameMap3D:
                 
                 # 验证用户名
                 if map_data.get("username") != username:
-                    print("错误: 地图数据与当前用户不匹配")
+                    logger.info("错误: 地图数据与当前用户不匹配")
                     return
                 
                 self.locations = map_data.get("locations", [])
-                print(f"成功加载地图数据，包含 {len(self.locations)} 个地点")
+                logger.info(f"成功加载地图数据，包含 {len(self.locations)} 个地点")
         except Exception as e:
-            print(f"加载地图数据失败: {e}")
+            logger.info(f"加载地图数据失败: {e}")
             self.locations = self.generate_locations(MAX_LOCATIONS)
             self.save_map_data(self.locations)
     
@@ -542,7 +1341,7 @@ class GameMap3D:
             
             return True
         except Exception as e:
-            print(f"保存地图数据失败: {e}")
+            logger.info(f"保存地图数据失败: {e}")
             return False
     
     def load_mc_world_data(self):
@@ -566,7 +1365,6 @@ class GameMap3D:
                 self.inventory = mc_world.get("inventory", [])
                 self.world_seed = mc_world.get("world_seed", 0)
                 
-                # 加载MC状态
                 self.health = mc_world.get("health", 20)
                 self.hunger = mc_world.get("hunger", 20)
                 self.oxygen = mc_world.get("oxygen", 10)
@@ -576,9 +1374,9 @@ class GameMap3D:
                 
                 self.update_camera()
                 self.validate_all()
-                print(f"加载MC世界数据成功: {len(self.placed_blocks)} 个方块")
+                logger.info(f"[调试] 加载MC世界数据成功: {len(self.placed_blocks)} 个方块, 位置: {self.player_pos}")
         except Exception as e:
-            print(f"加载MC世界数据失败: {e}")
+            logger.info(f"[错误] 加载MC世界数据失败: {e}")
             self.validate_all()
     
     def save_mc_world_data(self):
@@ -604,9 +1402,9 @@ class GameMap3D:
             
             data[MC_WORLD_KEY] = mc_world
             save()
-            print(f"保存MC世界数据成功: {len(self.placed_blocks)} 个方块")
+            logger.info(f"[调试] 保存MC世界数据成功: {len(self.placed_blocks)} 个方块, 位置: {self.player_pos}")
         except Exception as e:
-            print(f"保存MC世界数据失败: {e}")
+            logger.info(f"[错误] 保存MC世界数据失败: {e}")
     
     def generate_locations(self, count):
         """生成地图地点"""
@@ -698,6 +1496,9 @@ class GameMap3D:
             if event.type == pygame.QUIT:
                 return False
             elif event.type == pygame.KEYDOWN:
+                # 🎮 作弊码按键序列检测
+                self.check_cheat_code_sequence(event.key)
+                
                 if event.key == pygame.K_ESCAPE:
                     self.is_paused = not self.is_paused
                     if self.is_paused:
@@ -789,16 +1590,7 @@ class GameMap3D:
                         self.message = "鼠标已锁定，按Tab键解锁"
                         self.message_timer = 3000
                     else:
-                        mx, my = pygame.mouse.get_pos()
-                        clicked_npc = self.check_npc_click(mx, my)
-                        if clicked_npc:
-                            self.current_npc = clicked_npc
-                            self.show_npc_dialog = True
-                            self.is_mouse_locked = False
-                            pygame.mouse.set_visible(True)
-                            pygame.event.set_grab(False)
-                        else:
-                            self.place_block()
+                        self.place_block()
                 elif event.button == 3:
                     if self.is_mouse_locked:
                         self.break_block()
@@ -1001,7 +1793,7 @@ class GameMap3D:
             
             pygame.display.flip()
         except Exception as e:
-            print(f"C++渲染错误: {e}")
+            logger.info(f"C++渲染错误: {e}")
             self.draw_3d_scene_python()
     
     def draw_3d_scene_python(self):
@@ -1051,12 +1843,17 @@ class GameMap3D:
             for follower in self.followers:
                 self.draw_follower(follower)
             
+            # 绘制粒子效果
+            self.draw_effect_particles()
+            self.draw_dust_particles()
+            
+            # 绘制海浪和天气
             self.draw_waves()
             self.draw_weather()
             
             pygame.display.flip()
         except Exception as e:
-            print(f"Python渲染错误: {e}")
+            logger.info(f"Python渲染错误: {e}")
     
     def draw_terrain(self):
         """绘制像素化地形 - 类似我的世界风格"""
@@ -1118,7 +1915,7 @@ class GameMap3D:
             
             glEnable(GL_LIGHTING)
         except Exception as e:
-            print(f"绘制地形错误: {e}")
+            logger.info(f"绘制地形错误: {e}")
     
     def draw_placed_blocks(self):
         """绘制玩家放置的方块 - MC风格"""
@@ -1202,7 +1999,7 @@ class GameMap3D:
             
             glEnable(GL_LIGHTING)
         except Exception as e:
-            print(f"绘制放置方块错误: {e}")
+            logger.info(f"绘制放置方块错误: {e}")
     
     def update_day_night(self):
         """更新昼夜系统"""
@@ -1238,24 +2035,28 @@ class GameMap3D:
     
     def get_sky_color(self):
         """根据时间获取天空颜色"""
-        if self.is_day:
-            t = self.day_time / 12000
-            if t < 0.2:
-                return (0.3 + t * 0.5, 0.4 + t * 0.4, 0.8 + t * 0.2)
-            elif t > 0.8:
-                t2 = (t - 0.8) * 5
-                return (0.8 - t2 * 0.5, 0.8 - t2 * 0.4, 1.0 - t2 * 0.2)
+        try:
+            if self.is_day:
+                t = self.day_time / 12000
+                if t < 0.2:
+                    return (0.3 + t * 0.5, 0.4 + t * 0.4, 0.8 + t * 0.2)
+                elif t > 0.8:
+                    t2 = (t - 0.8) * 5
+                    return (0.8 - t2 * 0.5, 0.8 - t2 * 0.4, 1.0 - t2 * 0.2)
+                else:
+                    return (0.8, 0.8, 1.0)
             else:
-                return (0.8, 0.8, 1.0)
-        else:
-            t = (self.day_time - 12000) / 12000
-            if t < 0.2:
-                return (0.2 - t * 0.15, 0.25 - t * 0.15, 0.4 - t * 0.2)
-            elif t > 0.8:
-                t2 = (t - 0.8) * 5
-                return (0.05 + t2 * 0.25, 0.1 + t2 * 0.15, 0.2 + t2 * 0.2)
-            else:
-                return (0.05, 0.1, 0.2)
+                t = (self.day_time - 12000) / 12000
+                if t < 0.2:
+                    return (0.2 - t * 0.15, 0.25 - t * 0.15, 0.4 - t * 0.2)
+                elif t > 0.8:
+                    t2 = (t - 0.8) * 5
+                    return (0.05 + t2 * 0.25, 0.1 + t2 * 0.15, 0.2 + t2 * 0.2)
+                else:
+                    return (0.05, 0.1, 0.2)
+        except Exception as e:
+            logger.info(f"[错误] 获取天空颜色失败: {e}")
+            return (0.5, 0.7, 1.0)  # 默认天空颜色
     
     def draw_sun_moon(self):
         """绘制太阳和月亮"""
@@ -1296,54 +2097,70 @@ class GameMap3D:
             glPopMatrix()
             glEnable(GL_LIGHTING)
         except Exception as e:
-            pass
+            logger.info(f"绘制太阳月亮错误: {e}")
     
     def update_weather(self):
         """更新天气系统"""
-        self.weather_timer += 1
-        
-        if self.weather_timer > 3000:
-            self.weather_timer = 0
-            rand = random.random()
-            if rand < 0.3:
-                self.weather = "rain"
-            elif rand < 0.4:
-                self.weather = "snow"
-            else:
-                self.weather = "clear"
-        
-        if self.weather == "rain":
-            for _ in range(5):
-                if len(self.rain_particles) < 500:
-                    self.rain_particles.append({
-                        "x": random.uniform(self.player_pos[0] - 100, self.player_pos[0] + 100),
-                        "y": 50 + random.uniform(0, 20),
-                        "z": random.uniform(self.player_pos[2] - 100, self.player_pos[2] + 100),
-                        "speed": random.uniform(8, 12)
-                    })
+        try:
+            self.weather_timer += 1
             
-            self.rain_particles = [p for p in self.rain_particles if p["y"] > -5]
-            for p in self.rain_particles:
-                p["y"] -= p["speed"] * 0.1
-                p["x"] += 0.5
-        
-        elif self.weather == "snow":
-            for _ in range(3):
-                if len(self.snow_particles) < 300:
-                    self.snow_particles.append({
-                        "x": random.uniform(self.player_pos[0] - 100, self.player_pos[0] + 100),
-                        "y": 50 + random.uniform(0, 20),
-                        "z": random.uniform(self.player_pos[2] - 100, self.player_pos[2] + 100),
-                        "speed": random.uniform(2, 4),
-                        "drift_x": random.uniform(-1, 1),
-                        "drift_z": random.uniform(-1, 1)
-                    })
+            if self.weather_timer > 3000:
+                self.weather_timer = 0
+                rand = random.random()
+                if rand < 0.2:
+                    self.weather = "rain"
+                elif rand < 0.3:
+                    self.weather = "snow"
+                elif rand < 0.35:
+                    self.weather = "thunder"
+                else:
+                    self.weather = "clear"
             
-            self.snow_particles = [p for p in self.snow_particles if p["y"] > -5]
-            for p in self.snow_particles:
-                p["y"] -= p["speed"] * 0.05
-                p["x"] += p["drift_x"] * 0.1
-                p["z"] += p["drift_z"] * 0.1
+            # 雷暴闪电
+            if self.weather == "thunder":
+                self.thunder_timer += 1
+                if self.thunder_timer > 200:
+                    self.is_thundering = random.random() < 0.3
+                    self.thunder_timer = 0
+                    if self.is_thundering:
+                        self.add_chat_message("⚡ 闪电！")
+            
+            if self.weather == "rain":
+                for _ in range(5):
+                    if len(self.rain_particles) < 500:
+                        particle = {
+                            "x": random.uniform(self.player_pos[0] - 100, self.player_pos[0] + 100),
+                            "y": 50 + random.uniform(0, 20),
+                            "z": random.uniform(self.player_pos[2] - 100, self.player_pos[2] + 100),
+                            "speed": random.uniform(8, 12)
+                        }
+                        self.rain_particles.append(particle)
+                
+                self.rain_particles = [p for p in self.rain_particles if p.get("y", -10) > -5]
+                for p in self.rain_particles:
+                    p["y"] = p.get("y", 0) - p.get("speed", 10) * 0.1
+                    p["x"] = p.get("x", 0) + 0.5
+            
+            elif self.weather == "snow":
+                for _ in range(3):
+                    if len(self.snow_particles) < 300:
+                        particle = {
+                            "x": random.uniform(self.player_pos[0] - 100, self.player_pos[0] + 100),
+                            "y": 50 + random.uniform(0, 20),
+                            "z": random.uniform(self.player_pos[2] - 100, self.player_pos[2] + 100),
+                            "speed": random.uniform(2, 4),
+                            "drift_x": random.uniform(-1, 1),
+                            "drift_z": random.uniform(-1, 1)
+                        }
+                        self.snow_particles.append(particle)
+                
+                self.snow_particles = [p for p in self.snow_particles if p.get("y", -10) > -5]
+                for p in self.snow_particles:
+                    p["y"] = p.get("y", 0) - p.get("speed", 3) * 0.05
+                    p["x"] = p.get("x", 0) + p.get("drift_x", 0) * 0.1
+                    p["z"] = p.get("z", 0) + p.get("drift_z", 0) * 0.1
+        except Exception as e:
+            logger.info(f"更新天气错误: {e}")
     
     def draw_weather(self):
         """绘制天气效果"""
@@ -1371,7 +2188,115 @@ class GameMap3D:
             
             glEnable(GL_LIGHTING)
         except Exception as e:
-            pass
+            logger.info(f"绘制天气错误: {e}")
+    
+    def spawn_effect_particle(self, x, y, z, effect_type="explosion"):
+        """生成特效粒子"""
+        try:
+            colors = {
+                "explosion": [(1.0, 0.5, 0.0), (1.0, 0.2, 0.0), (1.0, 1.0, 0.0)],
+                "enchant": [(0.5, 0.0, 1.0), (0.0, 0.5, 1.0), (1.0, 0.0, 1.0)],
+                "heal": [(0.0, 1.0, 0.0), (0.5, 1.0, 0.5), (0.0, 0.8, 0.0)],
+                "magic": [(0.8, 0.0, 0.8), (0.0, 0.8, 0.8), (0.8, 0.8, 0.0)],
+                "fire": [(1.0, 0.3, 0.0), (1.0, 0.5, 0.0), (0.8, 0.0, 0.0)]
+            }
+            
+            color = random.choice(colors.get(effect_type, colors["explosion"]))
+            
+            for _ in range(20):
+                particle = {
+                    "x": x + random.uniform(-1, 1),
+                    "y": y + random.uniform(0, 2),
+                    "z": z + random.uniform(-1, 1),
+                    "vx": random.uniform(-0.5, 0.5),
+                    "vy": random.uniform(0.5, 2.0),
+                    "vz": random.uniform(-0.5, 0.5),
+                    "life": 60,
+                    "max_life": 60,
+                    "color": color,
+                    "size": random.uniform(0.1, 0.3)
+                }
+                self.effect_particles.append(particle)
+        except Exception as e:
+            logger.info(f"[错误] 生成特效粒子失败: {e}")
+    
+    def spawn_dust_particle(self, x, y, z):
+        """生成尘埃粒子"""
+        try:
+            for _ in range(10):
+                particle = {
+                    "x": x + random.uniform(-0.5, 0.5),
+                    "y": y + random.uniform(0, 1),
+                    "z": z + random.uniform(-0.5, 0.5),
+                    "vx": random.uniform(-0.1, 0.1),
+                    "vy": random.uniform(0.1, 0.3),
+                    "vz": random.uniform(-0.1, 0.1),
+                    "life": 30,
+                    "max_life": 30,
+                    "size": random.uniform(0.05, 0.15)
+                }
+                self.dust_particles.append(particle)
+        except Exception as e:
+            logger.info(f"[错误] 生成尘埃粒子失败: {e}")
+    
+    def update_effect_particles(self):
+        """更新特效粒子"""
+        try:
+            for particle in self.effect_particles:
+                particle["x"] += particle["vx"]
+                particle["y"] += particle["vy"]
+                particle["z"] += particle["vz"]
+                particle["vy"] -= 0.05  # 重力
+                particle["life"] -= 1
+            self.effect_particles[:] = [particle for particle in self.effect_particles if particle["life"] > 0]
+        except Exception as e:
+            logger.info(f"[错误] 更新特效粒子失败: {e}")
+    
+    def update_dust_particles(self):
+        """更新尘埃粒子"""
+        try:
+            for particle in self.dust_particles:
+                particle["x"] += particle["vx"]
+                particle["y"] += particle["vy"]
+                particle["z"] += particle["vz"]
+                particle["life"] -= 1
+            self.dust_particles[:] = [particle for particle in self.dust_particles if particle["life"] > 0]
+        except Exception as e:
+            logger.info(f"[错误] 更新尘埃粒子失败: {e}")
+    
+    def draw_effect_particles(self):
+        """绘制特效粒子"""
+        try:
+            glDisable(GL_LIGHTING)
+            glPointSize(3.0)
+            
+            glBegin(GL_POINTS)
+            for particle in self.effect_particles:
+                alpha = particle["life"] / particle["max_life"]
+                glColor4f(particle["color"][0], particle["color"][1], particle["color"][2], alpha)
+                glVertex3f(particle["x"], particle["y"], particle["z"])
+            glEnd()
+            
+            glEnable(GL_LIGHTING)
+        except Exception as e:
+            logger.info(f"[错误] 绘制特效粒子失败: {e}")
+    
+    def draw_dust_particles(self):
+        """绘制尘埃粒子"""
+        try:
+            glDisable(GL_LIGHTING)
+            glPointSize(2.0)
+            
+            glBegin(GL_POINTS)
+            for particle in self.dust_particles:
+                alpha = particle["life"] / particle["max_life"]
+                glColor4f(0.8, 0.7, 0.6, alpha * 0.5)
+                glVertex3f(particle["x"], particle["y"], particle["z"])
+            glEnd()
+            
+            glEnable(GL_LIGHTING)
+        except Exception as e:
+            logger.info(f"[错误] 绘制尘埃粒子失败: {e}")
     
     def spawn_entity(self):
         """生成生物"""
@@ -1406,10 +2331,7 @@ class GameMap3D:
             animal["direction"] += random.uniform(-5, 5)
             animal["x"] += math.cos(math.radians(animal["direction"])) * animal["speed"]
             animal["z"] += math.sin(math.radians(animal["direction"])) * animal["speed"]
-            
-            if animal["x"] < self.player_pos[0] - 100 or animal["x"] > self.player_pos[0] + 100:
-                self.animals.remove(animal)
-                break
+        self.animals[:] = [animal for animal in self.animals if self.player_pos[0] - 100 <= animal["x"] <= self.player_pos[0] + 100]
         
         for monster in self.monsters:
             dx = self.player_pos[0] - monster["x"]
@@ -1417,10 +2339,7 @@ class GameMap3D:
             monster["direction"] = math.degrees(math.atan2(dz, dx))
             monster["x"] += math.cos(math.radians(monster["direction"])) * monster["speed"]
             monster["z"] += math.sin(math.radians(monster["direction"])) * monster["speed"]
-            
-            if monster["x"] < self.player_pos[0] - 100 or monster["x"] > self.player_pos[0] + 100:
-                self.monsters.remove(monster)
-                break
+        self.monsters[:] = [monster for monster in self.monsters if self.player_pos[0] - 100 <= monster["x"] <= self.player_pos[0] + 100]
     
     def draw_entities(self):
         """绘制生物"""
@@ -1466,7 +2385,7 @@ class GameMap3D:
             
             glEnable(GL_LIGHTING)
         except Exception as e:
-            pass
+            logger.info(f"绘制实体错误: {e}")
     
     def draw_herobrine(self):
         """绘制Herobrine（彩蛋）"""
@@ -1560,15 +2479,11 @@ class GameMap3D:
                         "speed": random.uniform(0.02, 0.05)
                     })
         
-        for wave in list(self.wave_particles):
+        for wave in self.wave_particles:
             wave["y"] = 0.1 + wave["amplitude"] * math.sin(self.wave_timer * wave["frequency"] + wave["phase"])
             wave["x"] += wave["speed"] * math.cos(wave["phase"])
             wave["z"] += wave["speed"] * math.sin(wave["phase"])
-            
-            dx = wave["x"] - self.player_pos[0]
-            dz = wave["z"] - self.player_pos[2]
-            if math.hypot(dx, dz) > 200:
-                self.wave_particles.remove(wave)
+        self.wave_particles[:] = [wave for wave in self.wave_particles if math.hypot(wave["x"] - self.player_pos[0], wave["z"] - self.player_pos[2]) <= 200]
     
     def draw_waves(self):
         """绘制海浪效果"""
@@ -1593,7 +2508,7 @@ class GameMap3D:
             
             glEnable(GL_LIGHTING)
         except Exception as e:
-            pass
+            logger.info(f"绘制海浪错误: {e}")
     
     def draw_tree(self, x, z):
         """绘制树木"""
@@ -1671,14 +2586,13 @@ class GameMap3D:
             glPopMatrix()
             glEnable(GL_LIGHTING)
         except Exception as e:
-            print(f"绘制树木错误: {e}")
+            logger.info(f"绘制树木错误: {e}")
     
     def draw_location(self, loc):
         """绘制地点 - 优化版，增加高度和细节"""
         try:
             x, z = loc["x"], loc["y"]
             loc_type = loc.get("type", "村庄")
-            loc_name = loc.get("name", loc_type)
             
             glPushMatrix()
             glTranslatef(x, 0, z)
@@ -1767,451 +2681,21 @@ class GameMap3D:
             glVertex3f(0, base_height + wall_height + roof_height, 0)
             glEnd()
             
-            if loc_type == "关隘":
-                glColor3f(0.5, 0.5, 0.5)
-                tower_height = 8
-                tower_width = 3
-                glPushMatrix()
-                glTranslatef(-base_width/2 - 2, base_height + wall_height, -base_depth/2 - 2)
-                self.draw_cube(tower_width, tower_height, tower_width)
-                glTranslatef(base_width + 4, 0, 0)
-                self.draw_cube(tower_width, tower_height, tower_width)
-                glPopMatrix()
-                
-                glColor3f(1.0, 0.0, 0.0)
-                glPushMatrix()
-                glTranslatef(0, base_height + wall_height + roof_height + 2, 0)
-                self.draw_cube(1, 4, 1)
-                glTranslatef(0, 3, 0)
-                self.draw_cube(2, 1, 2)
-                glPopMatrix()
-            
-            elif loc_type == "军营":
-                glColor3f(0.3, 0.3, 0.3)
-                tent_count = 3
-                for i in range(tent_count):
-                    glPushMatrix()
-                    glTranslatef(-4 + i * 4, base_height, 0)
-                    glColor3f(0.8, 0.1, 0.1)
-                    glBegin(GL_TRIANGLES)
-                    glVertex3f(-3, 0, -3)
-                    glVertex3f(0, 4, 0)
-                    glVertex3f(3, 0, -3)
-                    glVertex3f(3, 0, -3)
-                    glVertex3f(0, 4, 0)
-                    glVertex3f(3, 0, 3)
-                    glVertex3f(3, 0, 3)
-                    glVertex3f(0, 4, 0)
-                    glVertex3f(-3, 0, 3)
-                    glVertex3f(-3, 0, 3)
-                    glVertex3f(0, 4, 0)
-                    glVertex3f(-3, 0, -3)
-                    glEnd()
-                    glPopMatrix()
-                
-                glColor3f(0.8, 0.8, 0.0)
-                glPushMatrix()
-                glTranslatef(0, base_height + wall_height + roof_height + 1, 0)
-                self.draw_cube(0.5, 6, 0.5)
-                glTranslatef(0, 5, 0)
-                self.draw_cube(3, 0.5, 1)
-                glPopMatrix()
-            
-            elif loc_type == "村庄":
-                glColor3f(0.6, 0.4, 0.2)
-                for i in range(2):
-                    glPushMatrix()
-                    glTranslatef(-3 + i * 6, base_height + wall_height + roof_height + 1, 0)
-                    self.draw_cube(1, 2, 1)
-                    glTranslatef(0, 1.5, 0)
-                    glColor3f(0.3, 0.3, 0.3)
-                    self.draw_cube(0.5, 1, 0.5)
-                    glPopMatrix()
-                
-                glColor3f(0.3, 0.5, 0.3)
-                for i in range(4):
-                    glPushMatrix()
-                    glTranslatef(-5 + i * 3, base_height - 0.5, -5 + (i % 2) * 5)
-                    self.draw_cube(0.5, 3, 0.5)
-                    glColor3f(0.4, 0.6, 0.4)
-                    glTranslatef(0, 1.5, 0)
-                    self.draw_cube(1.5, 2, 1.5)
-                    glPopMatrix()
-            
-            elif loc_type == "矿山":
-                glColor3f(0.4, 0.4, 0.4)
-                ore_colors = [(1.0, 0.5, 0.5), (0.5, 0.5, 1.0), (1.0, 1.0, 0.5), (0.8, 0.6, 0.4)]
-                for i in range(6):
-                    glPushMatrix()
-                    glTranslatef(-4 + (i % 3) * 4, base_height + 2 + (i // 3) * 3, -3)
-                    glColor3f(ore_colors[i % len(ore_colors)])
-                    self.draw_cube(1.5, 1.5, 0.5)
-                    glPopMatrix()
-                
-                glColor3f(0.2, 0.2, 0.2)
-                glPushMatrix()
-                glTranslatef(0, base_height, 3)
-                self.draw_cube(4, 6, 2)
-                glColor3f(0.3, 0.3, 0.3)
-                glTranslatef(0, -1, 0.5)
-                self.draw_cube(2, 8, 1)
-                glPopMatrix()
-            
-            elif loc_type == "港口":
-                glColor3f(0.6, 0.4, 0.3)
-                glPushMatrix()
-                glTranslatef(0, base_height - 1, base_depth/2 + 5)
-                self.draw_cube(base_width + 4, 1, 6)
-                glPopMatrix()
-                
-                glColor3f(0.8, 0.2, 0.2)
-                glPushMatrix()
-                glTranslatef(3, base_height - 2, base_depth/2 + 10)
-                self.draw_cube(6, 2, 12)
-                glColor3f(0.6, 0.4, 0.2)
-                glTranslatef(0, 1.5, 0)
-                self.draw_cube(5, 1, 10)
-                glPopMatrix()
-                
-                glColor3f(0.5, 0.5, 0.8)
-                glPushMatrix()
-                glTranslatef(-4, base_height - 3, base_depth/2 + 8)
-                for i in range(3):
-                    glTranslatef(0, 0, 3)
-                    self.draw_cube(2, 3, 2)
-                glPopMatrix()
-            
             loc["collision_box"] = {
                 "min_x": x - base_width/2,
                 "max_x": x + base_width/2,
                 "min_y": 0,
-                "max_y": base_height + wall_height + roof_height + 10,
+                "max_y": base_height + wall_height + roof_height,
                 "min_z": z - base_depth/2,
                 "max_z": z + base_depth/2
             }
-            loc["height"] = base_height + wall_height + roof_height + 10
+            loc["height"] = base_height + wall_height + roof_height
             loc["enterable"] = True
             
             glEnable(GL_LIGHTING)
             glPopMatrix()
-            
-            glPushMatrix()
-            glLoadIdentity()
-            glMatrixMode(GL_PROJECTION)
-            glPushMatrix()
-            glLoadIdentity()
-            glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
-            
-            screen_x, screen_y = self.world_to_screen(x, base_height + wall_height + roof_height + 5, z)
-            if 0 < screen_x < SCREEN_WIDTH and 0 < screen_y < SCREEN_HEIGHT:
-                glColor3f(1.0, 1.0, 1.0)
-                text_surf = self.font_small.render(loc_name, True, (255, 255, 255))
-                text_rect = text_surf.get_rect(center=(screen_x, screen_y))
-                bg_rect = pygame.Rect(text_rect.x - 5, text_rect.y - 3, text_rect.width + 10, text_rect.height + 6)
-                
-                glColor4f(0.0, 0.0, 0.0, 0.7)
-                glBegin(GL_QUADS)
-                glVertex2f(bg_rect.left, bg_rect.top)
-                glVertex2f(bg_rect.right, bg_rect.top)
-                glVertex2f(bg_rect.right, bg_rect.bottom)
-                glVertex2f(bg_rect.left, bg_rect.bottom)
-                glEnd()
-                
-                self.screen.blit(text_surf, text_rect)
-            
-            glPopMatrix()
-            glMatrixMode(GL_MODELVIEW)
-            glPopMatrix()
-            
         except Exception as e:
-            print(f"绘制地点错误: {e}")
-    
-    def world_to_screen(self, x, y, z):
-        """将世界坐标转换为屏幕坐标"""
-        try:
-            modelview = glGetDoublev(GL_MODELVIEW_MATRIX)
-            projection = glGetDoublev(GL_PROJECTION_MATRIX)
-            viewport = glGetIntegerv(GL_VIEWPORT)
-            
-            result = gluProject(x, y, z, modelview, projection, viewport)
-            return result[0], SCREEN_HEIGHT - result[1]
-        except:
-            return -1000, -1000
-    
-    def generate_npcs(self):
-        """生成NPC"""
-        self.npcs = []
-        
-        npc_types = [
-            {"name": "铁匠", "role": "equipment", "color": (0.8, 0.6, 0.4), "dialog": "欢迎来到我的铁匠铺！需要打造什么装备吗？"},
-            {"name": "商人", "role": "shop", "color": (0.4, 0.6, 0.8), "dialog": "欢迎光临！看看有什么需要的？"},
-            {"name": "药师", "role": "alchemy", "color": (0.6, 0.8, 0.4), "dialog": "需要治疗药水吗？我这里应有尽有！"},
-            {"name": "仓库管理员", "role": "warehouse", "color": (0.7, 0.7, 0.7), "dialog": "需要存放或领取物品吗？"},
-            {"name": "任务发布者", "role": "quest", "color": (0.8, 0.4, 0.6), "dialog": "冒险者，我有一些任务需要你完成！"},
-            {"name": "竞技场管理员", "role": "pvp", "color": (0.9, 0.3, 0.3), "dialog": "想要测试你的实力吗？来竞技场吧！"},
-            {"name": "宠物商人", "role": "pet", "color": (0.5, 0.8, 0.6), "dialog": "可爱的宠物等待着它们的主人！"},
-            {"name": "时装设计师", "role": "fashion", "color": (0.8, 0.5, 0.8), "dialog": "想要换个新造型吗？我来帮你！"},
-        ]
-        
-        if self.locations:
-            main_city = self.locations[0]
-            city_x, city_z = main_city["x"], main_city["y"]
-            
-            positions = [
-                (city_x - 8, city_z - 8),
-                (city_x + 8, city_z - 8),
-                (city_x - 8, city_z + 8),
-                (city_x + 8, city_z + 8),
-                (city_x, city_z - 6),
-                (city_x, city_z + 6),
-                (city_x - 6, city_z),
-                (city_x + 6, city_z),
-            ]
-            
-            for i, pos in enumerate(positions[:len(npc_types)]):
-                npc_data = npc_types[i]
-                self.npcs.append({
-                    "id": i,
-                    "name": npc_data["name"],
-                    "role": npc_data["role"],
-                    "color": npc_data["color"],
-                    "dialog": npc_data["dialog"],
-                    "x": pos[0],
-                    "y": 0,
-                    "z": pos[1],
-                    "interaction_radius": 3.0,
-                })
-    
-    def draw_npc(self, npc):
-        """绘制单个NPC"""
-        try:
-            x, y, z = npc["x"], npc["y"], npc["z"]
-            color = npc["color"]
-            
-            glPushMatrix()
-            glTranslatef(x, y, z)
-            glDisable(GL_LIGHTING)
-            
-            body_height = 2.0
-            body_width = 0.6
-            head_radius = 0.5
-            
-            glColor3f(*color)
-            
-            glPushMatrix()
-            glTranslatef(0, body_height + head_radius, 0)
-            glutSolidSphere(head_radius, 16, 16)
-            glPopMatrix()
-            
-            glColor3f(color[0] * 0.8, color[1] * 0.8, color[2] * 0.8)
-            glPushMatrix()
-            glTranslatef(0, body_height / 2, 0)
-            self.draw_cube(body_width, body_height, body_width)
-            glPopMatrix()
-            
-            glEnable(GL_LIGHTING)
-            glPopMatrix()
-            
-            screen_x, screen_y = self.world_to_screen(x, y + body_height + head_radius + 0.5, z)
-            if 0 < screen_x < SCREEN_WIDTH and 0 < screen_y < SCREEN_HEIGHT:
-                text_surf = self.font_small.render(npc["name"], True, (255, 255, 255))
-                text_rect = text_surf.get_rect(center=(screen_x, screen_y))
-                bg_rect = pygame.Rect(text_rect.x - 5, text_rect.y - 3, text_rect.width + 10, text_rect.height + 6)
-                
-                glColor4f(0.0, 0.0, 0.0, 0.7)
-                glBegin(GL_QUADS)
-                glVertex2f(bg_rect.left, bg_rect.top)
-                glVertex2f(bg_rect.right, bg_rect.top)
-                glVertex2f(bg_rect.right, bg_rect.bottom)
-                glVertex2f(bg_rect.left, bg_rect.bottom)
-                glEnd()
-                
-                self.screen.blit(text_surf, text_rect)
-        except Exception as e:
-            print(f"绘制NPC错误: {e}")
-    
-    def draw_npcs(self):
-        """绘制所有NPC"""
-        for npc in self.npcs:
-            self.draw_npc(npc)
-    
-    def check_npc_click(self, mouse_x, mouse_y):
-        """检查是否点击了NPC"""
-        for npc in self.npcs:
-            screen_x, screen_y = self.world_to_screen(npc["x"], npc["y"] + 1.5, npc["z"])
-            distance = ((mouse_x - screen_x) ** 2 + (mouse_y - screen_y) ** 2) ** 0.5
-            
-            if distance < 30:
-                player_dist = ((self.player_pos[0] - npc["x"]) ** 2 + 
-                              (self.player_pos[2] - npc["z"]) ** 2) ** 0.5
-                
-                if player_dist <= npc["interaction_radius"]:
-                    return npc
-        
-        return None
-    
-    def draw_npc_dialog(self):
-        """绘制NPC对话界面"""
-        if not self.show_npc_dialog or not self.current_npc:
-            return
-        
-        dialog_width = 500
-        dialog_height = 300
-        dialog_x = (SCREEN_WIDTH - dialog_width) // 2
-        dialog_y = SCREEN_HEIGHT - dialog_height - 50
-        
-        bg_surface = pygame.Surface((dialog_width, dialog_height), pygame.SRCALPHA)
-        bg_surface.fill((0, 0, 0, 200))
-        pygame.draw.rect(bg_surface, (255, 215, 0), (0, 0, dialog_width, dialog_height), 3)
-        self.screen.blit(bg_surface, (dialog_x, dialog_y))
-        
-        title_text = self.font_main.render(self.current_npc["name"], True, (255, 215, 0))
-        title_rect = title_text.get_rect(center=(SCREEN_WIDTH // 2, dialog_y + 30))
-        self.screen.blit(title_text, title_rect)
-        
-        dialog_lines = self.wrap_text(self.current_npc["dialog"], self.font_small, dialog_width - 40)
-        y_offset = dialog_y + 70
-        for line in dialog_lines:
-            line_surf = self.font_small.render(line, True, (255, 255, 255))
-            line_rect = line_surf.get_rect(center=(SCREEN_WIDTH // 2, y_offset))
-            self.screen.blit(line_surf, line_rect)
-            y_offset += 30
-        
-        y_offset += 20
-        menu_options = self.get_npc_menu_options(self.current_npc["role"])
-        
-        button_width = 200
-        button_height = 40
-        button_spacing = 15
-        start_x = (SCREEN_WIDTH - button_width) // 2
-        
-        for i, option in enumerate(menu_options):
-            btn_y = y_offset + i * (button_height + button_spacing)
-            
-            pygame.draw.rect(self.screen, (50, 50, 80), (start_x, btn_y, button_width, button_height))
-            pygame.draw.rect(self.screen, (255, 215, 0), (start_x, btn_y, button_width, button_height), 2)
-            
-            option_text = self.font_small.render(option["text"], True, (255, 255, 255))
-            option_rect = option_text.get_rect(center=(SCREEN_WIDTH // 2, btn_y + button_height // 2))
-            self.screen.blit(option_text, option_rect)
-    
-    def wrap_text(self, text, font, max_width):
-        """自动换行文本"""
-        words = text.split(' ')
-        lines = []
-        current_line = []
-        
-        for word in words:
-            test_line = ' '.join(current_line + [word])
-            test_width, _ = font.size(test_line)
-            
-            if test_width <= max_width:
-                current_line.append(word)
-            else:
-                lines.append(' '.join(current_line))
-                current_line = [word]
-        
-        if current_line:
-            lines.append(' '.join(current_line))
-        
-        return lines
-    
-    def get_npc_menu_options(self, role):
-        """获取NPC对应的菜单选项"""
-        options = {
-            "equipment": [
-                {"text": "装备商店", "action": "equipment_shop"},
-                {"text": "装备强化", "action": "equipment_enhance"},
-                {"text": "装备分解", "action": "equipment_disassemble"},
-                {"text": "关闭", "action": "close"},
-            ],
-            "shop": [
-                {"text": "道具商店", "action": "item_shop"},
-                {"text": "材料商店", "action": "material_shop"},
-                {"text": "稀有物品", "action": "rare_items"},
-                {"text": "关闭", "action": "close"},
-            ],
-            "alchemy": [
-                {"text": "制作药水", "action": "make_potion"},
-                {"text": "材料合成", "action": "material_craft"},
-                {"text": "草药采集", "action": "herb_collect"},
-                {"text": "关闭", "action": "close"},
-            ],
-            "warehouse": [
-                {"text": "存放物品", "action": "store_item"},
-                {"text": "领取物品", "action": "retrieve_item"},
-                {"text": "查看仓库", "action": "view_warehouse"},
-                {"text": "关闭", "action": "close"},
-            ],
-            "quest": [
-                {"text": "查看任务", "action": "view_quests"},
-                {"text": "接取任务", "action": "accept_quest"},
-                {"text": "提交任务", "action": "complete_quest"},
-                {"text": "关闭", "action": "close"},
-            ],
-            "pvp": [
-                {"text": "竞技场挑战", "action": "arena_challenge"},
-                {"text": "排行榜", "action": "arena_ranking"},
-                {"text": "荣誉商店", "action": "honor_shop"},
-                {"text": "关闭", "action": "close"},
-            ],
-            "pet": [
-                {"text": "购买宠物", "action": "buy_pet"},
-                {"text": "宠物训练", "action": "train_pet"},
-                {"text": "宠物进化", "action": "evolve_pet"},
-                {"text": "关闭", "action": "close"},
-            ],
-            "fashion": [
-                {"text": "时装商店", "action": "fashion_shop"},
-                {"text": "染色服务", "action": "dye_service"},
-                {"text": "时装合成", "action": "fashion_craft"},
-                {"text": "关闭", "action": "close"},
-            ],
-        }
-        
-        return options.get(role, [{"text": "关闭", "action": "close"}])
-    
-    def handle_npc_dialog_input(self):
-        """处理NPC对话界面输入"""
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                return "quit"
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    self.show_npc_dialog = False
-                    self.current_npc = None
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:
-                    mx, my = event.pos
-                    
-                    dialog_width = 500
-                    dialog_height = 300
-                    dialog_x = (SCREEN_WIDTH - dialog_width) // 2
-                    dialog_y = SCREEN_HEIGHT - dialog_height - 50
-                    
-                    if dialog_x <= mx <= dialog_x + dialog_width and dialog_y <= my <= dialog_y + dialog_height:
-                        y_offset = dialog_y + 120
-                        button_height = 40
-                        button_spacing = 15
-                        button_width = 200
-                        start_x = (SCREEN_WIDTH - button_width) // 2
-                        
-                        options = self.get_npc_menu_options(self.current_npc["role"])
-                        
-                        for i, option in enumerate(options):
-                            btn_y = y_offset + i * (button_height + button_spacing)
-                            if start_x <= mx <= start_x + button_width and btn_y <= my <= btn_y + button_height:
-                                if option["action"] == "close":
-                                    self.show_npc_dialog = False
-                                    self.current_npc = None
-                                else:
-                                    self.message = f"功能开发中: {option['text']}"
-                                    self.message_timer = 2000
-                                    self.show_npc_dialog = False
-                                    self.current_npc = None
-                                break
-        
-        return None
+            logger.info(f"绘制地点错误: {e}")
     
     def draw_cube(self, width, height, depth):
         """绘制立方体"""
@@ -2506,7 +2990,7 @@ class GameMap3D:
             glEnable(GL_LIGHTING)
             glPopMatrix()
         except Exception as e:
-            print(f"绘制玩家错误: {e}")
+            logger.info(f"绘制玩家错误: {e}")
     
     def draw_follower(self, follower):
         """绘制跟随者"""
@@ -2531,7 +3015,7 @@ class GameMap3D:
             
             glPopMatrix()
         except Exception as e:
-            print(f"绘制跟随者错误: {e}")
+            logger.info(f"绘制跟随者错误: {e}")
     
     def draw_hud(self):
         """绘制HUD"""
@@ -2591,8 +3075,8 @@ class GameMap3D:
             self.screen.blit(crosshair_surf, 
                            (crosshair_center[0] - crosshair_size - 5, 
                             crosshair_center[1] - crosshair_size - 5))
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
         
         # 绘制控制提示
         controls = [
@@ -2628,7 +3112,6 @@ class GameMap3D:
         
         # 屏幕中心下方位置
         center_x = SCREEN_WIDTH // 2
-        center_y = SCREEN_HEIGHT // 2
         bottom_y = SCREEN_HEIGHT - 100
         
         # 绘制生命值（红色心形）
@@ -2710,6 +3193,7 @@ class GameMap3D:
         crosshair_size = 15
         crosshair_thickness = 2
         crosshair_color = (255, 255, 255)
+        center_y = SCREEN_HEIGHT // 2
         
         # 水平线
         pygame.draw.line(self.screen, crosshair_color, 
@@ -2768,6 +3252,120 @@ class GameMap3D:
             self.achievements[achievement_id]["unlocked"] = True
             achievement = self.achievements[achievement_id]
             self.add_chat_message(f"[成就] {achievement['name']}: {achievement['description']}")
+    
+    def check_egg_triggers(self):
+        """检测彩蛋触发条件"""
+        try:
+            # 检测放置方块彩蛋
+            if len(self.placed_blocks) >= 1 and not self.eggs.get("first_block", {}).get("found", False):
+                self.eggs["first_block"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 放置第一个方块！")
+            
+            if len(self.placed_blocks) >= 100 and not self.eggs.get("100_blocks", {}).get("found", False):
+                self.eggs["100_blocks"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 放置100个方块！")
+            
+            # 检测合成彩蛋
+            if self.stats["items_crafted"] >= 1 and not self.eggs.get("first_craft", {}).get("found", False):
+                self.eggs["first_craft"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 完成第一次合成！")
+            
+            # 检测击杀彩蛋
+            if self.stats["mobs_killed"] >= 1 and not self.eggs.get("first_kill", {}).get("found", False):
+                self.eggs["first_kill"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 杀死第一个怪物！")
+            
+            if self.stats["mobs_killed"] >= 100 and not self.eggs.get("100_kills", {}).get("found", False):
+                self.eggs["100_kills"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 杀死100个怪物！")
+            
+            # 检测昼夜彩蛋
+            if self.stats["days_passed"] >= 1 and not self.eggs.get("day_night", {}).get("found", False):
+                self.eggs["day_night"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 度过一个完整的昼夜循环！")
+            
+            # 检测高度彩蛋
+            if self.player_pos[1] <= -50 and not self.eggs.get("underground", {}).get("found", False):
+                self.eggs["underground"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 深入地下50格！")
+            
+            if self.player_pos[1] >= 50 and not self.eggs.get("high_altitude", {}).get("found", False):
+                self.eggs["high_altitude"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 到达高空50格！")
+            
+            # 检测天气彩蛋
+            if self.weather == "rain" and not self.eggs.get("rain", {}).get("found", False):
+                self.eggs["rain"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 在雨中待5分钟！")
+            
+            if self.weather == "snow" and not self.eggs.get("snow", {}).get("found", False):
+                self.eggs["snow"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 在雪中待5分钟！")
+            
+            # 检测Herobrine彩蛋
+            if self.herobrine_active and not self.eggs.get("herobrine", {}).get("found", False):
+                self.eggs["herobrine"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 在夜晚遇到Herobrine！")
+            
+            # 检测创造模式飞行彩蛋
+            if self.game_mode == "creative" and not self.eggs.get("fly_creative", {}).get("found", False):
+                total_distance = abs(self.player_pos[0]) + abs(self.player_pos[1]) + abs(self.player_pos[2])
+                if total_distance >= 100:
+                    self.eggs["fly_creative"]["found"] = True
+                    self.add_chat_message("🎉 解锁彩蛋: 在创造模式飞行100格！")
+            
+            # 检测游泳彩蛋
+            if self.player_pos[1] < 0 and not self.eggs.get("swim", {}).get("found", False):
+                self.eggs["swim"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 游泳100格！")
+            
+            # 检测跳跃彩蛋
+            if not hasattr(self, 'jump_count'):
+                self.jump_count = 0
+            
+            if self.velocity[1] > 0:
+                self.jump_count += 1
+                if self.jump_count >= 100 and not self.eggs.get("jump_100", {}).get("found", False):
+                    self.eggs["jump_100"]["found"] = True
+                    self.add_chat_message("🎉 解锁彩蛋: 跳跃100次！")
+            
+            # 检测潜行彩蛋
+            if self.is_sneaking and not self.eggs.get("sneak", {}).get("found", False):
+                self.eggs["sneak"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 潜行100格！")
+            
+            # 检测冲刺彩蛋
+            if self.is_sprinting and not self.eggs.get("sprint", {}).get("found", False):
+                self.eggs["sprint"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 冲刺100格！")
+            
+            # 检测工具制作彩蛋
+            if self.eggs.get("pickaxe", {}).get("found", False):
+                self.eggs["pickaxe"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 制作一把镐子！")
+            
+            if self.eggs.get("axe", {}).get("found", False):
+                self.eggs["axe"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 制作一把斧头！")
+            
+            if self.eggs.get("shovel", {}).get("found", False):
+                self.eggs["shovel"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 制作一把铲子！")
+            
+            if self.eggs.get("hoe", {}).get("found", False):
+                self.eggs["hoe"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 制作一把锄头！")
+            
+            if self.eggs.get("sword", {}).get("found", False):
+                self.eggs["sword"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 制作一把剑！")
+            
+            if self.eggs.get("bow", {}).get("found", False):
+                self.eggs["bow"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 制作一把弓！")
+            
+        except Exception as e:
+            logger.info(f"[错误] 检测彩蛋触发失败: {e}")
     
     def draw_pause_menu(self):
         """绘制暂停菜单（类似MC风格）"""
@@ -3466,7 +4064,7 @@ class GameMap3D:
                     z = float(args[3])
                     self.player_pos = [x, y, z]
                     self.add_chat_message(f"已传送到 ({x}, {y}, {z})")
-                except:
+                except Exception as _e:
                     self.add_chat_message("用法: /tp <x> <y> <z>")
         
         elif cmd == "heal":
@@ -3484,16 +4082,86 @@ class GameMap3D:
                 "/give <物品> [数量] - 获得物品",
                 "/kill - 自杀",
                 "/time <day/night/add> - 设置时间",
-                "/weather <clear/rain/snow> - 设置天气",
+                "/weather <clear/rain/snow/thunder> - 设置天气",
                 "/tp <x> <y> <z> - 传送",
                 "/heal - 恢复生命",
                 "/feed - 恢复饥饿",
                 "/help - 显示帮助",
                 "/eggs - 显示彩蛋提示",
-                "/developer - 开发者彩蛋"
+                "/cheats - 显示作弊码列表",
+                "/developer - 开发者彩蛋",
+                "/dev - 开发者隐藏命令",
+                "/effect <效果> - 添加效果",
+                "/spawn <生物> - 生成生物"
             ]
             for line in help_text:
                 self.add_chat_message(line)
+        
+        elif cmd == "cheats" or cmd == "cheatcodes":
+            self.add_chat_message("=== 🎮 作弊码列表 ===")
+            self.add_chat_message("💡 在游戏中按顺序输入按键即可激活！")
+            self.add_chat_message("⚠️ 2秒内未继续输入会重置序列")
+            for code_id, code_data in self.cheat_codes.items():
+                sequence_str = " ".join(code_data["sequence"])
+                self.add_chat_message(f"🔑 {code_data['name']}: {sequence_str}")
+            self.add_chat_message("📍 还有隐藏的特定位置彩蛋等你发现！")
+        
+        elif cmd == "dev" or cmd == "developer":
+            if self.active_cheat_effects.get("developer_mode", False) or cmd == "developer":
+                if not self.eggs["developer"]["found"]:
+                    self.eggs["developer"]["found"] = True
+                    self.add_chat_message("🎉 恭喜解锁开发者彩蛋！")
+                    self.add_chat_message("神秘信息: 42是宇宙的终极答案")
+                self.add_chat_message("🔧 开发者命令已激活！")
+                self.add_chat_message("可用: /dev_stats, /dev_spawn, /dev_effect")
+                self.active_cheat_effects["developer_mode"] = True
+            else:
+                self.add_chat_message("⚠️ 需要先激活开发者模式！")
+                self.add_chat_message("提示: 输入 42 或找到开发者彩蛋")
+        
+        elif cmd == "dev_stats":
+            if self.active_cheat_effects.get("developer_mode", False):
+                self.add_chat_message("=== 📊 开发者统计 ===")
+                self.add_chat_message(f"作弊码输入次数: {self.cheat_stats['codes_entered']}")
+                self.add_chat_message(f"成功激活次数: {self.cheat_stats['codes_successful']}")
+                self.add_chat_message(f"最后激活: {self.cheat_stats['last_code'] or '无'}")
+                self.add_chat_message(f"总奖励数: {self.cheat_stats['total_rewards']}")
+                self.add_chat_message(f"已解锁彩蛋: {sum(1 for e in self.eggs.values() if e.get('found', False))}")
+                self.add_chat_message(f"当前按键序列: {self.cheat_code_buffer}")
+            else:
+                self.add_chat_message("⚠️ 需要开发者模式！")
+        
+        elif cmd == "effect":
+            if len(args) >= 2:
+                effect_name = args[1]
+                duration = int(args[2]) if len(args) >= 3 else 60
+                if effect_name in self.active_cheat_effects:
+                    self.active_cheat_effects[effect_name] = True
+                    self.add_chat_message(f"✨ 效果 {effect_name} 已激活，持续 {duration} 秒！")
+                else:
+                    available_effects = list(self.active_cheat_effects.keys())
+                    self.add_chat_message(f"未知效果: {effect_name}")
+                    self.add_chat_message(f"可用效果: {', '.join(available_effects)}")
+            else:
+                self.add_chat_message("用法: /effect <效果名> [持续时间]")
+        
+        elif cmd == "spawn":
+            if len(args) >= 2:
+                entity_type = args[1]
+                self.add_chat_message(f"🐉 生成生物: {entity_type}")
+                self.spawn_effect_particle(self.player_pos[0], self.player_pos[1] + 2, self.player_pos[2], "magic")
+            else:
+                self.add_chat_message("用法: /spawn <生物类型>")
+        
+        elif cmd == "locations":
+            self.add_chat_message("=== 📍 秘密位置彩蛋 ===")
+            for loc_id, loc_data in self.secret_locations.items():
+                pos = loc_data["pos"]
+                if self.active_cheat_effects.get("egg_hints", False):
+                    self.add_chat_message(f"🎯 {loc_data['message']} 位置: ({pos[0]}, {pos[1]}, {pos[2]})")
+                else:
+                    self.add_chat_message(f"❓ {loc_data['message']} (位置隐藏)")
+            self.add_chat_message("💡 使用 'egg' 作弊码显示位置提示！")
         
         elif cmd == "eggs":
             self.add_chat_message("=== 彩蛋列表 ===")
@@ -3517,6 +4185,234 @@ class GameMap3D:
         
         else:
             self.add_chat_message("未知命令: " + cmd)
+    
+    def check_cheat_code_sequence(self, key):
+        """检测按键序列作弊码"""
+        try:
+            current_time = time.time()
+            
+            if current_time - self.last_cheat_key_time > self.cheat_code_input_timeout:
+                self.cheat_code_buffer = []
+            
+            self.last_cheat_key_time = current_time
+            
+            key_name = self.get_key_name(key)
+            if key_name:
+                self.cheat_code_buffer.append(key_name)
+                
+                if len(self.cheat_code_buffer) > self.cheat_code_max_length:
+                    self.cheat_code_buffer.pop(0)
+                
+                for code_id, code_data in self.cheat_codes.items():
+                    sequence = code_data["sequence"]
+                    buffer_tail = self.cheat_code_buffer[-len(sequence):]
+                    
+                    if buffer_tail == sequence:
+                        self.activate_cheat_code(code_id, code_data)
+                        self.cheat_code_buffer = []
+                        return
+                        
+        except Exception as e:
+            logger.info(f"[错误] 检测作弊码序列失败: {e}")
+    
+    def get_key_name(self, key):
+        """获取按键名称"""
+        key_map = {
+            pygame.K_UP: "up",
+            pygame.K_DOWN: "down",
+            pygame.K_LEFT: "left",
+            pygame.K_RIGHT: "right",
+            pygame.K_a: "a",
+            pygame.K_b: "b",
+            pygame.K_c: "c",
+            pygame.K_d: "d",
+            pygame.K_e: "e",
+            pygame.K_f: "f",
+            pygame.K_g: "g",
+            pygame.K_h: "h",
+            pygame.K_i: "i",
+            pygame.K_j: "j",
+            pygame.K_k: "k",
+            pygame.K_l: "l",
+            pygame.K_m: "m",
+            pygame.K_n: "n",
+            pygame.K_o: "o",
+            pygame.K_p: "p",
+            pygame.K_q: "q",
+            pygame.K_r: "r",
+            pygame.K_s: "s",
+            pygame.K_t: "t",
+            pygame.K_u: "u",
+            pygame.K_v: "v",
+            pygame.K_w: "w",
+            pygame.K_x: "x",
+            pygame.K_y: "y",
+            pygame.K_z: "z",
+            pygame.K_0: "0",
+            pygame.K_1: "1",
+            pygame.K_2: "2",
+            pygame.K_3: "3",
+            pygame.K_4: "4",
+            pygame.K_5: "5",
+            pygame.K_6: "6",
+            pygame.K_7: "7",
+            pygame.K_8: "8",
+            pygame.K_9: "9"
+        }
+        return key_map.get(key, None)
+    
+    def activate_cheat_code(self, code_id, code_data):
+        """激活作弊码效果"""
+        try:
+            self.add_chat_message(f"🎮 {code_data['message']}")
+            self.cheat_stats["codes_entered"] += 1
+            self.cheat_stats["codes_successful"] += 1
+            self.cheat_stats["last_code"] = code_id
+            
+            effect = code_data.get("effect", "")
+            reward = code_data.get("reward", {})
+            
+            if "health" in reward:
+                self.health = min(self.health + reward["health"], self.max_health * 10)
+            if "hunger" in reward:
+                self.hunger = min(self.hunger + reward["hunger"], self.max_hunger * 10)
+            if "experience" in reward:
+                self.experience += reward["experience"]
+            if "level" in reward:
+                self.level = reward["level"]
+            if "game_mode" in reward:
+                self.game_mode = reward["game_mode"]
+                if reward["game_mode"] == "creative":
+                    self.can_fly = True
+            if "can_fly" in reward:
+                self.can_fly = reward["can_fly"]
+            if "flying" in reward:
+                self.flying = reward["flying"]
+            if "speed" in reward:
+                self.camera["speed"] = reward["speed"]
+            if "fly_speed" in reward:
+                self.fly_speed = reward["fly_speed"]
+            if "jump_power" in reward:
+                self.velocity[1] = reward["jump_power"]
+            
+            for effect_name, effect_value in reward.items():
+                if effect_name in self.active_cheat_effects:
+                    self.active_cheat_effects[effect_name] = effect_value
+            
+            if "generals" in reward:
+                for general in reward["generals"]:
+                    self.add_item_to_inventory(f"{general}卡", 1)
+                    self.add_chat_message(f"⚔️ 获得 {general} 武将卡！")
+            
+            if "secret_items" in reward:
+                for item in reward["secret_items"]:
+                    self.add_item_to_inventory(item, 1)
+                    self.add_chat_message(f"🎁 获得 {item}！")
+            
+            if "eggs_unlocked" in reward:
+                unlocked_count = 0
+                for egg_id in self.eggs:
+                    if not self.eggs[egg_id]["found"]:
+                        self.eggs[egg_id]["found"] = True
+                        unlocked_count += 1
+                        if unlocked_count >= reward["eggs_unlocked"]:
+                            break
+                self.add_chat_message(f"🥚 解锁了 {unlocked_count} 个彩蛋！")
+            
+            if "all_achievements" in reward and reward["all_achievements"]:
+                for achievement in self.achievements:
+                    self.achievements[achievement]["unlocked"] = True
+                self.add_chat_message("🏆 所有成就已解锁！")
+            
+            if "all_eggs" in reward and reward["all_eggs"]:
+                for egg_id in self.eggs:
+                    self.eggs[egg_id]["found"] = True
+                self.add_chat_message("🥚 所有彩蛋已解锁！")
+            
+            if "full_inventory" in reward and reward["full_inventory"]:
+                for item_type in self.item_types:
+                    for item in self.item_types[item_type]:
+                        self.add_item_to_inventory(item, 64)
+                self.add_chat_message("📦 背包已填满所有物品！")
+            
+            if "random" in reward and reward["random"]:
+                random_rewards = [
+                    {"health": 100, "message": "💖 随机奖励：恢复生命！"},
+                    {"experience": 1000, "message": "⭐ 随机奖励：获得经验！"},
+                    {"item": "神秘宝箱", "message": "🎁 随机奖励：神秘宝箱！"},
+                    {"speed": 2.0, "message": "⚡ 随机奖励：速度提升！"},
+                    {"egg_unlock": True, "message": "🥚 随机奖励：解锁一个彩蛋！"}
+                ]
+                chosen = random.choice(random_rewards)
+                if "health" in chosen:
+                    self.health = min(self.health + chosen["health"], self.max_health * 10)
+                if "experience" in chosen:
+                    self.experience += chosen["experience"]
+                if "item" in chosen:
+                    self.add_item_to_inventory(chosen["item"], 1)
+                if "speed" in chosen:
+                    self.camera["speed"] = chosen["speed"]
+                if "egg_unlock" in chosen:
+                    for egg_id in self.eggs:
+                        if not self.eggs[egg_id]["found"]:
+                            self.eggs[egg_id]["found"] = True
+                            break
+                self.add_chat_message(chosen["message"])
+            
+            if "pet" in reward:
+                self.add_chat_message(f"🐉 获得宠物：{reward['pet']}！")
+            
+            if "weather_control" in reward and reward["weather_control"]:
+                self.add_chat_message("🌤️ 天气控制已激活！使用 /weather 命令")
+            
+            if "time_control" in reward and reward["time_control"]:
+                self.add_chat_message("⏰ 时间控制已激活！使用 /time 命令")
+            
+            if "developer_mode" in reward and reward["developer_mode"]:
+                self.active_cheat_effects["developer_mode"] = True
+                self.add_chat_message("🔧 开发者模式已激活！")
+                self.add_chat_message("可用隐藏命令: /dev, /spawn, /effect")
+            
+            if "particle_effects" in reward and reward["particle_effects"]:
+                self.spawn_effect_particle(self.player_pos[0], self.player_pos[1] + 2, self.player_pos[2], "magic")
+            
+            self.cheat_stats["total_rewards"] += 1
+            
+            egg_key = f"cheat_{code_id}"
+            if egg_key not in self.eggs:
+                self.eggs[egg_key] = {"found": False, "hint": f"输入作弊码: {code_data['name']}"}
+            if not self.eggs[egg_key]["found"]:
+                self.eggs[egg_key]["found"] = True
+                self.add_chat_message(f"🎉 解锁彩蛋: {code_data['name']}！")
+            
+            self.spawn_effect_particle(self.player_pos[0], self.player_pos[1] + 2, self.player_pos[2], "enchant")
+            
+        except Exception as e:
+            logger.info(f"[错误] 激活作弊码失败: {e}")
+            self.add_chat_message(f"❌ 作弊码激活失败: {str(e)}")
+    
+    def check_secret_location_triggers(self):
+        """检测特定位置触发彩蛋"""
+        try:
+            for loc_id, loc_data in self.secret_locations.items():
+                pos = loc_data["pos"]
+                radius = loc_data["radius"]
+                
+                distance = math.sqrt(
+                    (self.player_pos[0] - pos[0]) ** 2 +
+                    (self.player_pos[1] - pos[1]) ** 2 +
+                    (self.player_pos[2] - pos[2]) ** 2
+                )
+                
+                if distance <= radius:
+                    egg_id = loc_data["egg"]
+                    if not self.eggs.get(egg_id, {}).get("found", False):
+                        self.eggs[egg_id]["found"] = True
+                        self.add_chat_message(f"📍 {loc_data['message']}")
+                        self.spawn_effect_particle(pos[0], pos[1] + 2, pos[2], "magic")
+                        
+        except Exception as e:
+            logger.info(f"[错误] 检测位置彩蛋失败: {e}")
     
     def draw_command_input(self):
         """绘制命令输入框"""
@@ -3722,14 +4618,6 @@ class GameMap3D:
         self.message_timer = 2000
         self.check_crafting()
     
-    def cleanup_and_exit(self):
-        """清理并退出，确保恢复显示模式"""
-        self.save_mc_world_data()
-        if hasattr(self, 'original_display_size'):
-            pygame.display.set_mode(self.original_display_size)
-        else:
-            pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-    
     def main(self):
         """主循环"""
         if not self.initialize():
@@ -3742,7 +4630,6 @@ class GameMap3D:
                 if result == "quit":
                     running = False
                 elif result == "main_menu":
-                    self.cleanup_and_exit()
                     return "main_menu"
                 
                 self.draw_3d_scene()
@@ -3773,18 +4660,6 @@ class GameMap3D:
                 self.clock.tick(60)
                 continue
             
-            if self.show_npc_dialog:
-                result = self.handle_npc_dialog_input()
-                if result == "quit":
-                    running = False
-                
-                self.draw_3d_scene()
-                self.draw_npcs()
-                self.draw_npc_dialog()
-                pygame.display.flip()
-                self.clock.tick(60)
-                continue
-            
             running = self.handle_input()
             
             if self.show_command:
@@ -3799,6 +4674,9 @@ class GameMap3D:
                 self.velocity[1] += self.gravity
             
             self.handle_flying()
+            
+            # 🎮 作弊码位置彩蛋检测
+            self.check_secret_location_triggers()
             
             # 更新位置
             self.player_pos[0] += self.velocity[0]
@@ -3853,6 +4731,10 @@ class GameMap3D:
             # 更新天气系统
             self.update_weather()
             
+            # 更新粒子系统
+            self.update_effect_particles()
+            self.update_dust_particles()
+            
             # 更新生物系统
             self.spawn_entity()
             self.update_entities()
@@ -3860,11 +4742,21 @@ class GameMap3D:
             # 更新Herobrine彩蛋
             self.update_herobrine()
             
+            # 检测彩蛋触发
+            self.check_egg_triggers()
+            
             # 更新海浪效果
             self.update_waves()
             
             # 更新相机
             self.update_camera()
+            
+            # 自动存档
+            current_time = time.time()
+            if current_time - self.last_auto_save_time >= self.auto_save_interval:
+                self.save_mc_world_data()
+                self.last_auto_save_time = current_time
+                self.add_chat_message("游戏已自动保存")
             
             # 更新跟随者
             self.update_followers()
@@ -3872,20 +4764,15 @@ class GameMap3D:
             # 绘制3D场景
             self.draw_3d_scene()
             
-            # 绘制NPC
-            self.draw_npcs()
-            
             # 绘制HUD
             self.draw_mc_hud()
             self.draw_hotbar()
             
-            # 刷新显示
-            pygame.display.flip()
-            
             # 限制帧率
             self.clock.tick(60)
         
-        self.cleanup_and_exit()
+        self.save_mc_world_data()
+        pygame.quit()
 
 def main():
     """3D地图主函数"""

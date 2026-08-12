@@ -1,3 +1,5 @@
+"""宠物系统 - 获取、升级、出战、被动加成"""
+
 import pygame
 import time
 import random
@@ -8,7 +10,7 @@ import math
 # 添加父目录到Python路径，确保可以正确导入ASSET模块
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ASSET.game_data import data, save, get_system_font_name
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET.game_main_menu import Button, COLORS, draw_gradient_background, draw_title, Particle
 
 # 全局变量（延迟初始化）
@@ -320,7 +322,7 @@ def init_fonts():
         else:
             FONT_MAIN = pygame.font.Font(None, 40)
             FONT_SMALL = pygame.font.Font(None, 28)
-    except Exception:
+    except Exception as _e:
         FONT_MAIN = pygame.font.Font(None, 40)
         FONT_SMALL = pygame.font.Font(None, 28)
     
@@ -332,8 +334,8 @@ def init_fonts():
                 ASSET.game_main_menu.FONT_BIG = pygame.font.SysFont(font_name, 60)
             else:
                 ASSET.game_main_menu.FONT_BIG = pygame.font.Font(None, 60)
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 def draw_pet_status(surface, pet, x, y, width, height):
     """绘制宠物状态面板"""
@@ -563,7 +565,7 @@ def pet_menu():
             save()
         
         # 渐变背景
-        draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+        draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
         
         # 装饰粒子
         if random.random() < 0.1:
@@ -576,8 +578,6 @@ def pet_menu():
         for p in particles[:]:
             p.update()
             p.draw(screen)
-            if p.life <= 0:
-                particles.remove(p)
         
         # 标题
         draw_title(screen, "宠物系统", screen_height * 0.12, screen_width)
@@ -785,7 +785,7 @@ def hatch_selection_menu():
         button_spacing = min(20, screen_height * 0.03)
         
         # 渐变背景
-        draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+        draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
         
         # 装饰粒子
         if random.random() < 0.1:
@@ -798,8 +798,6 @@ def hatch_selection_menu():
         for p in particles[:]:
             p.update()
             p.draw(screen)
-            if p.life <= 0:
-                particles.remove(p)
         
         # 标题
         draw_title(screen, "选择要孵化的宠物蛋", screen_height * 0.12, screen_width)
@@ -890,7 +888,7 @@ def pet_warehouse_menu():
         button_spacing = min(15, screen_height * 0.025)
         
         # 渐变背景
-        draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+        draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
         
         # 装饰粒子
         if random.random() < 0.1:
@@ -903,8 +901,6 @@ def pet_warehouse_menu():
         for p in particles[:]:
             p.update()
             p.draw(screen)
-            if p.life <= 0:
-                particles.remove(p)
         
         # 标题
         draw_title(screen, "宠物仓库", screen_height * 0.12, screen_width)
@@ -995,7 +991,6 @@ def main():
     pet_menu()
 
 # 导入必要的模块
-import math
 from ASSET.game_main_menu import Particle
 
 if __name__ == '__main__':

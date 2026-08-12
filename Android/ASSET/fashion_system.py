@@ -1,7 +1,9 @@
+"""时装系统 - 时装装备与外观切换"""
+
 import pygame
 import json
 import os
-from ASSET.game_data import data, save, FASHION_ITEMS, get_system_font_name, load_sound, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, FASHION_ITEMS, get_system_font_name, create_font, load_sound, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 
 # 颜色定义
@@ -49,17 +51,9 @@ class Button:
         text_rect = text_surf.get_rect(center=(self.x + self.width // 2, self.y + self.height // 2))
         surface.blit(text_surf, text_rect)
 
-def draw_gradient_bg(surface, color1, color2):
-    """绘制渐变背景"""
-    for y in range(surface.get_height()):
-        r = int(color1[0] + (color2[0] - color1[0]) * y / surface.get_height())
-        g = int(color1[1] + (color2[1] - color1[1]) * y / surface.get_height())
-        b = int(color1[2] + (color2[2] - color1[2]) * y / surface.get_height())
-        pygame.draw.line(surface, (r, g, b), (0, y), (surface.get_width(), y))
-
 def draw_title(surface, text, y, width):
     """绘制标题"""
-    font = pygame.font.SysFont(get_system_font_name(), 48)
+    font = create_font(get_system_font_name(), 48)
     text_surf = font.render(text, True, COLORS["accent_gold"])
     text_rect = text_surf.get_rect(center=(width // 2, y))
     surface.blit(text_surf, text_rect)
@@ -148,6 +142,40 @@ def get_fashion_effects():
     
     return effects
 
+def draw_skin_avatar(surface, category, skin_id, cx, cy, scale=1.0):
+    """绘制时装外观小人示意图，颜色随时装变化"""
+    # 根据时装id生成主题色
+    seed = sum(ord(c) for c in str(skin_id))
+    r = (seed * 37 + 60) % 180 + 50
+    g = (seed * 73 + 90) % 180 + 50
+    b = (seed * 101 + 120) % 180 + 50
+    main_color = (r, g, b)
+    dark_color = (r // 2 + 20, g // 2 + 20, b // 2 + 20)
+    s = scale
+    if category == "hero":
+        # 武将小人：头 + 头饰 + 身体 + 腰带
+        pygame.draw.circle(surface, (245, 220, 180), (int(cx), int(cy - 34 * s)), int(15 * s))
+        pygame.draw.circle(surface, main_color, (int(cx), int(cy - 42 * s)), int(6 * s))
+        pygame.draw.rect(surface, main_color, (int(cx - 16 * s), int(cy - 16 * s), int(32 * s), int(40 * s)), border_radius=6)
+        pygame.draw.rect(surface, dark_color, (int(cx - 16 * s), int(cy + 8 * s), int(32 * s), int(6 * s)))
+    elif category == "weapon":
+        # 武器：斜向长柄 + 刃
+        pygame.draw.line(surface, main_color, (int(cx - 10 * s), int(cy + 34 * s)), (int(cx + 10 * s), int(cy - 34 * s)), max(3, int(5 * s)))
+        pygame.draw.circle(surface, main_color, (int(cx + 10 * s), int(cy - 34 * s)), int(6 * s))
+        pygame.draw.rect(surface, dark_color, (int(cx - 14 * s), int(cy + 30 * s), int(28 * s), int(6 * s)))
+    elif category == "mount":
+        # 坐骑：马形（椭圆身体 + 四条腿 + 头）
+        pygame.draw.ellipse(surface, main_color, (int(cx - 30 * s), int(cy - 14 * s), int(60 * s), int(28 * s)))
+        pygame.draw.rect(surface, dark_color, (int(cx - 24 * s), int(cy + 12 * s), int(8 * s), int(14 * s)))
+        pygame.draw.rect(surface, dark_color, (int(cx - 6 * s), int(cy + 12 * s), int(8 * s), int(14 * s)))
+        pygame.draw.rect(surface, dark_color, (int(cx + 12 * s), int(cy + 12 * s), int(8 * s), int(14 * s)))
+        pygame.draw.rect(surface, dark_color, (int(cx + 26 * s), int(cy + 12 * s), int(8 * s), int(14 * s)))
+        pygame.draw.circle(surface, (245, 220, 180), (int(cx - 26 * s), int(cy - 12 * s)), int(7 * s))
+    else:
+        # 其他：通用旗帜/徽章
+        pygame.draw.rect(surface, main_color, (int(cx - 18 * s), int(cy - 20 * s), int(36 * s), int(40 * s)), border_radius=8)
+        pygame.draw.circle(surface, dark_color, (int(cx), int(cy)), int(8 * s))
+
 def draw_fashion_preview(screen, category, fashion_id, x, y, width, height):
     """绘制时装预览"""
     # 预览背景
@@ -156,13 +184,15 @@ def draw_fashion_preview(screen, category, fashion_id, x, y, width, height):
     
     # 时装名称
     fashion_name = FASHION_ITEMS[f"{category}_skins"][fashion_id]["name"]
-    font = pygame.font.SysFont(get_system_font_name(), 24)
+    font = create_font(get_system_font_name(), 24)
     name_surf = font.render(fashion_name, True, COLORS["accent_gold"])
     screen.blit(name_surf, (x + 20, y + 20))
     
-    # 时装描述
+    # 时装描述（超长截断，避免顶出卡片）
     description = FASHION_ITEMS[f"{category}_skins"][fashion_id]["description"]
-    desc_font = pygame.font.SysFont(get_system_font_name(), 16)
+    if len(description) > 16:
+        description = description[:16] + "..."
+    desc_font = create_font(get_system_font_name(), 16)
     desc_surf = desc_font.render(description, True, COLORS["text_white"])
     screen.blit(desc_surf, (x + 20, y + 50))
     
@@ -175,6 +205,9 @@ def draw_fashion_preview(screen, category, fashion_id, x, y, width, height):
             effect_surf = desc_font.render(effect_text, True, COLORS["success"])
             screen.blit(effect_surf, (x + 20, effect_y))
             effect_y += 20
+    
+    # 外观示意图（人物/武器/坐骑，颜色随时装变化）
+    draw_skin_avatar(screen, category, fashion_id, x + width - 70, y + height // 2, 1.0)
     
     # 时装状态
     is_unlocked = fashion_id in data["fashion"]["unlocked"][f"{category}_skins"]
@@ -192,6 +225,10 @@ def draw_fashion_preview(screen, category, fashion_id, x, y, width, height):
     
     status_surf = font.render(status_text, True, status_color)
     screen.blit(status_surf, (x + 20, y + height - 50))
+    
+    # 穿戴提示
+    tip_surf = desc_font.render("穿戴后战斗自动生效", True, COLORS["text_gray"])
+    screen.blit(tip_surf, (x + 130, y + height - 50))
     
     # 价格
     cost = FASHION_ITEMS[f"{category}_skins"][fashion_id]["cost"]
@@ -308,7 +345,7 @@ def fashion_shop(screen, font_main, font_small, clock):
         effects = get_fashion_effects()
         if effects:
             effect_y = screen.get_height() - 150
-            font = pygame.font.SysFont(get_system_font_name(), 20)
+            font = create_font(get_system_font_name(), 20)
             effect_title = font.render("当前时装效果:", True, COLORS["accent_gold"])
             screen.blit(effect_title, (100, effect_y))
             effect_y += 30
@@ -336,10 +373,14 @@ def main():
     # 初始化pygame
     pygame.init()
     
-    # 设置屏幕
-    screen_width = 1024
-    screen_height = 768
-    screen = pygame.display.set_mode((screen_width, screen_height))
+    # 设置屏幕：优先复用当前显示表面，避免返回主菜单错位
+    cur_surface = pygame.display.get_surface()
+    if cur_surface is not None:
+        screen = cur_surface
+    else:
+        screen_width = 1024
+        screen_height = 768
+        screen = pygame.display.set_mode((screen_width, screen_height))
     pygame.display.set_caption("时装系统")
     clock = pygame.time.Clock()
     
@@ -347,8 +388,8 @@ def main():
     font_name = get_system_font_name()
     try:
         if font_name:
-            FONT_MAIN = pygame.font.SysFont(font_name, 40)
-            FONT_SMALL = pygame.font.SysFont(font_name, 24)
+            FONT_MAIN = create_font(font_name, 40)
+            FONT_SMALL = create_font(font_name, 24)
         else:
             FONT_MAIN = pygame.font.Font(None, 40)
             FONT_SMALL = pygame.font.Font(None, 24)
@@ -361,8 +402,6 @@ def main():
     
     # 运行时装商店
     fashion_shop(screen, FONT_MAIN, FONT_SMALL, clock)
-    
-    pygame.quit()
 
 if __name__ == "__main__":
     main()

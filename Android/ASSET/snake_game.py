@@ -293,9 +293,11 @@ def main():
             pygame.display.flip()
             clock.tick(game.speed)  # 使用游戏的速度属性控制蛇的速度
         
-        safe_exit("贪吃蛇游戏")
+        return
     except Exception as e:
-        safe_exit("贪吃蛇游戏", str(e))
+        import traceback
+        traceback.print_exc()
+        return
 
 if __name__ == "__main__":
     main()

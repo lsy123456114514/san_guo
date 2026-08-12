@@ -24,6 +24,7 @@ COLORS = {
 }
 
 class Particle:
+    """粒子效果 - 支持普通圆形与星形闪烁粒子"""
     def __init__(self, x, y, color, speed, size, life, particle_type="normal"):
         self.x = x
         self.y = y
@@ -63,6 +64,7 @@ class Particle:
             pygame.draw.circle(surface, self.color, (int(self.x), int(self.y)), int(self.size))
 
 class AnimatedButton:
+    """动画按钮 - 悬停缩放、发光与星形粒子特效"""
     def __init__(self, text, x, y, width, height, font, 
                  normal_color=COLORS["accent_blue"], 
                  hover_color=COLORS["accent_blue_light"], 
@@ -168,16 +170,6 @@ class AnimatedButton:
             if pygame.time.get_ticks() - self.click_timer > 200:
                 self.is_clicked = False
         return False
-
-def draw_gradient_bg(surface, color1, color2):
-    """绘制渐变背景"""
-    width, height = surface.get_size()
-    for y in range(height):
-        ratio = y / height
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
 
 def draw_title(surface, text, y_pos, screen_width, font, color=COLORS["accent_gold"]):
     """绘制带特效的标题"""

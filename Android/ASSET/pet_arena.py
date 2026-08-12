@@ -1,3 +1,5 @@
+"""宠物竞技场 - 宠物对战玩法"""
+
 import pygame
 import time
 import random
@@ -8,7 +10,7 @@ import math
 # 添加父目录到Python路径，确保可以正确导入ASSET模块
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, get_system_font_name, create_font, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET.game_main_menu import Button, COLORS, draw_gradient_background, draw_title, Particle
 from ASSET.pet_system import Pet
 
@@ -466,8 +468,8 @@ def init_fonts():
     font_name = get_system_font_name()
     try:
         if font_name:
-            FONT_MAIN = pygame.font.SysFont(font_name, 40)
-            FONT_SMALL = pygame.font.SysFont(font_name, 28)
+            FONT_MAIN = create_font(font_name, 40)
+            FONT_SMALL = create_font(font_name, 28)
         else:
             FONT_MAIN = pygame.font.Font(None, 40)
             FONT_SMALL = pygame.font.Font(None, 28)

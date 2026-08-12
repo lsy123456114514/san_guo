@@ -1,3 +1,5 @@
+"""策略地图系统 - 领土管理与资源产出"""
+
 import pygame
 import math
 import random

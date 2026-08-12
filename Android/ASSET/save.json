@@ -2,16 +2,21 @@
   "username": "",
   "password": "",
   "resources": {
-    "水": 0,
-    "煤炭": 0,
-    "木头": 0,
-    "食物": 0,
-    "金元宝": 0,
+    "水": 668384,
+    "煤炭": 334186,
+    "木头": 534706,
+    "食物": 467864,
+    "金元宝": 133666,
     "时间卡": 0,
     "宠物食物": 0,
     "普通子弹": 0,
     "高级子弹": 0,
-    "稀有子弹": 0
+    "稀有子弹": 0,
+    "pet_eggs": 0,
+    "rare_pet_eggs": 0,
+    "epic_pet_eggs": 0,
+    "legendary_pet_eggs": 0,
+    "pet_food": 0
   },
   "normal_dungeon": 1,
   "infinite_dungeon": 1,
@@ -52,9 +57,16 @@
     }
   },
   "achievements": {
-    "unlocked": [],
-    "progress": {},
-    "claimed_rewards": []
+    "unlocked": [
+      "gold_10000",
+      "resource_master"
+    ],
+    "progress": {
+      "gold_10000": 100,
+      "resource_master": 100
+    },
+    "claimed_rewards": [],
+    "completed": []
   },
   "tech_tree": {
     "unlocked": [
@@ -96,7 +108,7 @@
       "base_time": 60
     }
   },
-  "last_login": 1779859489,
+  "last_login": 1786544363,
   "last_auto_save": 0,
   "resource_bonus": 1.0,
   "passive_income": {
@@ -118,22 +130,206 @@
   "unlocked_features": [],
   "prestige_level": 0,
   "tasks": {
-    "daily": {
-      "last_reset": 0,
-      "progress": {},
-      "completed": []
-    },
+    "daily": [
+      {
+        "id": "daily_1",
+        "name": "完成1次PVP",
+        "reward": {
+          "金元宝": 50
+        },
+        "progress": 0,
+        "target": 1
+      },
+      {
+        "id": "daily_2",
+        "name": "收集100资源",
+        "reward": {
+          "水": 100,
+          "木头": 100
+        },
+        "progress": 0,
+        "target": 100
+      },
+      {
+        "id": "daily_3",
+        "name": "登录游戏",
+        "reward": {
+          "时间卡": 1
+        },
+        "progress": 0,
+        "target": 1
+      }
+    ],
     "weekly": {
       "last_reset": 0,
       "progress": {},
       "completed": []
-    }
+    },
+    "main": [
+      {
+        "id": "main_1",
+        "name": "完成新手教程",
+        "reward": {
+          "金元宝": 100,
+          "武将碎片": {
+            "张飞": 5
+          }
+        },
+        "progress": 0,
+        "target": 1
+      },
+      {
+        "id": "main_2",
+        "name": "等级达到5级",
+        "reward": {
+          "金元宝": 200,
+          "装备": {
+            "武器": 1
+          }
+        },
+        "progress": 0,
+        "target": 5
+      },
+      {
+        "id": "main_3",
+        "name": "收集5个武将",
+        "reward": {
+          "金元宝": 300,
+          "时间卡+": 1
+        },
+        "progress": 0,
+        "target": 5
+      }
+    ]
   },
   "rankings": {
-    "pvp_wins": [],
+    "pvp_wins": [
+      {
+        "player": "玩家9",
+        "wins": 91
+      },
+      {
+        "player": "玩家10",
+        "wins": 80
+      },
+      {
+        "player": "玩家8",
+        "wins": 77
+      },
+      {
+        "player": "玩家2",
+        "wins": 73
+      },
+      {
+        "player": "玩家1",
+        "wins": 59
+      },
+      {
+        "player": "玩家7",
+        "wins": 45
+      },
+      {
+        "player": "玩家4",
+        "wins": 38
+      },
+      {
+        "player": "玩家5",
+        "wins": 23
+      },
+      {
+        "player": "玩家3",
+        "wins": 16
+      },
+      {
+        "player": "玩家6",
+        "wins": 8
+      }
+    ],
     "mini_game_scores": {},
-    "total_play_time": [],
-    "achievements_unlocked": []
+    "total_play_time": [
+      {
+        "player": "玩家10",
+        "time": 3527
+      },
+      {
+        "player": "玩家9",
+        "time": 3455
+      },
+      {
+        "player": "玩家6",
+        "time": 3282
+      },
+      {
+        "player": "玩家2",
+        "time": 3108
+      },
+      {
+        "player": "玩家1",
+        "time": 2859
+      },
+      {
+        "player": "玩家4",
+        "time": 2458
+      },
+      {
+        "player": "玩家7",
+        "time": 1470
+      },
+      {
+        "player": "玩家3",
+        "time": 1387
+      },
+      {
+        "player": "玩家8",
+        "time": 1286
+      },
+      {
+        "player": "玩家5",
+        "time": 1048
+      }
+    ],
+    "achievements_unlocked": [
+      {
+        "player": "玩家3",
+        "achievements": 20
+      },
+      {
+        "player": "玩家9",
+        "achievements": 20
+      },
+      {
+        "player": "玩家1",
+        "achievements": 19
+      },
+      {
+        "player": "玩家2",
+        "achievements": 19
+      },
+      {
+        "player": "玩家7",
+        "achievements": 19
+      },
+      {
+        "player": "玩家10",
+        "achievements": 19
+      },
+      {
+        "player": "玩家6",
+        "achievements": 14
+      },
+      {
+        "player": "玩家8",
+        "achievements": 13
+      },
+      {
+        "player": "玩家4",
+        "achievements": 1
+      },
+      {
+        "player": "玩家5",
+        "achievements": 1
+      }
+    ]
   },
   "checkin": {
     "last_checkin": "",
@@ -146,12 +342,65 @@
     "completed": []
   },
   "weather": {
-    "current_weather": null,
-    "weather_start_time": 0,
-    "weather_duration": 0,
+    "current_weather": {
+      "name": "多云",
+      "description": "天空多云，天气凉爽",
+      "effects": {
+        "fishing_bonus": 0.05,
+        "resource_bonus": 0.05,
+        "pet_happiness_bonus": 2
+      },
+      "color": [
+        150,
+        150,
+        150
+      ],
+      "icon": "☁️"
+    },
+    "weather_start_time": 1786538483.3223472,
+    "weather_duration": 10800,
     "current_holiday": null,
-    "current_season": null,
-    "current_time_of_day": null,
+    "current_season": {
+      "name": "夏季",
+      "description": "烈日炎炎，酷暑难耐",
+      "month_range": [
+        6,
+        8
+      ],
+      "effects": {
+        "resource_bonus": 0.1,
+        "attack_bonus": 0.05,
+        "fishing_bonus": 0.2
+      },
+      "color": [
+        255,
+        150,
+        50
+      ],
+      "ambient_effect": "sunshine"
+    },
+    "current_time_of_day": {
+      "name": "夜晚",
+      "hour_range": [
+        20,
+        23
+      ],
+      "effects": {
+        "visibility": 0.5,
+        "stealth_bonus": 0.2,
+        "resource_bonus": -0.05
+      },
+      "color": [
+        100,
+        100,
+        200
+      ],
+      "bg_color": [
+        10,
+        10,
+        30
+      ]
+    },
     "game_time": 0,
     "time_speed": 1.0
   },
@@ -183,12 +432,35 @@
     "active_chains": [],
     "completed_chains": [],
     "current_tasks": {},
-    "task_progress": {},
-    "daily_tasks": [],
-    "weekly_tasks": [],
+    "task_progress": {
+      "daily_battle": 0,
+      "daily_win": 0,
+      "daily_checkin": 0,
+      "daily_event": 0,
+      "daily_resource": 0,
+      "weekly_battle_20": 0,
+      "weekly_win_10": 0,
+      "weekly_checkin_5": 0,
+      "weekly_hero": 0,
+      "weekly_story": 0
+    },
+    "daily_tasks": [
+      "daily_battle",
+      "daily_win",
+      "daily_checkin",
+      "daily_event",
+      "daily_resource"
+    ],
+    "weekly_tasks": [
+      "weekly_battle_20",
+      "weekly_win_10",
+      "weekly_checkin_5",
+      "weekly_hero",
+      "weekly_story"
+    ],
     "claimed_rewards": [],
-    "last_daily_refresh": "",
-    "last_weekly_refresh": ""
+    "last_daily_refresh": "2026-08-12",
+    "last_weekly_refresh": "2026-32"
   },
   "hero_collection": {
     "collected": [],
@@ -252,7 +524,20 @@
     }
   },
   "mail": {
-    "inbox": [],
+    "inbox": [
+      {
+        "id": "mail_1786538695.838438",
+        "subject": "欢迎来到社交系统",
+        "content": "恭喜你解锁了社交系统！在这里你可以领养宠物、完成任务、收发邮件和添加好友。",
+        "sender": "系统",
+        "timestamp": "2026-08-12T20:44:55.838452",
+        "read": false,
+        "rewards": {
+          "金元宝": 100,
+          "时间卡": 1
+        }
+      }
+    ],
     "sent": [],
     "archived": []
   },
@@ -270,5 +555,207 @@
       "achievements": [],
       "pvp": []
     }
+  },
+  "mc_world": {
+    "placed_blocks": [],
+    "hotbar": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "hotbar_selected": 0,
+    "player_pos": [
+      0,
+      0,
+      0
+    ],
+    "camera_yaw": 0,
+    "camera_pitch": -20,
+    "camera_mode": "first",
+    "inventory": [],
+    "world_seed": 0
+  },
+  "pets": {
+    "owned": [],
+    "active": null
+  },
+  "last_daily_reset": "2026-08-12",
+  "equipment": {
+    "weapons": [],
+    "armors": [],
+    "accessories": [],
+    "mounts": []
+  },
+  "mounts": {
+    "owned": [],
+    "active": null
+  },
+  "skills": {
+    "learned": [],
+    "equipped": []
+  },
+  "trading": {
+    "offers": []
+  },
+  "fashion": {
+    "equipped": {
+      "hero_skin": "normal",
+      "weapon_skin": "normal",
+      "mount_skin": "normal"
+    },
+    "unlocked": {
+      "hero_skins": [
+        "normal"
+      ],
+      "weapon_skins": [
+        "normal"
+      ],
+      "mount_skins": [
+        "normal"
+      ]
+    }
+  },
+  "fishing": {
+    "caught_fish": [],
+    "fishing_rod": "普通鱼竿",
+    "fishing_level": 1,
+    "fishing_exp": 0
+  },
+  "alchemy": {
+    "recipes": [
+      {
+        "id": "potion_health",
+        "name": "生命药水",
+        "type": "potion",
+        "ingredients": {
+          "水": 2,
+          "食物": 1
+        },
+        "effect": {
+          "health": 50
+        },
+        "time": 60,
+        "unlocked": true
+      },
+      {
+        "id": "potion_mana",
+        "name": "魔法药水",
+        "type": "potion",
+        "ingredients": {
+          "水": 2,
+          "煤炭": 1
+        },
+        "effect": {
+          "mana": 50
+        },
+        "time": 60,
+        "unlocked": true
+      },
+      {
+        "id": "potion_strength",
+        "name": "力量药水",
+        "type": "potion",
+        "ingredients": {
+          "水": 2,
+          "木头": 1
+        },
+        "effect": {
+          "strength": 10
+        },
+        "time": 90,
+        "unlocked": false
+      },
+      {
+        "id": "potion_speed",
+        "name": "速度药水",
+        "type": "potion",
+        "ingredients": {
+          "水": 2,
+          "金元宝": 1
+        },
+        "effect": {
+          "speed": 10
+        },
+        "time": 90,
+        "unlocked": false
+      }
+    ],
+    "potions": []
+  },
+  "limited_time_events": {
+    "active": [
+      {
+        "id": "event_spring_festival",
+        "name": "春节限时活动",
+        "description": "完成10次战斗，获得春节限定奖励",
+        "duration": 604800,
+        "objective": {
+          "type": "battle_completed",
+          "count": 10
+        },
+        "rewards": {
+          "金元宝": 300,
+          "春节限定皮肤": 1,
+          "红包": 5
+        },
+        "start_time": "2026-08-12T20:41:29.283759",
+        "end_time": "2026-08-19T20:41:29.283765",
+        "status": "active",
+        "progress": 0
+      }
+    ],
+    "completed": [],
+    "last_updated": "2026-08-12T20:47:11.777906"
+  },
+  "friends": {
+    "list": [],
+    "requests": []
+  },
+  "pet": {
+    "name": "小老鼠",
+    "type": "普通",
+    "age": 0,
+    "hunger": 100,
+    "happiness": 100,
+    "growth": 0,
+    "stage": 1,
+    "level": 1,
+    "experience": 0,
+    "max_experience": 100,
+    "attributes": {
+      "attack": 10,
+      "defense": 5,
+      "speed": 8,
+      "luck": 3
+    },
+    "element": "雷",
+    "is_equipped": false,
+    "last_feed_time": 1786538700.4738681,
+    "last_growth_time": 1786538700.473869,
+    "last_happiness_time": 1786538700.4738696,
+    "last_play_time": 0,
+    "play_cooldown": 30,
+    "evolution_level": 0,
+    "original_name": "小老鼠",
+    "skills": [],
+    "skill_points": 0,
+    "equipment": {
+      "collar": null,
+      "accessory": null,
+      "armor": null
+    }
+  },
+  "pet_warehouse": [],
+  "hatch_queue": [],
+  "ai": {
+    "enabled": false,
+    "model": "",
+    "url": "http://localhost:11434"
   }
 }

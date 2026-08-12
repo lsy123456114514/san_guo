@@ -8,6 +8,7 @@
 import pygame
 import os
 import sys
+from ASSET.game_data import draw_gradient_bg, cull_dead, get_font
 
 # 颜色定义
 WHITE = (255, 255, 255)
@@ -168,7 +169,7 @@ class Whiteboard:
             font_small_size = 18 if self.width < 1024 else 20
             self.font = pygame.font.SysFont("Microsoft YaHei", font_size)
             self.font_small = pygame.font.SysFont("Microsoft YaHei", font_small_size)
-        except:
+        except Exception as _e:
             font_size = 24 if self.width < 1024 else 32
             font_small_size = 16 if self.width < 1024 else 20
             self.font = pygame.font.Font(None, font_size)
@@ -241,7 +242,7 @@ class Whiteboard:
         """绘制颜色选择器，自适应宽度"""
         palette_width = self.color_palette_rect.width
         color_count = len(COLOR_PALETTE)
-        color_width = (palette_width - 10) // color_count
+        color_width = (palette_width - 10) // max(1, color_count)
         color_width = max(20, color_width)
         
         pygame.draw.rect(self.screen, (240, 240, 240), self.color_palette_rect, border_radius=5)
@@ -311,9 +312,9 @@ class Whiteboard:
                 if self.color_palette_rect.collidepoint(mouse_pos):
                     palette_width = self.color_palette_rect.width
                     color_count = len(COLOR_PALETTE)
-                    color_width = (palette_width - 10) // color_count
+                    color_width = (palette_width - 10) // max(1, color_count)
                     color_width = max(20, color_width)
-                    color_index = (mouse_pos[0] - self.color_palette_rect.x - 5) // color_width
+                    color_index = (mouse_pos[0] - self.color_palette_rect.x - 5) // max(1, color_width)
                     if 0 <= color_index < len(COLOR_PALETTE):
                         self.current_color = COLOR_PALETTE[color_index]
                         self.update_tool()

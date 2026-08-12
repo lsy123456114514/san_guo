@@ -10,7 +10,7 @@ import pygame
 import platform
 import random
 import math
-from ASSET.game_data import data, save, get_system_font_name
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET.network_pvp import NetworkPVP
 from ASSET import safe_exit
 
@@ -31,6 +31,7 @@ COLORS = {
 
 
 class Particle:
+    """粒子效果 - 支持普通圆形与星形闪烁粒子"""
     def __init__(self, x, y, color, speed, size, life, particle_type="normal"):
         self.x = x
         self.y = y
@@ -70,6 +71,7 @@ class Particle:
 
 
 class AnimatedButton:
+    """动画按钮 - 悬停缩放、发光与星形粒子特效"""
     def __init__(self, text, x, y, width, height, font, 
                  normal_color=COLORS["accent_blue"], 
                  hover_color=COLORS["accent_blue_light"], 
@@ -147,11 +149,11 @@ class AnimatedButton:
                 COLORS["accent_gold"], 1.5, random.randint(2, 4), 40, "sparkle"
             ))
         
-        for p in self.particles[:]:
+        for p in self.particles:
             p.update()
             p.draw(surface)
-            if p.life <= 0:
-                self.particles.remove(p)
+        self.particles[:] = [p for p in self.particles if p.life > 0]
+
     
     def check_hover(self, mouse_pos):
         self.is_hovered = self.rect.collidepoint(mouse_pos)
@@ -169,6 +171,7 @@ class AnimatedButton:
 
 
 class InputBox:
+    """输入框 - 支持点击激活、光标闪烁与文字输入"""
     def __init__(self, x, y, width, height, font, text=''):
         self.rect = pygame.Rect(x, y, width, height)
         self.color = COLORS["text_gray"]
@@ -215,17 +218,6 @@ class InputBox:
         txt_surface = self.font.render(display_text, True, COLORS["text_white"])
         surface.blit(txt_surface, (self.rect.x + 10, self.rect.y + 10))
 
-
-def draw_gradient_background(surface, color1, color2):
-    width, height = surface.get_size()
-    for y in range(height):
-        ratio = y / height
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
-
-
 def draw_title(surface, text, y_pos, screen_width, font, color=COLORS["accent_gold"]):
     for offset in range(5, 0, -1):
         alpha = max(0, 60 - offset * 10)
@@ -255,6 +247,7 @@ def draw_title(surface, text, y_pos, screen_width, font, color=COLORS["accent_go
 
 
 class PVPOnline:
+    """在线对战 - 在线PVP匹配与对战主控类"""
     def __init__(self, screen):
         self.screen = screen
         self.width, self.height = screen.get_size()
@@ -275,252 +268,7 @@ class PVPOnline:
     
     def init_fonts(self):
         def init_font(size):
-            font_name = get_system_font_name()
-            try:
-                return pygame.font.SysFont(font_name, size)
-            except Exception:
-                return pygame.font.Font(None, size)
-        
-        self.font_main = init_font(28)
-        self.font_small = init_font(22)
-        self.font_big = init_font(48)
-    
-    def init_buttons(self):
-        self.buttons = []
-    
-    def init_inputs(self):
-        btn_width = 350
-        self.ip_input = InputBox((self.width - btn_width) // 2, self.height * 0.35, btn_width, 50, self.font_small, '127.0.0.1')
-        self.port_input = InputBox((self.width - btn_width) // 2, self.height * 0.45, btn_width, 50, self.font_small, '4000')
-    
-    def init_particles(self):
-        self.bg_particles = []
-        for _ in range(30):
-            self.bg_particles.append(Particle(
-                random.randint(0, self.width),
-                random.randint(0, self.height),
-                COLORS["accent_gold"], 0.3, random.randint(1, 3), random.randint(100, 200), "normal"
-            ))
-    
-    def network_message_handler(self, message, addr):
-        msg_type = message.get('type', '')
-        if msg_type == 'connect':
-            self.opponent_info = {
-                'name': message.get('player_name', '对手'),
-                'id': message.get('player_id', ''),
-                'addr': addr
-            }
-            self.messages.append(f"📨 {self.opponent_info['name']} 请求连接！")
-        elif msg_type == 'chat':
-            name = message.get('player_name', '对手')
-            text = message.get('text', '')
-            self.chat_history.append(f"{name}: {text}")
-            if len(self.chat_history) > 20:
-                self.chat_history.pop(0)
-    
-    def create_buttons(self):
-        self.buttons.clear()
-        btn_width = 280
-        btn_height = 60
-        start_y = self.height * 0.35
-        spacing = 80
-        
-        if self.state == "main":
-            self.buttons.append(AnimatedButton("🌐 创建房间", (self.width - btn_width) // 2, start_y, btn_width, btn_height, self.font_small,
-                                            normal_color=COLORS["accent_green"]))
-            self.buttons.append(AnimatedButton("🔗 加入房间", (self.width - btn_width) // 2, start_y + spacing, btn_width, btn_height, self.font_small))
-            self.buttons.append(AnimatedButton("🎮 模拟对战", (self.width - btn_width) // 2, start_y + spacing * 2, btn_width, btn_height, self.font_small))
-            self.buttons.append(AnimatedButton("🔙 返回", (self.width - btn_width) // 2, start_y + spacing * 3, btn_width, btn_height, self.font_small,
-                                            normal_color=(100, 100, 130)))
-        
-        elif self.state == "create_room":
-            self.buttons.append(AnimatedButton("✅ 等待连接", (self.width - btn_width) // 2, start_y + spacing * 2, btn_width, btn_height, self.font_small,
-                                            normal_color=COLORS["accent_blue"]))
-            self.buttons.append(AnimatedButton("🔙 返回", (self.width - btn_width) // 2, start_y + spacing * 3, btn_width, btn_height, self.font_small,
-                                            normal_color=(100, 100, 130)))
-        
-        elif self.state == "join_room":
-            self.buttons.append(AnimatedButton("🚀 连接", (self.width - btn_width) // 2, start_y + spacing * 2, btn_width, btn_height, self.font_small,
-                                            normal_color=COLORS["accent_green"]))
-            self.buttons.append(AnimatedButton("🔙 返回", (self.width - btn_width) // 2, start_y + spacing * 3, btn_width, btn_height, self.font_small,
-                                            normal_color=(100, 100, 130)))
-    
-    def start_room(self):
-        if self.network:
-            self.network.stop()
-        
-        self.network = NetworkPVP(self.player_name)
-        self.network.start_server(int(self.port_input.text) if self.port_input.text else 4000, self.network_message_handler)
-        self.state = "create_room"
-        self.messages.append(f"✅ 房间已创建！")
-        self.messages.append(f"你的IP: {self.network.get_local_ip()}")
-        self.messages.append(f"端口: {self.port_input.text}")
-        self.create_buttons()
-    
-    def join_room(self):
-        if self.network:
-            self.network.stop()
-        
-        self.network = NetworkPVP(self.player_name)
-        self.network.start_server(int(self.port_input.text) + 1 if self.port_input.text else 4001, self.network_message_handler)
-        self.network.connect_to_player(self.ip_input.text, int(self.port_input.text) if self.port_input.text else 4000)
-        self.state = "create_room"
-        self.messages.append(f"🔗 正在连接 {self.ip_input.text}:{self.port_input.text}...")
-        self.create_buttons()
-    
-    def run(self):
-        running = True
-        clock = pygame.time.Clock()
-        self.create_buttons()
-        
-        try:
-            while running:
-                draw_gradient_background(self.screen, COLORS["bg_dark"], COLORS["bg_light"])
-                
-                for p in self.bg_particles:
-                    p.update()
-                    if p.x < 0 or p.x > self.width or p.y < 0 or p.y > self.height or p.life <= 0:
-                        p.x = random.randint(0, self.width)
-                        p.y = random.randint(0, self.height)
-                        p.life = p.max_life
-                    p.draw(self.screen)
-                
-                mouse_pos = pygame.mouse.get_pos()
-                
-                if self.state == "main":
-                    draw_title(self.screen, "在线PVP对战", self.height * 0.12, self.width, self.font_big)
-                    self.draw_player_info()
-                
-                elif self.state == "create_room":
-                    draw_title(self.screen, "等待对手连接", self.height * 0.12, self.width, self.font_big)
-                    self.draw_room_info()
-                    self.draw_messages()
-                
-                elif self.state == "join_room":
-                    draw_title(self.screen, "输入房间信息", self.height * 0.12, self.width, self.font_big)
-                    self.draw_join_room()
-                
-                for btn in self.buttons:
-                    btn.check_hover(mouse_pos)
-                    btn.draw(self.screen)
-                
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        running = False
-                    
-                    if self.state == "join_room":
-                        self.ip_input.handle_event(event)
-                        self.port_input.handle_event(event)
-                    
-                    if event.type == pygame.MOUSEBUTTONDOWN:
-                        for i, btn in enumerate(self.buttons):
-                            if btn.check_click(mouse_pos):
-                                if self.state == "main":
-                                    if i == 0:
-                                        self.start_room()
-                                    elif i == 1:
-                                        self.state = "join_room"
-                                        self.create_buttons()
-                                    elif i == 2:
-                                        self.run_mock_battle()
-                                    elif i == 3:
-                                        running = False
-                                elif self.state == "create_room":
-                                    if i == 0:
-                                        pass
-                                    elif i == 1:
-                                        if self.network:
-                                            self.network.stop()
-                                        self.state = "main"
-                                        self.create_buttons()
-                                elif self.state == "join_room":
-                                    if i == 0:
-                                        self.join_room()
-                                    elif i == 1:
-                                        if self.network:
-                                            self.network.stop()
-                                        self.state = "main"
-                                        self.create_buttons()
-                
-                if self.state == "join_room":
-                    self.ip_input.update()
-                    self.port_input.update()
-                
-                pygame.display.flip()
-                clock.tick(60)
-        
-        finally:
-            if self.network:
-                self.network.stop()
-        
-        return
-    
-    def draw_player_info(self):
-        panel_width = 400
-        panel_height = 80
-        panel_x = (self.width - panel_width) // 2
-        panel_y = self.height * 0.22
-        
-        panel_surf = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
-        pygame.draw.rect(panel_surf, (40, 40, 70, 180), (0, 0, panel_width, panel_height), border_radius=15)
-        self.screen.blit(panel_surf, (panel_x, panel_y))
-        pygame.draw.rect(self.screen, COLORS["accent_gold"], (panel_x, panel_y, panel_width, panel_height), 2, border_radius=15)
-        
-        player_info = f"{self.player_name} | Lv.{self.player_level} | ⚔️ {self.player_power}"
-        info_text = self.font_small.render(player_info, True, COLORS["text_white"])
-        info_rect = info_text.get_rect(center=(self.width // 2, panel_y + panel_height // 2))
-        self.screen.blit(info_text, info_rect)
-    
-    def draw_room_info(self):
-        panel_width = 450
-        panel_height = 120
-        panel_x = (self.width - panel_width) // 2
-        panel_y = self.height * 0.22
-        
-        panel_surf = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
-        pygame.draw.rect(panel_surf, (40, 40, 70, 180), (0, 0, panel_width, panel_height), border_radius=15)
-        self.screen.blit(panel_surf, (panel_x, panel_y))
-        pygame.draw.rect(self.screen, COLORS["accent_gold"], (panel_x, panel_y, panel_width, panel_height), 2, border_radius=15)
-        
-        if self.network:
-            ip_text = self.font_small.render(f"IP: {self.network.get_local_ip()}", True, COLORS["text_white"])
-            port_text = self.font_small.render(f"端口: {self.local_port if hasattr(self, 'local_port') else self.port_input.text}", True, COLORS["text_white"])
-            
-            ip_rect = ip_text.get_rect(center=(self.width // 2, panel_y + 35))
-            port_rect = port_text.get_rect(center=(self.width // 2, panel_y + 70))
-            
-            self.screen.blit(ip_text, ip_rect)
-            self.screen.blit(port_text, port_rect)
-    
-    def draw_messages(self):
-        panel_width = 450
-        panel_height = 200
-        panel_x = (self.width - panel_width) // 2
-        panel_y = self.height * 0.45
-        
-        panel_surf = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
-        pygame.draw.rect(panel_surf, (30, 30, 50, 180), (0, 0, panel_width, panel_height), border_radius=10)
-        self.screen.blit(panel_surf, (panel_x, panel_y))
-        
-        y_offset = panel_y + 10
-        for msg in self.messages[-8:]:
-            text = self.font_small.render(msg, True, COLORS["text_white"])
-            self.screen.blit(text, (panel_x + 15, y_offset))
-            y_offset += 25
-    
-    def draw_join_room(self):
-        ip_label = self.font_small.render("对方IP地址:", True, COLORS["text_white"])
-        port_label = self.font_small.render("端口:", True, COLORS["text_white"])
-        
-        self.screen.blit(ip_label, ((self.width - 350) // 2, self.height * 0.32))
-        self.screen.blit(port_label, ((self.width - 350) // 2, self.height * 0.42))
-        
-        self.ip_input.draw(self.screen)
-        self.port_input.draw(self.screen)
-    
-    def run_mock_battle(self):
-        from ASSET.pvp_p2p import main as mock_pvp
-        mock_pvp()
+            return get_font(size)
 
 
 def main(screen=None):
@@ -537,7 +285,7 @@ def main(screen=None):
         
         return True
     except Exception as e:
-        print(f"在线PVP模块异常：{str(e)}")
+        logger.info(f"在线PVP模块异常：{str(e)}")
         return False
 
 

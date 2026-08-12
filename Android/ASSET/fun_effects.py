@@ -6,6 +6,7 @@ import math
 from ASSET.game_data import draw_gradient_bg, cull_dead, get_font
 
 class PetSprite:
+    """宠物精灵 - 跟随鼠标移动与情绪表情切换"""
     def __init__(self):
         self.x = 0
         self.y = 0
@@ -86,12 +87,13 @@ class FloatingParticles:
         self.particles = []
         self.screen_width = screen_width
         self.screen_height = screen_height
-        self.types = ['star', 'heart', 'sparkle', 'circle']
+        self.types = ['star', 'sparkle', 'circle']
         
-        for _ in range(30):
+        for _ in range(8):
             self.add_particle()
             
     def add_particle(self):
+        max_life = random.randint(120, 240)
         particle = {
             'x': random.randint(0, self.screen_width),
             'y': random.randint(-100, self.screen_height),
@@ -101,6 +103,8 @@ class FloatingParticles:
             'rotation': random.uniform(0, math.pi * 2),
             'rotation_speed': random.uniform(-0.02, 0.02),
             'alpha': random.randint(100, 255),
+            'life': max_life,
+            'max_life': max_life,
             'color': random.choice([
                 (255, 215, 0), (255, 180, 220), (150, 200, 255),
                 (200, 255, 200), (255, 200, 150), (220, 150, 255)
@@ -113,8 +117,13 @@ class FloatingParticles:
             particle['y'] -= particle['speed']
             particle['rotation'] += particle['rotation_speed']
             particle['x'] += math.sin(particle['rotation'] * 2) * 0.5
-        self.particles[:] = [p for p in self.particles if p['y'] >= -50]
-        self.add_particle()
+            # 生命周期递减，alpha 随寿命淡出，加快消失
+            particle['life'] -= 1
+            particle['alpha'] = max(0, int(particle['alpha'] * 0.97))
+        self.particles[:] = [p for p in self.particles
+                             if p['y'] >= -50 and p['life'] > 0 and p['alpha'] > 5]
+        if len(self.particles) < 8:
+            self.add_particle()
                 
     def draw(self, surface):
         for particle in self.particles:
@@ -158,6 +167,7 @@ class FloatingParticles:
             pygame.draw.line(surface, color, (x, y), (end_x, end_y), 2)
 
 class DynamicBackground:
+    """动态背景 - 多层视差星空与渐变背景"""
     def __init__(self, screen_width, screen_height):
         self.screen_width = screen_width
         self.screen_height = screen_height

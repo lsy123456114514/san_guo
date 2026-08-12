@@ -1,3 +1,5 @@
+"""天气系统 - 动态天气变化与战斗加成"""
+
 import os
 import time
 import pygame
@@ -512,15 +514,6 @@ class WeatherSystem:
             return season["ambient_effect"]
         return None
 
-def draw_gradient_bg(surface, color1, color2):
-    """绘制渐变背景"""
-    for y in range(surface.get_height()):
-        ratio = y / surface.get_height()
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (surface.get_width(), y))
-
 def show_message(surface, message, font):
     """显示消息"""
     text_surface = font.render(message, True, (255, 255, 255))
@@ -675,14 +668,14 @@ def draw_weather_system(surface, font_big, font_main, font_small, weather_system
             # 调整字体大小
             scale_factor = max_width / weather_text.get_width()
             new_font_size = int(font_main.get_height() * scale_factor)
-            scaled_font = pygame.font.SysFont(font_main.get_name(), new_font_size)
+            scaled_font = resize_font(font_main, new_font_size)
             weather_text = scaled_font.render(f"当前天气: {current_weather['name']}", True, current_weather['color'])
         
         if weather_desc.get_width() > max_width:
             # 调整字体大小
             scale_factor = max_width / weather_desc.get_width()
             new_font_size = int(font_small.get_height() * scale_factor)
-            scaled_font = pygame.font.SysFont(font_small.get_name(), new_font_size)
+            scaled_font = resize_font(font_small, new_font_size)
             weather_desc = scaled_font.render(current_weather['description'], True, COLORS["text_white"])
         
         # 计算绘制位置
@@ -710,7 +703,7 @@ def draw_weather_system(surface, font_big, font_main, font_small, weather_system
                 # 调整字体大小
                 scale_factor = max_width / effect_text.get_width()
                 new_font_size = int(font_small.get_height() * scale_factor)
-                scaled_font = pygame.font.SysFont(font_small.get_name(), new_font_size)
+                scaled_font = resize_font(font_small, new_font_size)
                 effect_text = scaled_font.render(f"{effect_name}: {effect_value}", True, COLORS["text_white"])
             
             surface.blit(effect_text, (margin, effect_y))
@@ -730,14 +723,14 @@ def draw_weather_system(surface, font_big, font_main, font_small, weather_system
             # 调整字体大小
             scale_factor = max_width / holiday_text.get_width()
             new_font_size = int(font_main.get_height() * scale_factor)
-            scaled_font = pygame.font.SysFont(font_main.get_name(), new_font_size)
+            scaled_font = resize_font(font_main, new_font_size)
             holiday_text = scaled_font.render(f"当前节日: {current_holiday['name']}", True, current_holiday['color'])
         
         if holiday_desc.get_width() > max_width:
             # 调整字体大小
             scale_factor = max_width / holiday_desc.get_width()
             new_font_size = int(font_small.get_height() * scale_factor)
-            scaled_font = pygame.font.SysFont(font_small.get_name(), new_font_size)
+            scaled_font = resize_font(font_small, new_font_size)
             holiday_desc = scaled_font.render(current_holiday['description'], True, COLORS["text_white"])
         
         # 计算绘制位置
@@ -764,7 +757,7 @@ def draw_weather_system(surface, font_big, font_main, font_small, weather_system
                 # 调整字体大小
                 scale_factor = max_width / effect_text.get_width()
                 new_font_size = int(font_small.get_height() * scale_factor)
-                scaled_font = pygame.font.SysFont(font_small.get_name(), new_font_size)
+                scaled_font = resize_font(font_small, new_font_size)
                 effect_text = scaled_font.render(f"{effect_name}: {effect_value}", True, COLORS["text_white"])
             
             surface.blit(effect_text, (margin, effect_y))
@@ -783,7 +776,7 @@ def draw_weather_system(surface, font_big, font_main, font_small, weather_system
             # 调整字体大小
             scale_factor = max_width / total_effects_text.get_width()
             new_font_size = int(font_main.get_height() * scale_factor)
-            scaled_font = pygame.font.SysFont(font_main.get_name(), new_font_size)
+            scaled_font = resize_font(font_main, new_font_size)
             total_effects_text = scaled_font.render("总效果:", True, COLORS["accent_blue"])
         
         # 计算绘制位置
@@ -809,7 +802,7 @@ def draw_weather_system(surface, font_big, font_main, font_small, weather_system
                 # 调整字体大小
                 scale_factor = max_width / effect_text.get_width()
                 new_font_size = int(font_small.get_height() * scale_factor)
-                scaled_font = pygame.font.SysFont(font_small.get_name(), new_font_size)
+                scaled_font = resize_font(font_small, new_font_size)
                 effect_text = scaled_font.render(f"{effect_name}: {effect_value}", True, COLORS["text_white"])
             
             surface.blit(effect_text, (margin, effect_y))
@@ -821,10 +814,14 @@ def main():
         # 初始化
         pygame.init()
         
-        # 屏幕设置
-        SCREEN_WIDTH = 800
-        SCREEN_HEIGHT = 600
-        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        # 屏幕设置：优先复用当前显示表面，避免返回主菜单错位
+        cur_surface = pygame.display.get_surface()
+        if cur_surface is not None:
+            screen = cur_surface
+        else:
+            SCREEN_WIDTH = 800
+            SCREEN_HEIGHT = 600
+            screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption("天气与节日系统")
         
         # 时钟
@@ -839,12 +836,12 @@ def main():
         weather_system = WeatherSystem()
         
         # 创建滚动容器
-        container_width = SCREEN_WIDTH - 40
-        container_height = SCREEN_HEIGHT - 150
+        container_width = screen.get_width() - 40
+        container_height = screen.get_height() - 150
         container = ScrollableContainer(20, 100, container_width, container_height)
         
         # 创建按钮
-        back_btn = Button("返回", SCREEN_WIDTH - 150, SCREEN_HEIGHT - 70, 120, 50, font_small)
+        back_btn = Button("返回", screen.get_width() - 150, screen.get_height() - 70, 120, 50, font_small)
         
         # 主循环
         running = True
@@ -885,13 +882,13 @@ def main():
             
             clock.tick(60)
         
-        safe_exit("天气系统")
+        return
     except Exception as e:
         logger.info(f"异常：{str(e)}")
         logger.info("详细错误信息：")
         import traceback
         traceback.print_exc()
-        safe_exit("天气系统", str(e))
+        return
 
 if __name__ == "__main__":
     main()

@@ -295,9 +295,11 @@ def main():
             pygame.display.flip()
             clock.tick(60)
         
-        safe_exit("扫雷游戏")
+        return
     except Exception as e:
-        safe_exit("扫雷游戏", str(e))
+        import traceback
+        traceback.print_exc()
+        return
 
 if __name__ == "__main__":
     main()

@@ -11,7 +11,7 @@ import json
 import time
 import random
 from typing import Optional, Dict, Any, Callable
-from ASSET.game_data import draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import draw_gradient_bg, cull_dead, get_font, logger
 
 
 class NetworkPVP:

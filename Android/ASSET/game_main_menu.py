@@ -4,14 +4,15 @@ import os
 import sys
 import subprocess
 import platform
+import traceback
 import pygame
 import math
 import random
 import logging
 from ASSET.fun_effects import PetSprite, FloatingParticles
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font, create_font, resize_font, particles_enabled
 from ASSET import safe_exit
-from ASSET.login_system import save_game
+from ASSET.login_system import save_game, save_user_progress
 from ASSET.equipment_system import main as equipment_system_main  # pyright: ignore[reportUnusedImport]
 
 # 配置日志系统
@@ -57,11 +58,10 @@ class MouseTrail:
             self.trails.pop(0)
     
     def update(self):
-        for trail in self.trails[:]:
+        for trail in self.trails:
             trail['size'] *= 0.95
             trail['alpha'] *= 0.9
-            if trail['alpha'] < 5 or trail['size'] < 1:
-                self.trails.remove(trail)
+        self.trails[:] = [trail for trail in self.trails if trail['alpha'] >= 5 and trail['size'] >= 1]
     
     def draw(self, surface):
         for trail in self.trails:
@@ -490,6 +490,19 @@ def test_font_renderable(font, text="测试"):
     except Exception as _e:
         return False
 
+
+def font_supports_cjk(font):
+    """检测字体是否真的含中文字形（避免 pygame 画框框/tofu 的误判）"""
+    try:
+        if font is None:
+            return False
+        cn_w = font.render("中", True, (255, 255, 255)).get_width()
+        en_w = font.render("i", True, (255, 255, 255)).get_width()
+        # 中文字符宽度应显著大于英文字符；缺字框框时两者接近
+        return cn_w > en_w * 2.0
+    except Exception:
+        return False
+
 def init_fonts():
     """初始化字体 - 增强兼容性版本"""
     global FONT_MAIN, FONT_SMALL, FONT_BIG
@@ -515,24 +528,15 @@ def init_fonts():
 
     for font_name in font_list:
         try:
-            if font_name is None:
-                FONT_MAIN = pygame.font.Font(None, base_size)
-                FONT_SMALL = pygame.font.Font(None, small_size)
-                FONT_BIG = pygame.font.Font(None, big_size)
-            else:
-                FONT_MAIN = pygame.font.SysFont(font_name, base_size)
-                FONT_SMALL = pygame.font.SysFont(font_name, small_size)
-                FONT_BIG = pygame.font.SysFont(font_name, big_size)
+            FONT_MAIN = create_font(font_name, base_size)
+            FONT_SMALL = create_font(font_name, small_size)
+            FONT_BIG = create_font(font_name, big_size)
 
-            test_text = "测试中文ABC123"
-            if test_font_renderable(FONT_MAIN, test_text):
+            if test_font_renderable(FONT_MAIN, "测试中文ABC123") and font_supports_cjk(FONT_MAIN):
                 logger.info(f"成功使用字体: {font_name if font_name else '默认字体'}")
-
-                if not test_font_renderable(FONT_MAIN, "中文"):
-                    logger.warning(f"字体 {font_name} 不支持中文，尝试备选方案")
-                    continue
-
                 return
+
+            logger.warning(f"字体 {font_name} 不支持中文，尝试备选方案")
         except Exception as e:
             logger.error(f"字体 {font_name} 加载失败: {e}")
             continue
@@ -558,7 +562,11 @@ COLORS = {
     "panel_bg": (30, 30, 55, 200)
 }
 
+# 兼容别名：旧模块 import 自 game_main_menu 的渐变背景函数（实际绘制走 game_data.draw_gradient_bg）
+draw_gradient_background = draw_gradient_bg
+
 class Particle:
+    """粒子效果 - 基础视觉粒子单元"""
     def __init__(self, x, y, color, speed, size, life):
         self.x = x
         self.y = y
@@ -581,6 +589,7 @@ class Particle:
         pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
 
 class Button:
+    """按钮控件 - 悬停缩放、点击粒子与发光特效"""
     def __init__(self, text, x, y, width, height, font,
                  normal_color=None,
                  hover_color=None,
@@ -679,7 +688,7 @@ class Button:
                 surface.blit(shadow_surf, (text_rect.x + 2, text_rect.y + 2))
                 surface.blit(text_surf, text_rect)
 
-        if self.is_hovered and random.random() < 0.15:
+        if particles_enabled() and self.is_hovered and random.random() < 0.15:
             particle_colors = [(255, 215, 0), (200, 80, 80), (70, 130, 180)]
             self.particles.append(Particle(
                 random.randint(self.rect.x, self.rect.x + self.rect.width),
@@ -690,7 +699,7 @@ class Button:
                 random.randint(80, 150)
             ))
 
-        if self.is_clicked and random.random() < 0.5:
+        if particles_enabled() and self.is_clicked and random.random() < 0.5:
             self.click_particles.append(Particle(
                 scaled_rect.centerx,
                 scaled_rect.centery,
@@ -711,6 +720,7 @@ class Button:
         self.click_particles[:] = [p for p in self.click_particles if p.life > 0]
 
 class DropdownMenu:
+    """下拉菜单 - 可展开的选项列表"""
     def __init__(self, text, x, y, width, height, font, items):
         self.text = text
         self.rect = pygame.Rect(x, y, width, height)
@@ -815,19 +825,6 @@ class DropdownMenu:
                     return True, item_code
 
         return False, None
-
-def draw_gradient_bg(surface, color1, color2):
-    """绘制渐变背景"""
-    try:
-        width, height = surface.get_size()
-        for y in range(height):
-            ratio = y / max(height, 1)
-            r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-            g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-            b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-            pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
-    except Exception as _e:
-        surface.fill(color1)
 
 clouds = []
 
@@ -1089,223 +1086,20 @@ def clear():
         screen.fill(COLORS["bg_dark"])
 
 def run_module(module_file):
-    """运行子模块"""
+    """运行子模块（通过 importlib 动态导入 ASSET.<模块名> 并调用其 main 函数）"""
+    global screen
     try:
-        if is_android():
-            if module_file == "pvp_p2p.py":
-                from ASSET.pvp_p2p import main as pvp_main
-                pvp_main()
-            elif module_file == "game_map_pygame.py":
-                from ASSET.game_map_pygame import main as map_main
-                map_main()
-            elif module_file == "battle_system.py":
-                from ASSET.battle_system import main as battle_main
-                battle_main()
-            elif module_file == "shop_system.py":
-                from ASSET.shop_system import main as shop_main
-                shop_main()
-            elif module_file == "hero_warehouse.py":
-                from ASSET.hero_warehouse import main as hero_main
-                hero_main()
-            elif module_file == "activity_system.py":
-                from ASSET.activity_system import main as activity_main
-                activity_main()
-            elif module_file == "login_system.py":
-                from ASSET.login_system import main as login_main
-                login_main()
-            elif module_file == "snake_game.py":
-                from ASSET.snake_game import main as snake_main
-                snake_main()
-            elif module_file == "push_box.py":
-                from ASSET.push_box import main as push_box_main
-                push_box_main()
-            elif module_file == "breakout.py":
-                from ASSET.breakout import main as breakout_main
-                breakout_main()
-            elif module_file == "minesweeper.py":
-                from ASSET.minesweeper import main as minesweeper_main
-                minesweeper_main()
-            elif module_file == "game_2048.py":
-                from ASSET.game_2048 import main as game_2048_main
-                game_2048_main()
-            elif module_file == "tetris.py":
-                from ASSET.tetris import main as tetris_main
-                tetris_main()
-            elif module_file == "gobang.py":
-                from ASSET.gobang import main as gobang_main
-                gobang_main()
-            elif module_file == "achievement_system.py":
-                from ASSET.achievement_system import main as achievement_main
-                achievement_main()
-            elif module_file == "tech_tree.py":
-                from ASSET.tech_tree import main as tech_tree_main
-                tech_tree_main()
-            elif module_file == "social_system.py":
-                from ASSET.social_system import main as social_main
-                social_main()
-            elif module_file == "pet_system.py":
-                from ASSET.pet_system import main as pet_main
-                pet_main()
-            elif module_file == "building_system.py":
-                from ASSET.building_system import main as building_main
-                building_main()
-            elif module_file == "talent_system.py":
-                from ASSET.talent_system import main as talent_main
-                talent_main()
-            elif module_file == "fishing_system.py":
-                from ASSET.fishing_system import main as fishing_main
-                fishing_main()
-            elif module_file == "alchemy_system.py":
-                from ASSET.alchemy_system import main as alchemy_main
-                alchemy_main()
-            elif module_file == "quest_system.py":
-                from ASSET.quest_system import main as quest_main
-                quest_main()
-            elif module_file == "trading_system.py":
-                from ASSET.trading_system import main as trading_main
-                trading_main()
-            elif module_file == "equipment_system.py":
-                from ASSET.equipment_system import main as equipment_main
-                equipment_main()
-            elif module_file == "ranking_system.py":
-                from ASSET.ranking_system import main as ranking_main
-                ranking_main()
-            elif module_file == "daily_checkin.py":
-                from ASSET.daily_checkin import main as checkin_main
-                checkin_main()
-            elif module_file == "weather_system.py":
-                from ASSET.weather_system import main as weather_main
-                weather_main()
-            elif module_file == "game_map_3d.py":
-                from ASSET.game_map_3d import main as map_3d_main
-                map_3d_main()
-            elif module_file == "fashion_system.py":
-                from ASSET.fashion_system import main as fashion_main
-                fashion_main()
-            elif module_file == "hero_recruitment.py":
-                from ASSET.hero_recruitment import main as hero_main
-                hero_main()
-            elif module_file == "newbie_guide.py":
-                from ASSET.newbie_guide import main as guide_main
-                guide_main()
-            elif module_file == "background_story.py":
-                from ASSET.background_story import main as story_main
-                story_main()
-            elif module_file == "limited_time_events.py":
-                from ASSET.limited_time_events import main as limited_main
-                limited_main()
-            elif module_file == "pet_arena.py":
-                from ASSET.pet_arena import main as arena_main
-                arena_main()
-        else:
-            if module_file == "pvp_p2p.py":
-                from ASSET.pvp_p2p import main as pvp_main
-                pvp_main()
-            elif module_file == "game_map_pygame.py":
-                from ASSET.game_map_pygame import main as map_main
-                map_main()
-            elif module_file == "battle_system.py":
-                from ASSET.battle_system import main as battle_main
-                battle_main()
-            elif module_file == "shop_system.py":
-                from ASSET.shop_system import main as shop_main
-                shop_main()
-            elif module_file == "hero_warehouse.py":
-                from ASSET.hero_warehouse import main as hero_main
-                hero_main()
-            elif module_file == "activity_system.py":
-                from ASSET.activity_system import main as activity_main
-                activity_main()
-            elif module_file == "login_system.py":
-                from ASSET.login_system import main as login_main
-                login_main()
-            elif module_file == "snake_game.py":
-                from ASSET.snake_game import main as snake_main
-                snake_main()
-            elif module_file == "push_box.py":
-                from ASSET.push_box import main as push_box_main
-                push_box_main()
-            elif module_file == "breakout.py":
-                from ASSET.breakout import main as breakout_main
-                breakout_main()
-            elif module_file == "minesweeper.py":
-                from ASSET.minesweeper import main as minesweeper_main
-                minesweeper_main()
-            elif module_file == "game_2048.py":
-                from ASSET.game_2048 import main as game_2048_main
-                game_2048_main()
-            elif module_file == "tetris.py":
-                from ASSET.tetris import main as tetris_main
-                tetris_main()
-            elif module_file == "gobang.py":
-                from ASSET.gobang import main as gobang_main
-                gobang_main()
-            elif module_file == "achievement_system.py":
-                from ASSET.achievement_system import main as achievement_main
-                achievement_main()
-            elif module_file == "tech_tree.py":
-                from ASSET.tech_tree import main as tech_tree_main
-                tech_tree_main()
-            elif module_file == "social_system.py":
-                from ASSET.social_system import main as social_main
-                social_main()
-            elif module_file == "pet_system.py":
-                from ASSET.pet_system import main as pet_main
-                pet_main()
-            elif module_file == "building_system.py":
-                from ASSET.building_system import main as building_main
-                building_main()
-            elif module_file == "talent_system.py":
-                from ASSET.talent_system import main as talent_main
-                talent_main()
-            elif module_file == "fishing_system.py":
-                from ASSET.fishing_system import main as fishing_main
-                fishing_main()
-            elif module_file == "alchemy_system.py":
-                from ASSET.alchemy_system import main as alchemy_main
-                alchemy_main()
-            elif module_file == "quest_system.py":
-                from ASSET.quest_system import main as quest_main
-                quest_main()
-            elif module_file == "trading_system.py":
-                from ASSET.trading_system import main as trading_main
-                trading_main()
-            elif module_file == "equipment_system.py":
-                from ASSET.equipment_system import main as equipment_main
-                equipment_main()
-            elif module_file == "ranking_system.py":
-                from ASSET.ranking_system import main as ranking_main
-                ranking_main()
-            elif module_file == "daily_checkin.py":
-                from ASSET.daily_checkin import main as checkin_main
-                checkin_main()
-            elif module_file == "weather_system.py":
-                from ASSET.weather_system import main as weather_main
-                weather_main()
-            elif module_file == "game_map_3d.py":
-                from ASSET.game_map_3d import main as map_3d_main
-                map_3d_main()
-            elif module_file == "fashion_system.py":
-                from ASSET.fashion_system import main as fashion_main
-                fashion_main()
-            elif module_file == "hero_recruitment.py":
-                from ASSET.hero_recruitment import main as hero_main
-                hero_main()
-            elif module_file == "newbie_guide.py":
-                from ASSET.newbie_guide import main as guide_main
-                guide_main()
-            elif module_file == "background_story.py":
-                from ASSET.background_story import main as story_main
-                story_main()
-            elif module_file == "limited_time_events.py":
-                from ASSET.limited_time_events import main as limited_main
-                limited_main()
-            elif module_file == "pet_arena.py":
-                from ASSET.pet_arena import main as arena_main
-                arena_main()
-
-        pygame.event.clear()
-
+        # 文件名去 .py 即模块名，统一动态导入，避免冗长的 if/elif 分支
+        module_name = module_file[:-3] if module_file.endswith('.py') else module_file
+        import importlib
+        mod = importlib.import_module("ASSET." + module_name)
+        if hasattr(mod, 'main'):
+            mod.main()
+    except SystemExit:
+        # 大量子模块在“正常返回”时也会调用 safe_exit（内部 sys.exit(0)），
+        # 若不拦截，返回主菜单会把整个游戏关掉。这里把 SystemExit 当作普通返回处理；
+        # 真正想退出游戏时由主菜单自己调用 safe_exit，不受此拦截影响。
+        logger.debug("[模块] %s 调用了 safe_exit，已拦截 SystemExit 返回主菜单", module_file)
     except Exception as e:
         logger.error(f"启动模块 {module_file} 失败：{str(e)}")
         logger.error("详细错误信息：")
@@ -1320,6 +1114,45 @@ def run_module(module_file):
             pygame.time.wait(2000)
         else:
             input("按回车返回...")
+    finally:
+        # 无论正常返回、safe_exit 还是异常，都要恢复显示系统与鼠标状态，
+        # 避免返回主菜单后无法正常渲染（部分模块调用了 pygame.quit() 或切了 OpenGL 模式）。
+        try:
+            pygame.event.clear()
+        except Exception:
+            pass
+        try:
+            if not pygame.get_init():
+                pygame.init()
+            if not pygame.display.get_init():
+                pygame.display.init()
+            cur_surface = pygame.display.get_surface()
+            is_opengl = bool(cur_surface) and bool(cur_surface.get_flags() & pygame.OPENGL)
+            # 子模块（如 2D 地图）可能强制 set_mode 改变了窗口尺寸，
+            # 对比主菜单原始尺寸，不一致也要恢复，避免布局偏移/被裁切
+            size_changed = False
+            if cur_surface is not None and screen is not None:
+                size_changed = (cur_surface.get_width(), cur_surface.get_height()) != (screen.get_width(), screen.get_height())
+            if cur_surface is None or is_opengl or size_changed:
+                old_w, old_h = (screen.get_width(), screen.get_height()) if screen else (800, 600)
+                try:
+                    fullscreen = data['settings']['graphics'].get('fullscreen', False)
+                except Exception:
+                    fullscreen = False
+                if fullscreen:
+                    screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+                else:
+                    screen = pygame.display.set_mode((old_w, old_h))
+        except Exception as _e:
+            logger.debug("[异常静默] 恢复显示系统 %s: %s", type(_e).__name__, _e)
+
+        # 释放可能被子模块（如 3D 地图）锁定的鼠标抓取与隐藏状态
+        try:
+            if pygame.event.get_grab():
+                pygame.event.set_grab(False)
+            pygame.mouse.set_visible(True)
+        except Exception as _e:
+            logger.debug("[异常静默] 恢复鼠标状态 %s: %s", type(_e).__name__, _e)
 
 def mini_games_menu():
     """小游戏中心菜单"""
@@ -1373,7 +1206,7 @@ def mini_games_menu():
     while running:
         draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
 
-        if random.random() < 0.1:
+        if particles_enabled() and random.random() < 0.1:
             particles.append(Particle(
                 random.randint(0, screen_width),
                 random.randint(0, screen_height),
@@ -1411,13 +1244,54 @@ def mini_games_menu():
 
         clock.tick(60)
 
+# ============ 模块路由表 ============
+# 所有下拉菜单项统一在此注册，避免冗长的 if/elif 分支。
+# 新增功能时只需在此登记一行，再在下方菜单项列表中加入对应条目即可。
+MODULE_ROUTES = {
+    "1": "pvp_p2p.py",              # PVP联机
+    "2": "game_map_pygame.py",      # 游戏地图（2D）
+    "28": "game_map_3d.py",         # 3D地图
+    "29": "hero_recruitment.py",    # 武将招募
+    "31": "newbie_guide.py",        # 新手引导
+    "32": "background_story.py",    # 背景故事
+    "3": "battle_system.py",        # 副本挑战
+    "7": "hero_warehouse.py",       # 武将仓库
+    "8": "activity_system.py",      # 活动中心
+    "12": "tech_tree.py",           # 科技树系统
+    "21": "building_system.py",     # 建筑系统
+    "22": "talent_system.py",       # 天赋系统
+    "11": "achievement_system.py",  # 成就系统
+    "13": "ranking_system.py",      # 排行榜系统
+    "14": "daily_checkin.py",       # 每日签到
+    "6": "shop_system.py",          # 游戏商城
+    "16": "social_system.py",       # 社交系统
+    "17": "equipment_system.py",    # 装备系统
+    "18": "trading_system.py",      # 交易系统
+    "19": "pet_system.py",          # 宠物系统
+    "30": "fashion_system.py",      # 时装系统
+    "20": "quest_system.py",        # 任务系统（含每日任务标签）
+    "23": "fishing_system.py",      # 钓鱼系统
+    "24": "alchemy_system.py",      # 炼金系统
+    "25": "ai_system.py",           # 游戏内AI
+    "26": "faq_system.py",          # 疑难解答
+    "27": "weather_system.py",      # 天气系统
+    # ===== 以下为补齐的菜单项（此前菜单中可见但点击无响应）=====
+    "35": "pet_system.py",              # 宠物进化
+    "36": "quest_system.py",            # 每日任务
+    "37": "limited_time_events.py",     # 限时活动
+    "38": "pet_arena.py",               # 宠物竞技场
+}
+
+# 需要特殊处理逻辑的菜单项（不走 run_module 动态导入）
+SPECIAL_HANDLERS = {
+    "10": mini_games_menu,   # 小游戏中心
+}
+
 def setting_menu():
     """设置菜单"""
     global screen, clock
 
     try:
-        import sys
-        import os
         sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         from main import save_login_state
         login_state_available = True
@@ -1427,11 +1301,46 @@ def setting_menu():
 
     particles = []
 
-    resolution_changed = False
+    def persist_settings():
+        """设置修改后同步写入 save.json / users.json / 登录态，
+        保证下次启动（含“记住登录”直接进入）时设置仍然生效。"""
+        try:
+            save()
+            username = (data or {}).get("username", "")
+            if username:
+                try:
+                    save_user_progress(username, data)
+                except Exception as _e:
+                    logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
+            if save_login_state:
+                try:
+                    save_login_state(username, data)
+                except Exception as _e:
+                    logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
+        except Exception as _e:
+            logger.debug("[异常静默] 保存设置 %s: %s", type(_e).__name__, _e)
+
+    def apply_resolution_now():
+        """立即应用新分辨率/全屏设置，无需重启"""
+        global screen
+        try:
+            res = data['settings']['graphics']['resolution']
+            fullscreen = data['settings']['graphics'].get('fullscreen', False)
+            if fullscreen:
+                screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+            else:
+                width, height = map(int, res.split('x'))
+                screen = pygame.display.set_mode((width, height))
+            pygame.display.set_caption("游戏设置")
+        except Exception as _e:
+            logger.debug("[异常静默] 应用分辨率 %s: %s", type(_e).__name__, _e)
 
     def get_settings_text():
         if 'fullscreen' not in data['settings']['graphics']:
             data['settings']['graphics']['fullscreen'] = False
+            save()
+        if 'particles' not in data['settings']['graphics']:
+            data['settings']['graphics']['particles'] = True
             save()
 
         return [
@@ -1439,6 +1348,7 @@ def setting_menu():
             f"全屏模式：{'开' if data['settings']['graphics']['fullscreen'] else '关'}",
             f"地图最大元素：{data['settings']['map']['max_locations']}",
             f"音效：{'开' if data['settings']['sound']['enable'] else '关'}",
+            f"粒子效果：{'开' if data['settings']['graphics'].get('particles', True) else '关'}",
             "返回主菜单"
         ]
 
@@ -1461,7 +1371,7 @@ def setting_menu():
 
         draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
 
-        if random.random() < 0.1:
+        if particles_enabled() and random.random() < 0.1:
             particles.append(Particle(
                 random.randint(0, screen_width),
                 random.randint(0, screen_height),
@@ -1499,67 +1409,149 @@ def setting_menu():
                             except ValueError:
                                 next_idx = 0
                             data['settings']['graphics']['resolution'] = resolutions[next_idx]
-                            save()
-                            resolution_changed = True
+                            persist_settings()
+                            apply_resolution_now()
+                            continue
                         elif i == 1:
                             data['settings']['graphics']['fullscreen'] = not data['settings']['graphics']['fullscreen']
-                            save()
-                            resolution_changed = True
+                            persist_settings()
+                            apply_resolution_now()
+                            continue
                         elif i == 2:
                             new_max = data['settings']['map']['max_locations'] + 10
                             if new_max > 100:
                                 new_max = 10
                             data['settings']['map']['max_locations'] = new_max
-                            save()
+                            persist_settings()
                         elif i == 3:
                             data['settings']['sound']['enable'] = not data['settings']['sound']['enable']
-                            save()
+                            persist_settings()
                         elif i == 4:
+                            data['settings']['graphics']['particles'] = not data['settings']['graphics'].get('particles', True)
+                            persist_settings()
+                        elif i == 5:
                             running = False
 
         clock.tick(60)
 
 def input_save_name(screen, font_title, font_input):
-    """输入存档名称"""
-    input_box = pygame.Rect(screen.get_width() // 4, screen.get_height() // 2, screen.get_width() // 2, 50)
+    """输入存档名称 - 模态对话框（回车/点击确认，Esc/点击取消）"""
+    w, h = screen.get_size()
+    panel_w = min(max(420, w * 3 // 5), 720)
+    panel_h = 230
+    panel_x = (w - panel_w) // 2
+    panel_y = (h - panel_h) // 2
+    input_box = pygame.Rect(panel_x + 40, panel_y + 112, panel_w - 80, 44)
+    confirm_rect = pygame.Rect(panel_x + 40, panel_y + 172, (panel_w - 110) // 2, 42)
+    cancel_rect = pygame.Rect(panel_x + 70 + (panel_w - 110) // 2, panel_y + 172, (panel_w - 110) // 2, 42)
+
     text = ""
     active = True
+    result = None
     clock = pygame.time.Clock()
+    bg_snapshot = screen.copy()
+    overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 160))
+
+    def draw_box(box, hover):
+        color = (52, 64, 96) if not hover else (74, 94, 138)
+        pygame.draw.rect(screen, color, box, border_radius=8)
+        pygame.draw.rect(screen, COLORS["accent_gold"], box, 2, border_radius=8)
 
     while active:
+        mouse_pos = pygame.mouse.get_pos()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return None
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_RETURN:
+                if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    result = text if text.strip() else "存档"
                     active = False
+                elif event.key == pygame.K_ESCAPE:
+                    return None
                 elif event.key == pygame.K_BACKSPACE:
                     text = text[:-1]
-                else:
+                elif len(text) < 20 and event.unicode and event.unicode.isprintable():
                     text += event.unicode
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if confirm_rect.collidepoint(event.pos):
+                    result = text if text.strip() else "存档"
+                    active = False
+                elif cancel_rect.collidepoint(event.pos):
+                    return None
 
-        pygame.draw.rect(screen, (50, 50, 80), input_box)
-        pygame.draw.rect(screen, (100, 100, 150), input_box, 2)
+        # 背景快照 + 半透明遮罩，保证对话框清晰可见
+        screen.blit(bg_snapshot, (0, 0))
+        screen.blit(overlay, (0, 0))
 
+        pygame.draw.rect(screen, (20, 26, 48), (panel_x, panel_y, panel_w, panel_h), border_radius=12)
+        pygame.draw.rect(screen, COLORS["accent_gold"], (panel_x, panel_y, panel_w, panel_h), 2, border_radius=12)
+
+        if font_title:
+            title_surf = font_title.render("保存进度", True, COLORS["accent_gold"])
+            if title_surf:
+                screen.blit(title_surf, (panel_x + (panel_w - title_surf.get_width()) // 2, panel_y + 18))
         if font_input:
-            txt_surface = font_input.render(text, True, (255, 255, 255))
+            hint_surf = font_input.render("请输入存档名称：", True, COLORS["text_gray"])
+            if hint_surf:
+                screen.blit(hint_surf, (panel_x + 40, panel_y + 56))
+            hint2_surf = font_input.render("回车确认保存，Esc 或点击取消退出", True, COLORS["text_gray"])
+            if hint2_surf:
+                screen.blit(hint2_surf, (panel_x + 40, panel_y + 82))
+
+        # 输入框（先画框再画文字，避免被覆盖）
+        draw_box(input_box, input_box.collidepoint(mouse_pos))
+        if font_input:
+            show_text = text + "_" if (pygame.time.get_ticks() // 500) % 2 == 0 else text
+            txt_surface = font_input.render(show_text if show_text else "", True, COLORS["text_white"])
             if txt_surface:
-                screen.blit(txt_surface, (input_box.x + 5, input_box.y + 10))
+                screen.blit(txt_surface, (input_box.x + 10,
+                                          input_box.y + (input_box.height - txt_surface.get_height()) // 2))
+
+        # 确认/取消按钮
+        draw_box(confirm_rect, confirm_rect.collidepoint(mouse_pos))
+        draw_box(cancel_rect, cancel_rect.collidepoint(mouse_pos))
+        if font_input:
+            confirm_surf = font_input.render("确认保存", True, COLORS["text_white"])
+            cancel_surf = font_input.render("取消", True, COLORS["text_white"])
+            if confirm_surf:
+                screen.blit(confirm_surf, (confirm_rect.centerx - confirm_surf.get_width() // 2,
+                                           confirm_rect.centery - confirm_surf.get_height() // 2))
+            if cancel_surf:
+                screen.blit(cancel_surf, (cancel_rect.centerx - cancel_surf.get_width() // 2,
+                                          cancel_rect.centery - cancel_surf.get_height() // 2))
 
         pygame.display.flip()
-        clock.tick(30)
+        clock.tick(60)
 
-    return text if text else "存档"
+    return result
 
 def show_message(message):
-    """显示消息"""
-    if FONT_MAIN:
-        msg_surface = FONT_MAIN.render(message, True, (255, 255, 255))
-        if msg_surface and screen:
-            screen.blit(msg_surface, (screen.get_width() // 2 - msg_surface.get_width() // 2,
-                                     screen.get_height() // 2))
-            pygame.display.flip()
-            pygame.time.wait(2000)
+    """显示消息（事件泵送，不阻塞窗口响应；点击或按键可提前关闭）"""
+    if not FONT_MAIN or not screen:
+        return
+    msg_surface = FONT_MAIN.render(message, True, COLORS["text_white"])
+    if not msg_surface:
+        return
+    w, h = screen.get_size()
+    box_w = min(w - 60, msg_surface.get_width() + 90)
+    box_h = msg_surface.get_height() + 44
+    box = pygame.Rect((w - box_w) // 2, (h - box_h) // 2, box_w, box_h)
+    start = pygame.time.get_ticks()
+    while pygame.time.get_ticks() - start < 1800:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                return
+            if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_ESCAPE):
+                return
+        pygame.draw.rect(screen, (20, 26, 48), box, border_radius=10)
+        pygame.draw.rect(screen, COLORS["accent_gold"], box, 2, border_radius=10)
+        screen.blit(msg_surface, (box.centerx - msg_surface.get_width() // 2,
+                                  box.centery - msg_surface.get_height() // 2))
+        pygame.display.flip()
+        pygame.time.wait(16)
 
 def main():
     """主菜单主循环"""
@@ -1623,9 +1615,7 @@ def main():
         ("游戏地图", "2"),
         ("3D地图", "28"),
         ("副本挑战", "3"),
-        ("小游戏中心", "10"),
-        ("竞速模式", "33"),
-        ("生存模式", "34")
+        ("小游戏中心", "10")
     ]
 
     game_system_items = [
@@ -1737,11 +1727,8 @@ def main():
                 'hue': random.randint(0, 360)
             })
         
-        for comet in comet_trails[:]:
+        for comet in comet_trails:
             comet['x'] -= comet['speed']
-            if comet['x'] < -comet['length']:
-                comet_trails.remove(comet)
-                continue
             try:
                 h = comet['hue']
                 r = int(127 + 127 * math.sin(h * math.pi / 180))
@@ -1761,24 +1748,23 @@ def main():
             except Exception as _e:
                 logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
         
-        if random.random() < 0.02 and len(rainbow_particles) < 30:
+        comet_trails[:] = [comet for comet in comet_trails if comet['x'] >= -comet['length']]
+        if random.random() < 0.006 and len(rainbow_particles) < 8:
             hue = random.randint(0, 360)
             rainbow_particles.append({
                 'x': random.randint(0, screen_width),
                 'y': screen_height + 10,
-                'speed': random.uniform(0.8, 1.5),
+                'speed': random.uniform(1.5, 2.5),
                 'hue': hue,
-                'size': random.randint(3, 6),
+                'size': random.randint(3, 5),
                 'alpha': random.randint(150, 255)
             })
         
-        for rp in rainbow_particles[:]:
+        for rp in rainbow_particles:
             rp['y'] -= rp['speed']
             rp['x'] += math.sin(current_time * 0.02 + rp['hue'] * 0.1) * 0.5
             rp['hue'] = (rp['hue'] + 1) % 360
-            if rp['y'] < -20:
-                rainbow_particles.remove(rp)
-                continue
+            rp['alpha'] = max(0, rp['alpha'] - 3)
             try:
                 h = rp['hue']
                 r = int(127 + 127 * math.sin(h * math.pi / 180))
@@ -1790,6 +1776,7 @@ def main():
             except Exception as _e:
                 logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
+        rainbow_particles[:] = [rp for rp in rainbow_particles if rp['y'] >= -20 and rp['alpha'] > 0]
         for decor in bg_decorations:
             decor['x'] += math.sin(current_time * 0.001 + decor['y'] * 0.01) * decor['speed']
             decor['y'] += math.cos(current_time * 0.001 + decor['x'] * 0.01) * decor['speed']
@@ -1835,7 +1822,7 @@ def main():
                 'life': random.randint(1500, 2500)
             })
 
-        for element in moving_elements[:]:
+        for element in moving_elements:
             element['x'] += element['speed_x']
             element['y'] += element['speed_y']
             element['life'] -= 1
@@ -1847,10 +1834,9 @@ def main():
                     screen.blit(surf, (int(element['x']), int(element['y'])))
                 except Exception as _e:
                     logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
-            else:
-                moving_elements.remove(element)
+        moving_elements[:] = [element for element in moving_elements if element['life'] > 0]
 
-        if random.random() < 0.1 and len(particles) < 25:
+        if particles_enabled() and random.random() < 0.1 and len(particles) < 25:
             particle_type = random.choice(['gold', 'red', 'blue'])
 
             if particle_type == 'gold':
@@ -1990,62 +1976,11 @@ def main():
                     if element_type == "dropdown":
                         clicked, code = element.check_click(mouse_pos)
                         if clicked and code:
-                            if code == "1":
-                                run_module("pvp_p2p.py")
-                            elif code == "2":
-                                run_module("game_map_pygame.py")
-                            elif code == "28":
-                                run_module("game_map_3d.py")
-                            elif code == "29":
-                                run_module("hero_recruitment.py")
-                            elif code == "31":
-                                run_module("newbie_guide.py")
-                            elif code == "32":
-                                run_module("background_story.py")
-                            elif code == "3":
-                                run_module("battle_system.py")
-                            elif code == "7":
-                                run_module("hero_warehouse.py")
-                            elif code == "8":
-                                run_module("activity_system.py")
-                            elif code == "12":
-                                run_module("tech_tree.py")
-                            elif code == "21":
-                                run_module("building_system.py")
-                            elif code == "22":
-                                run_module("talent_system.py")
-                            elif code == "11":
-                                run_module("achievement_system.py")
-                            elif code == "13":
-                                run_module("ranking_system.py")
-                            elif code == "14":
-                                run_module("daily_checkin.py")
-                            elif code == "6":
-                                run_module("shop_system.py")
-                            elif code == "10":
-                                mini_games_menu()
-                            elif code == "16":
-                                run_module("social_system.py")
-                            elif code == "17":
-                                run_module("equipment_system.py")
-                            elif code == "18":
-                                run_module("trading_system.py")
-                            elif code == "19":
-                                run_module("pet_system.py")
-                            elif code == "30":
-                                run_module("fashion_system.py")
-                            elif code == "20":
-                                run_module("quest_system.py")
-                            elif code == "23":
-                                run_module("fishing_system.py")
-                            elif code == "24":
-                                run_module("alchemy_system.py")
-                            elif code == "25":
-                                run_module("ai_system.py")
-                            elif code == "26":
-                                run_module("faq_system.py")
-                            elif code == "27":
-                                run_module("weather_system.py")
+                            # 优先处理特殊逻辑，其余统一走模块路由表
+                            if code in SPECIAL_HANDLERS:
+                                SPECIAL_HANDLERS[code]()
+                            elif code in MODULE_ROUTES:
+                                run_module(MODULE_ROUTES[code])
                             break
                     elif element_type == "button":
                         btn, code = element
@@ -2054,13 +1989,18 @@ def main():
                                 username = data.get("username", "player")
                                 save_name = input_save_name(screen, FONT_MAIN, FONT_SMALL)
                                 if save_name:
-                                    from ASSET.login_system import save_user_progress, save_game
-                                    save_user_progress(username, data)
-                                    success, message = save_game(username, save_name, data)
-                                    if success:
-                                        show_message("保存成功！")
-                                    else:
-                                        show_message(f"保存失败：{message}")
+                                    try:
+                                        from ASSET.login_system import save_user_progress, save_game
+                                        save_user_progress(username, data)
+                                        success, message = save_game(username, save_name, data)
+                                        if success:
+                                            show_message("保存成功！")
+                                        else:
+                                            show_message(f"保存失败：{message}")
+                                    except Exception as _e:
+                                        logger.error("保存进度异常: %s\n%s",
+                                                     _e, traceback.format_exc())
+                                        show_message(f"保存失败：{type(_e).__name__}")
                             elif code == "15":
                                 username = data.get("username", "player")
                                 from ASSET.login_system import show_save_manager
@@ -2163,7 +2103,7 @@ def show_exit_menu():
     while running:
         draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
 
-        if random.random() < 0.1:
+        if particles_enabled() and random.random() < 0.1:
             particles.append(Particle(
                 random.randint(0, screen_width),
                 random.randint(0, screen_height),
@@ -2316,7 +2256,7 @@ def startup_animation():
                         screen.blit(glow_surf, (screen_width // 2 - progress_surf.get_width() // 2 - offset, bar_y + bar_height + 20 - offset))
                 screen.blit(progress_surf, (screen_width // 2 - progress_surf.get_width() // 2, bar_y + bar_height + 20))
 
-        if random.random() < 0.1:
+        if particles_enabled() and random.random() < 0.1:
             particles.append(Particle(
                 random.randint(0, screen_width),
                 random.randint(0, screen_height),

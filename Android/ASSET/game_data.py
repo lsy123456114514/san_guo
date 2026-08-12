@@ -2,6 +2,7 @@
 
 import json
 import os
+import time
 import platform
 import sys
 import logging
@@ -30,18 +31,10 @@ logger = _logger
 
 
 def hide_file(filepath):
-    """隐藏文件（仅Windows）"""
-    if platform.system() == "Windows":
-        try:
-            if not filepath or not isinstance(filepath, str):
-                return
-            if not os.path.exists(filepath):
-                return
-            import ctypes
-            ctypes.windll.kernel32.SetFileAttributesW(filepath, 0x80)
-            ctypes.windll.kernel32.SetFileAttributesW(filepath, 0x02)
-        except Exception as _e:
-            logger.debug("[异常静默] hide_file %s %s: %s", type(_e).__name__, filepath, _e)
+    """隐藏文件（仅Windows）。
+    注意：某些 Windows 安全策略会对设置了 HIDDEN 属性的文件拒绝后续 open('w') 写入，
+    导致存档/用户数据保存失败，故此处不再设置隐藏属性。"""
+    pass
 
 # 基础配置
 RESOURCES = ["水", "煤炭", "木头", "食物", "金元宝", "时间卡", "宠物食物", "普通子弹", "高级子弹", "稀有子弹"]
@@ -178,12 +171,31 @@ ELEMENT_ENERGY = {
     "earth": {"color": (180, 140, 100), "max": 100},
     "wind": {"color": (200, 200, 100), "max": 100}
 }
-# 路径适配：安卓用内部存储，PC用本地
-if 'ANDROID_DATA' in os.environ:
-    from android.storage import app_storage_path
-    SAVE_PATH = os.path.join(app_storage_path(), "save.json")
-else:
-    SAVE_PATH = os.path.join(os.path.dirname(__file__), "save.json")
+def get_writable_base_dir():
+    """返回可写的数据目录（存档/用户/地图/登录态等）：
+    - Android: 应用内部存储
+    - PyInstaller 打包: %APPDATA%/SangoHeroes (Windows) 或 ~/.sango_heroes
+    - 源码运行: 模块所在目录（保持旧存档位置）
+    """
+    if 'ANDROID_DATA' in os.environ:
+        from android.storage import app_storage_path
+        base = app_storage_path()
+    elif getattr(sys, 'frozen', False) or hasattr(sys, '_MEIPASS'):
+        if platform.system() == "Windows":
+            base = os.path.join(os.environ.get('APPDATA') or os.path.expanduser("~"), "SangoHeroes")
+        else:
+            base = os.path.join(os.path.expanduser("~"), ".sango_heroes")
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
+    try:
+        os.makedirs(base, exist_ok=True)
+    except Exception:
+        pass
+    return base
+
+
+# 路径适配：安卓用内部存储，打包用AppData可写目录，源码用本地
+SAVE_PATH = os.path.join(get_writable_base_dir(), "save.json")
 SOUND_DIR = os.path.join(os.path.dirname(__file__), "sounds")
 
 # 全局设置
@@ -191,7 +203,8 @@ SETTINGS = {
     "graphics": {
         "resolution": "auto",  # 自动适应屏幕分辨率
         "fullscreen": False,
-        "fps_limit": 60
+        "fps_limit": 60,
+        "particles": True  # 粒子效果开关（可在游戏设置中关闭）
     },
     "map": {
         "max_locations": 50
@@ -210,27 +223,28 @@ SETTINGS = {
     }
 }
 
+def particles_enabled():
+    """粒子效果是否开启（可在游戏设置中关闭，老存档缺省为开启）"""
+    try:
+        return bool(data.get("settings", {}).get("graphics", {}).get("particles", True))
+    except Exception:
+        return True
+
+def _font_has_chinese(font, size=24):
+    """判断字体是否真正包含中文字形。
+    pygame 默认字体（及无中文字形的字体）会把中文画成“方框”，
+    方框宽度只有约 1/3 字号，而真实中文字体字宽接近字号大小。"""
+    try:
+        w = font.render("中", True, (255, 255, 255)).get_width()
+        return w >= size * 0.5
+    except Exception:
+        return False
+
+
 def get_system_font_name():
-    """跨系统中文字体适配（含安卓）"""
-    log_lines = []
-
-    def _flush_log():
-        """将暂存的日志一次性写入文件（避免中途关闭后再使用）"""
-        if not log_lines:
-            return
-        try:
-            with open("debug.log", "a", encoding="utf-8") as lf:
-                lf.write('\n'.join(log_lines) + '\n')
-            hide_file("debug.log")
-        except Exception as _e:
-            logger.debug("[异常静默] _flush_log %s: %s", type(_e).__name__, _e)
-
-    result = None
-    s = platform.system()
-    is_android = 'ANDROID_DATA' in os.environ
-    logger.info("[字体] 系统=%s, 安卓=%s", s, is_android)
-
-    # 优先使用打包字体（确保其他设备也能显示中文）
+    """跨系统中文字体适配（含安卓）—— 返回能真正显示中文的字体来源
+    （字体文件路径或系统字体名），找不到可用中文字体时返回 None"""
+    # 1) 优先使用随游戏打包的字体文件（任何设备都能显示中文）
     try:
         if hasattr(sys, '_MEIPASS'):
             base_path = sys._MEIPASS
@@ -238,55 +252,77 @@ def get_system_font_name():
             base_path = os.path.dirname(os.path.abspath(__file__))
         font_dir = os.path.join(base_path, 'fonts')
         if os.path.isdir(font_dir):
-            for f in os.listdir(font_dir):
-                if f.endswith('.ttf'):
+            for f in sorted(os.listdir(font_dir)):
+                if f.lower().endswith(('.ttf', '.otf')):
                     font_path = os.path.join(font_dir, f)
-                    logger.info("[字体] 选择打包字体: %s", font_path)
-                    log_lines.append(f"选择打包字体: {font_path}")
-                    _flush_log()
-                    return font_path
+                    try:
+                        if _font_has_chinese(pygame.font.Font(font_path, 12), 12):
+                            logger.info("[字体] 使用内置字体: %s", font_path)
+                            return font_path
+                    except Exception as e:
+                        logger.debug("[字体] 内置字体加载失败 %s: %s", font_path, e)
     except Exception as e:
-        logger.warning("[字体] 打包字体加载失败: %s", e)
-        log_lines.append(f"打包字体加载失败: {e}")
+        logger.debug("[字体] 内置字体目录检查失败: %s", e)
 
+    # 2) 其次使用系统中的中文字体
+    s = platform.system()
+    is_android = 'ANDROID_DATA' in os.environ
     if s == "Windows":
-        font_list = [
-            "Microsoft YaHei", "SimHei", "Microsoft YaHei UI",
-            "Segoe UI", "Arial", None
-        ]
-        for font_name in font_list:
-            try:
-                if font_name:
-                    font = pygame.font.SysFont(font_name, 12)
-                else:
-                    font = pygame.font.Font(None, 12)
-                test_text = "测试中文"
-                test_surface = font.render(test_text, True, (255, 255, 255))
-                if test_surface and test_surface.get_width() > 0:
-                    display_name = font_name if font_name else '默认字体'
-                    logger.info("[字体] Windows 选择系统字体: %s", display_name)
-                    log_lines.append(f"选择字体: {display_name}")
-                    result = font_name
-                    break
-            except Exception as e:
-                logger.debug("[字体] Windows 字体 %s 失败: %s", font_name, e)
-                log_lines.append(f"字体 {font_name} 失败: {e}")
-                continue
+        font_list = ["Microsoft YaHei", "SimHei", "Microsoft YaHei UI",
+                     "SimSun", "KaiTi", "FangSong"]
     elif s == "Darwin":
-        logger.info("[字体] macOS 选择: PingFang SC")
-        log_lines.append("选择字体: PingFang SC")
-        result = "PingFang SC"
-    elif s == "Linux" or is_android:
-        logger.info("[字体] Linux/Android 选择: DroidSansFallback")
-        log_lines.append("选择字体: DroidSansFallback")
-        result = "DroidSansFallback"
-    else:
-        logger.warning("[字体] 未知系统 %s，返回 None", s)
+        font_list = ["PingFang SC", "Hiragino Sans GB", "STHeiti"]
+    else:  # Linux / Android
+        font_list = ["Noto Sans CJK SC", "Noto Sans CJK",
+                     "WenQuanYi Micro Hei", "DroidSansFallback"]
+    for font_name in font_list:
+        try:
+            if _font_has_chinese(pygame.font.SysFont(font_name, 12), 12):
+                logger.info("[字体] 使用系统字体: %s", font_name)
+                return font_name
+        except Exception:
+            continue
 
-    if result is None:
-        logger.warning("[字体] 未找到任何可用中文字体")
-    _flush_log()
-    return result
+    logger.warning("[字体] 未找到可用的中文字体，界面中文可能显示为方框")
+    return None
+
+
+# 字体对象 -> 来源(font_name 或文件路径) 注册表，用于缩放重建
+_FONT_SOURCES = {}
+
+
+def create_font(font_name, size, bold=False):
+    """
+    统一创建字体：兼容“系统字体名”和“字体文件路径”两种来源。
+    - font_name 是存在的文件路径 -> pygame.font.Font(路径)
+    - font_name 是字体名称 -> pygame.font.SysFont(名称)
+    - None/空 -> pygame 默认字体
+    """
+    try:
+        if font_name and isinstance(font_name, str) and os.path.isfile(font_name):
+            font = pygame.font.Font(font_name, int(size))
+        elif font_name:
+            font = pygame.font.SysFont(font_name, int(size), bold=bold)
+        else:
+            font = pygame.font.Font(None, int(size))
+    except Exception as _e:
+        logger.debug("[字体] create_font 失败 key=%s size=%s: %s",
+                     font_name, size, _e)
+        font = pygame.font.Font(None, int(size))
+    try:
+        _FONT_SOURCES[id(font)] = font_name
+    except Exception:
+        pass
+    return font
+
+
+def resize_font(font, size):
+    """按相同来源重建指定字号字体（用于文本溢出缩放等场景）"""
+    key = _FONT_SOURCES.get(id(font))
+    if key is None:
+        key = getattr(font, 'name', None)
+    return create_font(key, int(size))
+
 
 def load_sound(file_name: str):
     """加载音效：无文件/静音则跳过"""
@@ -1544,18 +1580,67 @@ def get_font(size):
         return _FONT_CACHE[cache_key]
     try:
         if font_key == "__sys_default__":
-            font = pygame.font.Font(None, int(size))
+            font = _PYGAME_FONT_ORIGINAL(None, int(size))
         elif isinstance(font_key, str) and os.path.isfile(font_key):
-            font = pygame.font.Font(font_key, int(size))
+            font = _PYGAME_FONT_ORIGINAL(font_key, int(size))
         else:
             font = pygame.font.SysFont(font_key, int(size))
     except Exception as _e:
         logger.debug("[字体缓存] 字体创建失败 key=%s size=%d: %s",
                      font_key, int(size), _e)
-        font = pygame.font.Font(None, int(size))
+        font = _PYGAME_FONT_ORIGINAL(None, int(size))
     _FONT_CACHE[cache_key] = font
     _evict_if_full(_FONT_CACHE, 500)
     return font
+
+
+# ────────────────────────────────────────────────────────────────────────
+# 兜底补丁：很多模块直接写 pygame.font.Font(None, size) 或
+# pygame.font.SysFont(None, size)，而默认字体没有中文字形，中文会全部
+# 画成“方框”。这里把这类调用统一替换为可显示中文的字体。
+_PYGAME_FONT_ORIGINAL = pygame.font.Font
+_PYGAME_SYSFONT_ORIGINAL = pygame.font.SysFont
+_zh_font_active = False
+
+
+def _zh_font(path=None, size=None, bold=False, italic=False):
+    global _zh_font_active
+    if path is None and size is not None and not _zh_font_active:
+        _zh_font_active = True
+        try:
+            return get_font(size)
+        except Exception:
+            pass
+        finally:
+            _zh_font_active = False
+    if path is None:
+        return _PYGAME_FONT_ORIGINAL(None, size)
+    return _PYGAME_FONT_ORIGINAL(path, size)
+
+
+def _zh_sysfont(name=None, size=None, bold=False, italic=False, wrap=True):
+    global _zh_font_active
+    if name is None and size is not None:
+        return get_font(size)
+    try:
+        font = _PYGAME_SYSFONT_ORIGINAL(name, size, bold, italic, wrap)
+        if font is not None and _font_has_chinese(font, size):
+            return font
+    except Exception:
+        pass
+    if not _zh_font_active:
+        _zh_font_active = True
+        try:
+            return get_font(size)
+        except Exception:
+            pass
+        finally:
+            _zh_font_active = False
+    return _PYGAME_SYSFONT_ORIGINAL(name, size, bold, italic, wrap)
+
+
+pygame.font.Font = _zh_font
+pygame.font.SysFont = _zh_sysfont
 
 
 def render_text(text, size, color, bg_color=None, antialias=True):
@@ -1682,7 +1767,6 @@ def cull_dead(particles, is_dead=lambda p: p.life <= 0):
 
 def calculate_passive_income():
     """计算并添加被动收入"""
-    import time
     current_time = int(time.time())
     last_login = data.get('last_login', 0)
     if last_login > 0:
@@ -1855,11 +1939,38 @@ def load():
             data = default_save.copy()
             calculate_passive_income()
 
+def sanitize_json(obj, _depth=0):
+    """递归清理不可 JSON 序列化的值，保证 json.dump 永不因类型报错。
+
+    保留 dict/list/str/int/float/bool/None；bytes 解码为文本；
+    其余对象（pygame Surface、文件句柄、函数等）转为其字符串描述。
+    """
+    if _depth > 60:
+        return None
+    if isinstance(obj, dict):
+        return {str(k): sanitize_json(v, _depth + 1) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [sanitize_json(v, _depth + 1) for v in obj]
+    if isinstance(obj, bool) or obj is None:
+        return obj
+    if isinstance(obj, (int, float)):
+        if isinstance(obj, float) and (obj != obj or obj in (float("inf"), float("-inf"))):
+            return None
+        return obj
+    if isinstance(obj, str):
+        return obj
+    if isinstance(obj, bytes):
+        try:
+            return obj.decode("utf-8", "ignore")
+        except Exception:
+            return str(obj)
+    return str(obj)
+
 def save():
-    """保存存档"""
+    """保存存档（写入前自动消毒，避免类型异常）"""
     try:
         with open(SAVE_PATH, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+            json.dump(sanitize_json(data), f, ensure_ascii=False, indent=2)
         hide_file(SAVE_PATH)
         logger.debug("[存档] 保存成功: %s", SAVE_PATH)
     except Exception as e:
@@ -1868,7 +1979,6 @@ def save():
 def auto_save():
     """自动保存功能"""
     # 每5分钟自动保存一次
-    import time
     current_time = int(time.time())
     if 'last_auto_save' not in data:
         data['last_auto_save'] = 0

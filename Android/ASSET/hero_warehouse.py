@@ -136,16 +136,6 @@ class AnimatedButton:
         for p in self.particles:
             p.draw(surface)
 
-def draw_gradient_bg(surface, color1, color2):
-    """绘制渐变背景"""
-    width, height = surface.get_size()
-    for y in range(height):
-        ratio = y / height
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
-
 def draw_star(surface, x, y, size, filled=True):
     """绘制星星"""
     points = []
@@ -679,9 +669,11 @@ def main():
             pygame.display.flip()
             clock.tick(60)
 
-        safe_exit("武将仓库")
+        return
     except Exception as e:
-        safe_exit("武将仓库", str(e))
+        import traceback
+        traceback.print_exc()
+        return
 
 if __name__ == "__main__":
     main()

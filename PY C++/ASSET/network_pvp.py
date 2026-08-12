@@ -11,6 +11,7 @@ import json
 import time
 import random
 from typing import Optional, Dict, Any, Callable
+from ASSET.game_data import draw_gradient_bg, cull_dead, get_font, logger
 
 
 class NetworkPVP:
@@ -140,7 +141,7 @@ class NetworkPVP:
             ip = s.getsockname()[0]
             s.close()
             return ip
-        except:
+        except Exception as _e:
             return '127.0.0.1'
     
     def stop(self):
@@ -150,8 +151,8 @@ class NetworkPVP:
         if self.sock:
             try:
                 self.sock.close()
-            except:
-                pass
+            except Exception as _e:
+                logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=1.0)
         print("🛑 网络模块已停止")

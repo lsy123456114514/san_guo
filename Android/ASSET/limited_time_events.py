@@ -77,16 +77,6 @@ class Button:
                 self.is_clicked = False
         return False
 
-def draw_gradient_bg(surface, color1, color2):
-    """绘制渐变背景"""
-    width, height = surface.get_size()
-    for y in range(height):
-        ratio = y / height
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
-
 def draw_title(surface, text, y_pos, screen_width, font_big):
     """绘制带特效的标题"""
     # 发光效果
@@ -464,13 +454,13 @@ def main():
             
             clock.tick(60)
         
-        safe_exit("限时活动系统")
+        return
     except Exception as e:
         logger.info(f"异常：{str(e)}")
         logger.info("详细错误信息：")
         import traceback
         traceback.print_exc()
-        safe_exit("限时活动系统", str(e))
+        return
 
 if __name__ == "__main__":
     main()

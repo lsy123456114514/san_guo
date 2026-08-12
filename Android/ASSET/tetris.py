@@ -1,3 +1,5 @@
+"""俄罗斯方块小游戏系统（内置休闲玩法）"""
+
 import os
 import pygame
 import random
@@ -302,9 +304,11 @@ def main():
             pygame.display.flip()
             clock.tick(60)
         
-        safe_exit("俄罗斯方块游戏")
+        return
     except Exception as e:
-        safe_exit("俄罗斯方块游戏", str(e))
+        import traceback
+        traceback.print_exc()
+        return
 
 if __name__ == "__main__":
     main()

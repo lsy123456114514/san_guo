@@ -1,3 +1,5 @@
+"""玩法系统 - 活动中心与限时活动推送"""
+
 import time
 from ASSET.game_data import data, save, logger, draw_gradient_bg, cull_dead, get_font
 
@@ -524,10 +526,7 @@ class LeaderboardSystem:
         
         rankings = data["leaderboard"]["categories"]["power"]
         
-        for entry in rankings:
-            if entry["player_id"] == "player":
-                rankings.remove(entry)
-                break
+        rankings[:] = [entry for entry in rankings if entry["player_id"] != "player"]
         
         rankings.append(player_entry)
         rankings.sort(key=lambda x: x["score"], reverse=True)
@@ -551,10 +550,7 @@ class LeaderboardSystem:
         
         rankings = data["leaderboard"]["categories"]["wealth"]
         
-        for entry in rankings:
-            if entry["player_id"] == "player":
-                rankings.remove(entry)
-                break
+        rankings[:] = [entry for entry in rankings if entry["player_id"] != "player"]
         
         rankings.append(player_entry)
         rankings.sort(key=lambda x: x["score"], reverse=True)
@@ -573,10 +569,7 @@ class LeaderboardSystem:
         
         rankings = data["leaderboard"]["categories"]["achievements"]
         
-        for entry in rankings:
-            if entry["player_id"] == "player":
-                rankings.remove(entry)
-                break
+        rankings[:] = [entry for entry in rankings if entry["player_id"] != "player"]
         
         rankings.append(player_entry)
         rankings.sort(key=lambda x: x["score"], reverse=True)
@@ -595,10 +588,7 @@ class LeaderboardSystem:
         
         rankings = data["leaderboard"]["categories"]["pvp"]
         
-        for entry in rankings:
-            if entry["player_id"] == "player":
-                rankings.remove(entry)
-                break
+        rankings[:] = [entry for entry in rankings if entry["player_id"] != "player"]
         
         rankings.append(player_entry)
         rankings.sort(key=lambda x: x["score"], reverse=True)

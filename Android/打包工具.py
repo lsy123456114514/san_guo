@@ -11,6 +11,7 @@ import subprocess
 import threading
 import os
 import sys
+import re
 import shutil
 from datetime import datetime
 
@@ -183,18 +184,42 @@ class PackerGUI:
         thread.daemon = True
         thread.start()
     
+    def auto_version_name(self, base_name):
+        """自动叠加版本号：扫描 dist 目录中 <base>_N.exe 的最大 N，返回 <base>_(N+1)。
+
+        例如 dist 已有 SangoHeroes_23.exe → 返回 SangoHeroes_24。
+        若 dist 中没有任何带版本号的 exe，则从 _1 开始。
+        """
+        dist_dir = os.path.join(self.project_path.get(), "dist")
+        max_ver = 0
+        if os.path.isdir(dist_dir):
+            prefix = re.escape(base_name) + "_"
+            try:
+                for f in os.listdir(dist_dir):
+                    if not f.lower().endswith(".exe"):
+                        continue
+                    m = re.match(r"^" + prefix + r"(\d+)\.exe$", f, re.IGNORECASE)
+                    if m:
+                        max_ver = max(max_ver, int(m.group(1)))
+            except OSError:
+                pass
+        return f"{base_name}_{max_ver + 1}"
+
     def pack_thread(self):
         try:
             self.log_message("=" * 50)
             self.log_message("🚀 开始打包...")
             self.log_message(f"项目: {self.project_path.get()}")
             self.log_message(f"脚本: {self.main_script.get()}")
-            self.log_message(f"输出: {self.output_name.get()}")
-            
+
             # 切换目录
             original_dir = os.getcwd()
             os.chdir(self.project_path.get())
-            
+
+            # 自动叠加版本号（基于 dist 目录中已有 exe 的最大版本号 +1）
+            self.output_name.set(self.auto_version_name(self.output_name.get()))
+            self.log_message(f"输出: {self.output_name.get()}")
+
             # 清理
             if self.clean_build.get():
                 self.log_message("🧹 清理旧构建...")
@@ -209,7 +234,14 @@ class PackerGUI:
             
             # 执行
             self.log_message("⏳ 正在打包，请稍候...")
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0,
+            )
             
             if result.returncode == 0:
                 self.log_message("=" * 50)
@@ -235,13 +267,16 @@ class PackerGUI:
                         self.log_message(f"  {line}")
                 
                 messagebox.showerror("失败", "查看日志获取详细信息")
-            
-            os.chdir(original_dir)
-            
+
         except Exception as e:
             self.log_message(f"❌ 错误: {str(e)}")
-            
+
         finally:
+            # 无论成败都恢复工作目录
+            try:
+                os.chdir(original_dir)
+            except Exception:
+                pass
             self.is_packing = False
             self.progress.stop()
             self.pack_button.config(state=tk.NORMAL)
@@ -271,9 +306,15 @@ class PackerGUI:
         cmd.append('--noconfirm')
         
         # 添加数据
-        cmd.extend(['--add-data', 'ASSET' + os.pathsep + 'ASSET'])
-        cmd.extend(['--add-data', 'data' + os.pathsep + 'data'])
-        
+        if os.path.isdir('ASSET'):
+            cmd.extend(['--add-data', 'ASSET' + os.pathsep + 'ASSET'])
+        if os.path.isdir('data'):
+            cmd.extend(['--add-data', 'data' + os.pathsep + 'data'])
+
+        # 关键：游戏用 importlib 动态导入 ASSET.* 模块，
+        # PyInstaller 静态分析发现不了，必须收集整个包，否则运行时会 ModuleNotFoundError
+        cmd.extend(['--collect-submodules', 'ASSET'])
+
         # 隐藏导入（针对游戏优化）
         cmd.extend(['--hidden-import', 'pkg_resources'])
         cmd.extend(['--hidden-import', 'jaraco.functools'])

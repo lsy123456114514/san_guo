@@ -3,7 +3,7 @@
 import os
 import sys
 import pygame
-from ASSET.game_data import data, save, TECH_TREE, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, TECH_TREE, get_system_font_name, create_font, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 
 # 全局变量（延迟初始化）
@@ -176,10 +176,10 @@ def init_fonts():
     
     try:
         if font_name:
-            FONT_MAIN = pygame.font.SysFont(font_name, 36)
-            FONT_SMALL = pygame.font.SysFont(font_name, 24)
-            FONT_TINY = pygame.font.SysFont(font_name, 20)
-            FONT_BIG = pygame.font.SysFont(font_name, 50)
+            FONT_MAIN = create_font(font_name, 36)
+            FONT_SMALL = create_font(font_name, 24)
+            FONT_TINY = create_font(font_name, 20)
+            FONT_BIG = create_font(font_name, 50)
         else:
             FONT_MAIN = pygame.font.Font(None, 36)
             FONT_SMALL = pygame.font.Font(None, 24)
@@ -190,16 +190,6 @@ def init_fonts():
         FONT_SMALL = pygame.font.Font(None, 24)
         FONT_TINY = pygame.font.Font(None, 20)
         FONT_BIG = pygame.font.Font(None, 50)
-
-def draw_gradient_bg(surface, color1, color2):
-    """绘制渐变背景"""
-    width, height = surface.get_size()
-    for y in range(height):
-        ratio = y / height
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
 
 def draw_title(surface, text, y_pos, screen_width):
     """绘制标题"""

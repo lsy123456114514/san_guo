@@ -5,7 +5,7 @@
 import os
 import platform
 import pygame
-from ASSET.game_data import draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import draw_gradient_bg, cull_dead, get_font, logger
 
 # 字体文件路径
 FONT_DIR = os.path.join(os.path.dirname(__file__), 'fonts')

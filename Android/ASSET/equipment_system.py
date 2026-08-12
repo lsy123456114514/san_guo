@@ -1,10 +1,11 @@
 """装备系统 - 装备获取、穿戴、强化、套装属性"""
 
 import os
+import time
 import pygame
 import random
 import datetime
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font, GUNS
 from ASSET.languages import get_text
 from ASSET import safe_exit
 
@@ -25,6 +26,7 @@ COLORS = {
 }
 
 class Button:
+    """按钮控件 - 渐变填充与悬停点击反馈"""
     def __init__(self, text, x, y, width, height, font, 
                  normal_color=COLORS["accent_blue"], 
                  hover_color=COLORS["accent_blue_light"], 
@@ -80,6 +82,7 @@ class Button:
         return False
 
 class ScrollableContainer:
+    """滚动容器 - 支持滚轮拖拽与项目定位的列表区域"""
     def __init__(self, x, y, width, height, item_height):
         self.x = x
         self.y = y
@@ -156,6 +159,7 @@ class ScrollableContainer:
                            border_radius=4)
 
 class EquipmentScrollContainer(ScrollableContainer):
+    """装备滚动容器 - 渲染装备名称、强化等级与属性的列表项"""
     def __init__(self, x, y, width, height, item_height, items, font_main, font_small, equip_type):
         super().__init__(x, y, width, height, item_height)
         self.items = items
@@ -178,16 +182,6 @@ class EquipmentScrollContainer(ScrollableContainer):
         surface.blit(name_surf, (x + 10, y + 5))
         surface.blit(level_surf, (x + 10, y + 30))
         surface.blit(attr_surf, (x + 10, y + 50))
-
-def draw_gradient_bg(surface, color1, color2):
-    """绘制渐变背景"""
-    width, height = surface.get_size()
-    for y in range(height):
-        ratio = y / height
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
 
 def draw_title(surface, text, y_pos, screen_width, font_big):
     """绘制带特效的标题"""
@@ -351,7 +345,6 @@ class EquipmentSystem:
     
     def enhance_equipment(self, equipment):
         """强化装备"""
-        import time
         # 获取当前语言
         current_lang = data.get('settings', {}).get('language', {}).get('current', 'zh')
         
@@ -436,7 +429,6 @@ class MountSystem:
     
     def obtain_mount(self, mount_name):
         """获得坐骑"""
-        import time
         mount = self.get_mount_by_name(mount_name)
         if mount:
             # 检查是否已经拥有
@@ -474,7 +466,6 @@ class MountSystem:
     
     def activate_mount(self, mount_name):
         """激活坐骑"""
-        import time
         for mount in data["mounts"]["owned"]:
             if mount["name"] == mount_name:
                 # 计算激活时间（基础时间 * 1.5）
@@ -517,7 +508,6 @@ class SkillSystem:
     
     def learn_skill(self, skill_name):
         """学习技能"""
-        import time
         for skill in self.skill_types:
             if skill["name"] == skill_name:
                 # 检查是否已经学习
@@ -680,23 +670,32 @@ class TradingSystem:
             return False, "金币不足"
 
 def draw_bullet_shop(screen, font_big, font_main, font_small):
-    """绘制子弹商店"""
+    """绘制枪械与子弹商店（枪械在武将仓库装配，此处购买对应子弹）"""
     screen_width = screen.get_width()
     screen_height = screen.get_height()
 
     # 标题
-    draw_title(screen, "🔫 子弹商店", screen_height * 0.1, screen_width, font_big)
+    draw_title(screen, "枪械与子弹商店", screen_height * 0.08, screen_width, font_big)
 
     trading_system = TradingSystem()
 
+    # 枪械清单说明（枪械在武将仓库中给武将装配）
+    gun_names = list(GUNS.keys())
+    gun_desc_y = screen_height * 0.14
+    info_surf = font_small.render("枪械在「武将仓库」中装配给武将；战斗中持枪攻击会消耗对应子弹。", True, COLORS["accent_blue"])
+    screen.blit(info_surf, (50, gun_desc_y))
+    gun_line = "、".join([f"{GUNS[g]['name']}(需{GUNS[g].get('bullet_type', '普通子弹')})" for g in gun_names[:6]])
+    gun_surf = font_small.render("现有枪械: " + gun_line, True, COLORS["text_white"])
+    screen.blit(gun_surf, (50, gun_desc_y + 22))
+
     # 子弹类型和价格
     bullet_types = [
-        {"name": "普通子弹", "price": 5, "icon": "🔫", "color": COLORS["text_gray"]},
-        {"name": "高级子弹", "price": 15, "icon": "🔫🔫", "color": COLORS["accent_blue"]},
-        {"name": "稀有子弹", "price": 50, "icon": "🔫🔥", "color": COLORS["accent_red"]}
+        {"name": "普通子弹", "price": 5, "color": COLORS["text_gray"]},
+        {"name": "高级子弹", "price": 15, "color": COLORS["accent_blue"]},
+        {"name": "稀有子弹", "price": 50, "color": COLORS["accent_red"]}
     ]
 
-    y_offset = screen_height * 0.2
+    y_offset = screen_height * 0.24
 
     for bullet in bullet_types:
         bullet_rect = pygame.Rect(50, y_offset, screen_width - 100, 100)
@@ -706,7 +705,7 @@ def draw_bullet_shop(screen, font_big, font_main, font_small):
         pygame.draw.rect(screen, bullet["color"], bullet_rect, 2, border_radius=10)
 
         # 子弹信息
-        name_surf = font_main.render(f"{bullet['icon']} {bullet['name']}", True, bullet["color"])
+        name_surf = font_main.render(bullet["name"], True, bullet["color"])
         price_surf = font_small.render(f"价格: {bullet['price']} 金元宝/颗", True, COLORS["text_white"])
         owned_surf = font_small.render(f"拥有: {data['resources'].get(bullet['name'], 0)}", True, COLORS["text_gray"])
 
@@ -1058,7 +1057,6 @@ def main():
         # 主循环
         running = True
         while running:
-            import time
             mx, my = pygame.mouse.get_pos()
             
             # 处理时间任务
@@ -1119,7 +1117,7 @@ def main():
                 ("技能系统", "skill", 350, SCREEN_HEIGHT - 70),
                 ("公会系统", "guild", 500, SCREEN_HEIGHT - 70),
                 ("交易系统", "trading", 650, SCREEN_HEIGHT - 70),
-                ("子弹商店", "bullets", 800, SCREEN_HEIGHT - 70),
+                ("枪械商店", "bullets", 800, SCREEN_HEIGHT - 70),
                 ("返回", "back", SCREEN_WIDTH - 150, SCREEN_HEIGHT - 70)
             ]
 
@@ -1264,13 +1262,13 @@ def main():
             
             clock.tick(60)
         
-        safe_exit("装备系统")
+        return
     except Exception as e:
         logger.info(f"异常：{str(e)}")
         logger.info("详细错误信息：")
         import traceback
         traceback.print_exc()
-        safe_exit("装备系统", str(e))
+        return
 
 if __name__ == "__main__":
     main()

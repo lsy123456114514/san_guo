@@ -1,3 +1,5 @@
+"""现代化UI系统 - 通用UI组件与科技风配色"""
+
 import pygame
 import time
 from ASSET.game_data import data, save, logger, draw_gradient_bg, cull_dead, get_font

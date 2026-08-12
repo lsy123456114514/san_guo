@@ -1,3 +1,5 @@
+"""战斗系统 - 回合制对战、技能释放与伤害结算"""
+
 import os
 import pygame
 import platform
@@ -80,6 +82,7 @@ class Particle:
         pygame.draw.circle(surface, self.color, (int(self.x), int(self.y)), int(self.size))
 
 class FloatingText:
+    """浮动文字 - 伤害/治疗数字上浮与缩放动画"""
     def __init__(self, text, x, y, color, font, is_damage=True):
         self.text = text
         self.x = x
@@ -184,16 +187,6 @@ class AnimatedButton:
         # 粒子
         for p in self.particles:
             p.draw(surface)
-
-def draw_gradient_bg(surface, color1, color2):
-    """绘制渐变背景"""
-    width, height = surface.get_size()
-    for y in range(height):
-        ratio = y / height
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
 
 def draw_health_bar(surface, x, y, width, height, current, maximum, color):
     """绘制血条"""
@@ -355,6 +348,7 @@ class Minion:
 
 # 武将类
 class Hero:
+    """武将 - 技能/装备/羁绊/必杀技/连击/怒气综合战斗单位"""
     def __init__(self, name, level=1):
         self.name = name
         self.level = level
@@ -771,6 +765,7 @@ def select_heroes(screen, font_title, font_normal, font_small):
     """选择上阵武将"""
     SCREEN_WIDTH = screen.get_width()
     SCREEN_HEIGHT = screen.get_height()
+    clock = pygame.time.Clock()
     
     # 获取可用武将
     available_heroes = list(data["heroes"].keys())
@@ -879,6 +874,7 @@ def select_pet(screen, font_title, font_normal, font_small):
     """选择上阵宠物"""
     SCREEN_WIDTH = screen.get_width()
     SCREEN_HEIGHT = screen.get_height()
+    clock = pygame.time.Clock()
     
     # 获取可用宠物
     available_pets = []
@@ -1027,6 +1023,106 @@ def apply_pet_bonus(heroes, pet):
             for minion in hero.minions:
                 minion.damage *= (1 + speed_bonus * level * 0.1)
 
+
+def apply_extra_bonuses(heroes):
+    """应用养成系统加成：天赋 / 时装 / 坐骑 / 技能 / 药水 / 公会。
+    让各养成系统在战斗中真正生效（此前仅存数据而无战斗效果）。
+    """
+    try:
+        from ASSET.game_data import TALENT_TREE
+    except Exception:
+        TALENT_TREE = {}
+
+    # ---- 1. 天赋加成（百分比） ----
+    talent = {}
+    unlocked = data.get("talents", {}).get("unlocked", [])
+    for cat in TALENT_TREE.values():
+        for t in cat.get("talents", []):
+            if t.get("id") in unlocked:
+                for k, v in t.get("effect", {}).items():
+                    talent[k] = talent.get(k, 0) + v
+    atk_pct = talent.get("hero_attack", 0) + talent.get("hero_bonus", 0) + talent.get("all_bonus", 0)
+    def_pct = talent.get("hero_defense", 0) + talent.get("hero_bonus", 0) + talent.get("all_bonus", 0)
+    hp_pct = talent.get("hero_health", 0) + talent.get("all_bonus", 0)
+    crit_pct = talent.get("combat_critical", 0)
+    spd_pct = talent.get("attack_speed", 0)
+
+    # ---- 2. 时装加成（数值） ----
+    fashion = {}
+    try:
+        from ASSET.fashion_system import get_fashion_effects
+        fashion = get_fashion_effects() or {}
+    except Exception:
+        fashion = {}
+    atk_flat = fashion.get("attack", 0)
+    def_flat = fashion.get("defense", 0)
+    spd_flat = fashion.get("speed", 0)
+
+    # ---- 3. 炼金药水 buff ----
+    try:
+        from ASSET.alchemy_system import AlchemySystem
+        buffs = AlchemySystem().get_active_buffs()
+    except Exception:
+        buffs = []
+    for b in buffs:
+        eff = b.get("effect", "")
+        val = b.get("value", 0)
+        if eff == "strength":
+            atk_pct += val / 100.0
+        elif eff == "health":
+            hp_pct += val / 100.0
+        elif eff == "speed":
+            spd_flat += val
+        elif eff == "mana":
+            hp_pct += val / 400.0
+
+    # ---- 4. 坐骑加成（激活坐骑提供速度与攻击） ----
+    mounts = data.get("mounts", {})
+    if mounts.get("active") and mounts.get("owned"):
+        spd_flat += 2
+        atk_pct += 0.03
+
+    # ---- 5. 技能系统加成（已装备的技能在战斗中生效） ----
+    learned = {s.get("name"): s for s in data.get("skills", {}).get("learned", [])}
+    for sname in data.get("skills", {}).get("equipped", []):
+        s = learned.get(sname)
+        if not s:
+            continue
+        if s.get("damage"):
+            atk_pct += s["damage"] / 2000.0
+        if s.get("defense"):
+            def_flat += s["defense"] / 20.0
+        if s.get("heal"):
+            hp_pct += s["heal"] / 2000.0
+        if s.get("speed"):
+            spd_flat += s["speed"] / 100.0
+
+    # ---- 6. 公会加成（已加入公会：攻防生命小幅提升） ----
+    guild = data.get("guild", {})
+    if guild.get("name"):
+        atk_pct += 0.05
+        def_pct += 0.05
+        hp_pct += 0.05
+
+    # ---- 应用到所有玩家武将 ----
+    for hero in heroes:
+        # 攻击
+        hero.skill["damage"] = int(hero.skill.get("damage", 0) * (1 + atk_pct) + atk_flat)
+        # 生命（保持当前生命比例，避免免费回血）
+        ratio = hero.hp / hero.max_hp if hero.max_hp else 1.0
+        hero.max_hp = int(hero.max_hp * (1 + hp_pct))
+        hero.hp = max(1, int(hero.max_hp * ratio))
+        # 防御（护甲槽）
+        if "armor" in hero.equip_skills:
+            hero.equip_skills["armor"]["defense"] = hero.equip_skills["armor"].get("defense", 0) + int(def_flat + hero.equip_skills["armor"].get("defense", 0) * def_pct)
+        # 速度（坐骑槽）
+        if "horse" in hero.equip_skills:
+            hero.equip_skills["horse"]["speed"] = hero.equip_skills["horse"].get("speed", 0) + spd_flat
+            hero.equip_skills["horse"]["speed"] *= (1 + spd_pct)
+        # 暴击
+        if crit_pct:
+            hero.bond_bonuses["crit_bonus"] = hero.bond_bonuses.get("crit_bonus", 0) + crit_pct
+
 # 武将战斗主函数
 def main():
     """武将回合制战斗主函数。
@@ -1172,6 +1268,8 @@ def main():
         apply_faction_bonus(player_heroes)
         apply_pet_bonus(player_heroes, selected_pet)
         apply_weather_effects(player_heroes, True)
+        # 养成系统加成：天赋 / 时装 / 坐骑 / 技能 / 药水 / 公会
+        apply_extra_bonuses(player_heroes)
 
         logger.info("[战斗] 阶段3-4 选将+构建完成 玩家%d人 耗时%.3fs",
                     len(player_heroes), time.perf_counter() - t_phase3)
@@ -1187,7 +1285,7 @@ def main():
         # 敌人等级随玩家等级提升，但做封顶避免碾压
         enemy_level = min(player_level, player_level // 2 + 3)
 
-        for hero_name in enemy_names[:max_heroes]:
+        for hero_name in enemy_names[:max(1, len(player_heroes))]:
             hero = Hero(hero_name, enemy_level)
             # 动态敌装：4 件装备的属性随玩家等级线性增强
             hero.equip_skills = {
@@ -1225,6 +1323,11 @@ def main():
             "高级子弹": int(3 * base_reward * (1 + base_reward * 0.02)),
             "稀有子弹": int(1 * base_reward * (1 + base_reward * 0.01)),
         }
+        # 公会加成：加入公会后资源产出 +10%
+        if data.get("guild", {}).get("name"):
+            for _res in battle_rewards:
+                battle_rewards[_res] = int(battle_rewards[_res] * 1.1)
+
         # 30% 概率的小彩蛋：随机某一项资源额外增加 50%
         if random.random() < 0.3:
             extra_reward = random.choice(["水", "煤炭", "木头", "食物", "金元宝"])
@@ -2022,12 +2125,15 @@ def main():
         if battle_over:
             update_battle_stats(win, player_heroes, enemy_heroes)
 
-        safe_exit("战斗模块")
+        # 正常返回：不能调用 safe_exit（内部会 sys.exit(0) 退出整个程序），
+        # 直接 return 回到主菜单
+        return
     except Exception as e:
         t_total = time.perf_counter() - locals().get('t0', time.perf_counter())
         logger.error("[战斗] 顶层异常 类型=%s 总耗时≈%.1fs err=%s",
                      type(e).__name__, t_total, e, exc_info=True)
-        safe_exit("战斗模块", str(e))
+        # 异常时也只记录日志并返回，避免把主菜单一起关掉
+        return
 
 if __name__ == "__main__":
     main()

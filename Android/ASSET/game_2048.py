@@ -4,7 +4,7 @@ import os
 import pygame
 import random
 import platform
-from ASSET.game_data import data, get_system_font_name, save, logger, get_font, draw_gradient_bg
+from ASSET.game_data import data, get_system_font_name, create_font, save, logger, get_font, draw_gradient_bg
 from ASSET import safe_exit
 
 class Game2048:
@@ -276,7 +276,7 @@ class Game2048:
                     def init_font(size):
                         font_name = get_system_font_name()
                         try:
-                            return pygame.font.SysFont(font_name, size)
+                            return create_font(font_name, size)
                         except ValueError:
                             return pygame.font.Font(None, size)
                     
@@ -402,9 +402,11 @@ def main():
             pygame.display.flip()
             clock.tick(60)
         
-        safe_exit("2048游戏")
+        return
     except Exception as e:
-        safe_exit("2048游戏", str(e))
+        import traceback
+        traceback.print_exc()
+        return
 
 if __name__ == "__main__":
     main()

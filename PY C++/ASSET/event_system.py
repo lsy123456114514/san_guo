@@ -1,8 +1,10 @@
+"""事件系统 - 随机事件触发与处理"""
+
 import pygame
 import random
 import json
 import time
-from ASSET.game_data import data, save, get_system_font_name
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 
 class EventSystem:

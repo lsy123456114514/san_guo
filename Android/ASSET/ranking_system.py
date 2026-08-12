@@ -27,6 +27,7 @@ COLORS = {
 }
 
 class Button:
+    """按钮控件 - 悬停变色与文字渲染"""
     def __init__(self, text, x, y, width, height, font):
         self.text = text
         self.rect = pygame.Rect(x, y, width, height)
@@ -46,6 +47,7 @@ class Button:
         surface.blit(text_surf, text_rect)
 
 class ScrollableContainer:
+    """滚动容器 - 支持滚轮拖拽与项目渲染的列表区域"""
     def __init__(self, x, y, width, height, item_height):
         self.x = x
         self.y = y
@@ -122,6 +124,7 @@ class ScrollableContainer:
                            border_radius=4)
 
 class RankingScrollContainer(ScrollableContainer):
+    """排行榜滚动容器 - 渲染名次、玩家与得分的排行项"""
     def __init__(self, x, y, width, height, item_height, items, font_small, ranking_types, current_ranking):
         super().__init__(x, y, width, height, item_height)
         self.items = items
@@ -149,6 +152,7 @@ class RankingScrollContainer(ScrollableContainer):
         surface.blit(score_text, (x + self.width - 150, y + 5))
 
 class Particle:
+    """粒子效果 - 带透明度渐变的圆形粒子"""
     def __init__(self, x, y, color, speed, size, life):
         self.x = x
         self.y = y
@@ -166,23 +170,13 @@ class Particle:
         self.size = max(0.5, self.size - 0.05)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = max(0, min(255, int(255 * (self.life / self.max_life))))
         color = (*self.color[:3], alpha)
         pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
 
-def draw_gradient_bg(surface, color1, color2):
-    """绘制渐变背景"""
-    width, height = surface.get_size()
-    for y in range(height):
-        ratio = y / height
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
-
 def draw_title(surface, text, y, screen_width):
     """绘制标题"""
-    font = pygame.font.Font(None, 60)
+    font = get_font(48)
     title_surf = font.render(text, True, COLORS["accent_gold"])
     title_rect = title_surf.get_rect(center=(screen_width // 2, y))
     surface.blit(title_surf, title_rect)
@@ -217,23 +211,27 @@ def main():
             pygame.init()
             pygame.mixer.init()
         
-        # 分辨率适配
-        if 'ANDROID_DATA' in os.environ:
-            info = pygame.display.Info()
-            SCREEN_WIDTH = info.current_w
-            SCREEN_HEIGHT = info.current_h
+        # 分辨率适配：优先复用当前显示表面，避免返回主菜单错位
+        cur_surface = pygame.display.get_surface()
+        if cur_surface is not None:
+            SCREEN_WIDTH, SCREEN_HEIGHT = cur_surface.get_size()
+            screen = cur_surface
         else:
-            # 使用设置的分辨率
-            resolution = data['settings']['graphics']['resolution']
-            try:
-                width, height = map(int, resolution.split('x'))
-                SCREEN_WIDTH = width
-                SCREEN_HEIGHT = height
-            except ValueError:
-                SCREEN_WIDTH = 900
-                SCREEN_HEIGHT = 700
-        
-        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+            if 'ANDROID_DATA' in os.environ:
+                info = pygame.display.Info()
+                SCREEN_WIDTH = info.current_w
+                SCREEN_HEIGHT = info.current_h
+            else:
+                # 使用设置的分辨率
+                resolution = data['settings']['graphics']['resolution']
+                try:
+                    width, height = map(int, resolution.split('x'))
+                    SCREEN_WIDTH = width
+                    SCREEN_HEIGHT = height
+                except ValueError:
+                    SCREEN_WIDTH = 900
+                    SCREEN_HEIGHT = 700
+            screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption("排行榜系统")
         clock = pygame.time.Clock()
 
@@ -421,10 +419,12 @@ def main():
             pygame.display.flip()
             clock.tick(60)
 
-        safe_exit("排行榜系统")
+        return
     except Exception as e:
         logger.info(f"异常：{str(e)}")
-        safe_exit("排行榜系统", str(e))
+        import traceback
+        traceback.print_exc()
+        return
 
 if __name__ == "__main__":
     main()

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""天赋系统 - 天赋树加点与属性加成"""
+
 import pygame
 import os
-from ASSET.game_data import data, save, TALENT_TREE, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, TALENT_TREE, get_system_font_name, create_font, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET.game_main_menu import Button, draw_gradient_background
 
 # 颜色主题
@@ -108,10 +110,14 @@ def main():
         screen_height = info.current_h
         screen = pygame.display.set_mode((screen_width, screen_height))
     else:
-        # PC设备
-        screen_width = 800
-        screen_height = 600
-        screen = pygame.display.set_mode((screen_width, screen_height))
+        # PC设备：复用当前显示表面，避免改分辨率导致返回错位
+        cur_surface = pygame.display.get_surface()
+        if cur_surface is not None:
+            screen_width, screen_height = cur_surface.get_size()
+            screen = cur_surface
+        else:
+            screen_width, screen_height = 800, 600
+            screen = pygame.display.set_mode((screen_width, screen_height))
     
     pygame.display.set_caption("天赋系统")
     clock = pygame.time.Clock()
@@ -119,16 +125,10 @@ def main():
     # 初始化字体
     global FONT_MAIN, FONT_SMALL, FONT_BIG
     # 使用支持中文的字体
-    font_name = get_system_font_name()
     try:
-        if font_name:
-            FONT_MAIN = pygame.font.SysFont(font_name, 40)
-            FONT_SMALL = pygame.font.SysFont(font_name, 28)
-            FONT_BIG = pygame.font.SysFont(font_name, 60)
-        else:
-            FONT_MAIN = pygame.font.Font(None, 40)
-            FONT_SMALL = pygame.font.Font(None, 28)
-            FONT_BIG = pygame.font.Font(None, 60)
+        FONT_MAIN = get_font(40)
+        FONT_SMALL = get_font(28)
+        FONT_BIG = get_font(60)
     except Exception as _e:
         FONT_MAIN = pygame.font.Font(None, 40)
         FONT_SMALL = pygame.font.Font(None, 28)
@@ -160,6 +160,10 @@ def main():
         points_text = f"可用天赋点: {talent_points}"
         points_surf = FONT_MAIN.render(points_text, True, COLORS["accent_gold"])
         screen.blit(points_surf, (screen_width // 2 - points_surf.get_width() // 2, screen_height * 0.25))
+
+        # 天赋点来源提示
+        tip_surf = FONT_SMALL.render("天赋点来源：每日签到 +1，武将招募成功 +1", True, COLORS["text_gray"])
+        screen.blit(tip_surf, (screen_width // 2 - tip_surf.get_width() // 2, screen_height * 0.25 + 30))
         
         # 天赋树
         talent_items = []
@@ -243,7 +247,6 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 save()
-                pygame.quit()
                 return
             
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:

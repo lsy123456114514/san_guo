@@ -4,8 +4,7 @@ import os
 import pygame
 import platform
 from ASSET.game_data import data, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
-from ASSET import safe_exit
-from ASSET import snake_game, push_box, breakout, minesweeper, game_2048, tetris, gobang
+from ASSET import safe_exit, snake_game, push_box, breakout, minesweeper, game_2048, tetris, gobang
 
 def main():
     """活动中心主函数"""
@@ -149,9 +148,11 @@ def main():
             pygame.display.flip()
             clock.tick(30)
 
-        safe_exit("活动模块")
+        return
     except Exception as e:
-        safe_exit("活动模块", str(e))
+        import traceback
+        traceback.print_exc()
+        return
 
 if __name__ == "__main__":
     main()

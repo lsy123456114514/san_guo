@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""字体管理器（运行期字体 fallback 分发）"""
+
 import os
 import platform
 import pygame
+from ASSET.game_data import draw_gradient_bg, cull_dead, get_font, logger
 
 # 字体文件路径
 FONT_DIR = os.path.join(os.path.dirname(__file__), 'fonts')
 
 # 内置字体文件名
 BUILTIN_FONTS = {
-    'primary': '字魂白鸽天行体(商用需授权).ttf',  # 主要中文字体
-    'bold': '字魂白鸽天行体(商用需授权).ttf',    # 粗体（使用同一种字体）
-    'light': '字魂白鸽天行体(商用需授权).ttf',   # 细体（使用同一种字体）
+    'primary': 'NotoSansSC-Regular.ttf',      # 主要中文字体
+    'bold': 'NotoSansSC-Bold.ttf',            # 粗体
+    'light': 'NotoSansSC-Light.ttf',          # 细体
     'emoji': 'NotoColorEmoji.ttf'             # Emoji字体
 }
 
@@ -85,7 +88,7 @@ def get_system_font(size, bold=False):
             font = pygame.font.SysFont(font_name, size, bold=bold)
             if font:
                 return font
-        except Exception:
+        except Exception as _e:
             continue
     
     # 最后的兜底方案
@@ -98,16 +101,16 @@ def load_font_with_fallback(size, font_type='primary'):
         font_path = get_builtin_font_path(font_type)
         if os.path.exists(font_path):
             return pygame.font.Font(font_path, size)
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
     
     # 方案2：尝试系统字体
     try:
         system_font = get_system_font(size)
         if system_font:
             return system_font
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
     
     # 方案3：使用Pygame默认字体
     return pygame.font.Font(None, size)

@@ -1,8 +1,10 @@
+"""天气系统 - 动态天气变化与战斗加成"""
+
 import os
 import time
 import pygame
 import random
-from ASSET.game_data import data, save, get_system_font_name
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET.languages import get_text
 from ASSET import safe_exit
 
@@ -512,15 +514,6 @@ class WeatherSystem:
             return season["ambient_effect"]
         return None
 
-def draw_gradient_background(surface, color1, color2):
-    """绘制渐变背景"""
-    for y in range(surface.get_height()):
-        ratio = y / surface.get_height()
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (surface.get_width(), y))
-
 def show_message(surface, message, font):
     """显示消息"""
     text_surface = font.render(message, True, (255, 255, 255))
@@ -538,17 +531,7 @@ def show_message(surface, message, font):
     pygame.time.wait(1000)
 
 def init_font(size):
-    """初始化字体"""
-    try:
-        font_name = get_system_font_name()
-        if font_name:
-            return pygame.font.SysFont(font_name, size)
-        else:
-            # 如果没有找到系统字体，使用默认字体
-            return pygame.font.Font(None, size)
-    except Exception as e:
-        print(f"字体初始化失败: {e}")
-        return pygame.font.Font(None, size)
+    return get_font(size)
 
 class Button:
     def __init__(self, text, x, y, width, height, font, normal_color=COLORS["btn_blue"], hover_color=COLORS["btn_blue_hover"]):
@@ -862,7 +845,7 @@ def main():
             mx, my = pygame.mouse.get_pos()
             
             # 渐变背景
-            draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+            draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
             
             # 绘制滚动容器
             container.draw(screen)
@@ -897,8 +880,8 @@ def main():
         
         safe_exit("天气系统")
     except Exception as e:
-        print(f"异常：{str(e)}")
-        print("详细错误信息：")
+        logger.info(f"异常：{str(e)}")
+        logger.info("详细错误信息：")
         import traceback
         traceback.print_exc()
         safe_exit("天气系统", str(e))

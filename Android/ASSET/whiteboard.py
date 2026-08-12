@@ -509,7 +509,8 @@ class Whiteboard:
 
 def main(screen=None):
     """白板主函数，自适应窗口大小"""
-    if screen is None:
+    standalone = screen is None
+    if standalone:
         pygame.init()
         info = pygame.display.Info()
         screen_w, screen_h = info.current_w, info.current_h
@@ -520,7 +521,9 @@ def main(screen=None):
     whiteboard = Whiteboard(screen)
     whiteboard.run()
     
-    pygame.quit()
+    # 仅独立运行时才退出 pygame；被其他模块调用时保留显示系统，避免返回后崩溃
+    if standalone:
+        pygame.quit()
     return True
 
 if __name__ == '__main__':

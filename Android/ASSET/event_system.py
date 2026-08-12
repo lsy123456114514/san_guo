@@ -1,3 +1,5 @@
+"""事件系统 - 随机事件触发与处理"""
+
 import pygame
 import random
 import json

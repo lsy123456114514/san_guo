@@ -1,8 +1,12 @@
+"""趣味特效 - 宠物精灵 Sprite、浮动粒子粒子效果"""
+
 import pygame
 import random
 import math
+from ASSET.game_data import draw_gradient_bg, cull_dead, get_font
 
 class PetSprite:
+    """宠物精灵 - 跟随鼠标移动与情绪表情切换"""
     def __init__(self):
         self.x = 0
         self.y = 0
@@ -106,14 +110,12 @@ class FloatingParticles:
         self.particles.append(particle)
         
     def update(self):
-        for particle in self.particles[:]:
+        for particle in self.particles:
             particle['y'] -= particle['speed']
             particle['rotation'] += particle['rotation_speed']
             particle['x'] += math.sin(particle['rotation'] * 2) * 0.5
-            
-            if particle['y'] < -50:
-                self.particles.remove(particle)
-                self.add_particle()
+        self.particles[:] = [p for p in self.particles if p['y'] >= -50]
+        self.add_particle()
                 
     def draw(self, surface):
         for particle in self.particles:
@@ -157,6 +159,7 @@ class FloatingParticles:
             pygame.draw.line(surface, color, (x, y), (end_x, end_y), 2)
 
 class DynamicBackground:
+    """动态背景 - 多层视差星空与渐变背景"""
     def __init__(self, screen_width, screen_height):
         self.screen_width = screen_width
         self.screen_height = screen_height

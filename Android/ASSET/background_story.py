@@ -58,6 +58,7 @@ STORY_CHAPTERS = [
 ]
 
 class Particle:
+    """背景故事粒子 - 装饰用粒子的位置/速度/生命周期管理"""
     def __init__(self, x, y, color, speed, size, life):
         self.x = x
         self.y = y
@@ -104,8 +105,6 @@ def main():
     global screen, clock, FONT_MAIN, FONT_SMALL, FONT_BIG
     
     # 确保pygame已导入
-    import pygame
-    
     # 初始化pygame
     if not pygame.get_init():
         pygame.init()
@@ -118,13 +117,18 @@ def main():
     FONT_SMALL = SMALL_FONT
     FONT_BIG = BIG_FONT
     
-    # 获取当前屏幕大小
-    info = pygame.display.Info()
-    screen_width = info.current_w
-    screen_height = info.current_h
-    
-    # 设置屏幕（保持当前分辨率）
-    screen = pygame.display.set_mode((screen_width, screen_height))
+    # 获取当前屏幕大小（优先复用现有显示表面，避免改分辨率/驱动兼容问题）
+    cur_surface = pygame.display.get_surface()
+    if cur_surface is not None:
+        screen_width, screen_height = cur_surface.get_size()
+        screen = cur_surface
+    else:
+        try:
+            info = pygame.display.Info()
+            screen_width, screen_height = info.current_w, info.current_h
+        except pygame.error:
+            screen_width, screen_height = 800, 600
+        screen = pygame.display.set_mode((screen_width, screen_height))
     pygame.display.set_caption("游戏背景故事")
     clock = pygame.time.Clock()
     

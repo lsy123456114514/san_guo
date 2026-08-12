@@ -6,7 +6,7 @@ import random
 import json
 import os
 import time
-from ASSET.game_data import data, save, get_system_font_name, load_sound, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, get_system_font_name, load_sound, logger, draw_gradient_bg, cull_dead, get_font, get_writable_base_dir
 from ASSET import safe_exit
 
 # 简单的Perlin噪声实现
@@ -836,7 +836,6 @@ def show_building_menu(surface, x, y, building_id, font_main, font_small, clock)
                         apply_building_effects()
                         
                         # 保存数据
-                        from ASSET.game_data import save
                         save()
                         
                         waiting = False
@@ -906,7 +905,6 @@ def show_hospital_menu(surface, font_main, font_small, clock):
                         data["player_power_max"] = 1000
                     
                     # 保存数据
-                    from ASSET.game_data import save
                     save()
                     
                     waiting = False
@@ -992,8 +990,8 @@ def main():
 
         # 地图数据文件路径
         def get_map_data_path():
-            # 确保地图数据目录存在
-            map_dir = os.path.join(os.path.dirname(__file__), "..", "data", "maps")
+            # 确保地图数据目录存在（打包后为可写目录，避免写入 _MEIPASS 临时目录）
+            map_dir = os.path.join(get_writable_base_dir(), "maps")
             os.makedirs(map_dir, exist_ok=True)
             # 基于用户名生成文件路径
             username = data.get("username", "player")

@@ -1,0 +1,7 @@
+[1] 主菜单窗口 OK, flags=0x1000000
+[2] OpenGL 表面 OK, flags=0x2
+[3] get_surface flags=0x2, is_opengl=True
+[4] 恢复检测: cur_surface=<Surface(1024x768x32)>, is_opengl=True
+[5] 已重建普通窗口 1024x768, flags=0x1000000
+[6] 普通窗口渲染 OK
+[OK] 全部通过

@@ -236,5 +236,27 @@
     "saves": [],
     "username": "lsy",
     "tutorial_completed": true
+  },
+  "tester_particles": {
+    "username": "tester_particles",
+    "password": "x",
+    "resources": {
+      "gold": 1
+    },
+    "settings": {
+      "graphics": {
+        "resolution": "1024x768",
+        "fullscreen": false,
+        "fps_limit": 60,
+        "particles": false
+      },
+      "sound": {
+        "enable": true
+      },
+      "map": {
+        "max_locations": 30
+      }
+    },
+    "saves": []
   }
 }

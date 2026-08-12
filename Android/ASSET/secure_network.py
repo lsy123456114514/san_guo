@@ -13,7 +13,7 @@ import hashlib
 import random
 import struct
 from typing import Dict, Any, Optional, Callable
-from ASSET.game_data import draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import draw_gradient_bg, cull_dead, get_font, logger
 
 
 class SecureNetwork:

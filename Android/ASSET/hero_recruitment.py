@@ -158,13 +158,16 @@ def recruit_hero(recruit_type):
         "loyalty": 100
     }
     
-    # 添加到武将仓库
-    if "heroes" not in data:
-        data["heroes"] = []
-    data["heroes"].append(hero_data)
+    # 添加到武将仓库（存到独立键 roster，避免污染 data["heroes"] 字典结构导致战斗系统崩溃）
+    data.setdefault("roster", [])
+    data["roster"].append(hero_data)
+
+    # 招募奖励 1 天赋点
+    data.setdefault("talents", {"points": 0, "unlocked": []})
+    data["talents"]["points"] = data["talents"].get("points", 0) + 1
     save()
     
-    return hero_data, f"成功招募到{HERO_QUALITY[quality]['name']}武将：{hero['name']}"
+    return hero_data, f"成功招募到{HERO_QUALITY[quality]['name']}武将：{hero['name']}（天赋点+1）"
 
 def show_recruit_animation(hero_data):
     """显示招募动画"""
@@ -239,10 +242,15 @@ def main():
     FONT_SMALL = SMALL_FONT
     FONT_BIG = BIG_FONT
     
-    # 设置屏幕
-    screen_width = 800
-    screen_height = 600
-    screen = pygame.display.set_mode((screen_width, screen_height))
+    # 设置屏幕（优先复用当前窗口尺寸，避免返回主菜单后分辨率被强制更改导致错位）
+    cur_surface = pygame.display.get_surface()
+    if cur_surface is not None:
+        screen_width, screen_height = cur_surface.get_size()
+        screen = cur_surface
+    else:
+        screen_width = 800
+        screen_height = 600
+        screen = pygame.display.set_mode((screen_width, screen_height))
     pygame.display.set_caption("武将招募")
     clock = pygame.time.Clock()
     

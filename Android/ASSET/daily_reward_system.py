@@ -1,3 +1,5 @@
+"""每日签到系统 - 连续签到与奖励领取"""
+
 import time
 import json
 import os

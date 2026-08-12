@@ -53,18 +53,6 @@ class Button:
 
 # ============ 绘制函数 ============
 
-def draw_gradient_bg(surface, color1, color2):
-    """绘制渐变背景"""
-    width = surface.get_width()
-    height = surface.get_height()
-    for y in range(height):
-        ratio = y / height if height > 0 else 0
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
-
-
 # ============ 主入口 ============
 
 def main(screen=None):
@@ -90,12 +78,11 @@ def main(screen=None):
         pygame.display.set_caption("任务系统")
         clock = pygame.time.Clock()
 
-        # 字体
-        font_name = get_system_font_name()
+        # 字体（用 get_font 加载中文字体，pygame.font.Font(字体名) 会因传名称而非路径而失败）
         try:
-            FONT_MAIN = pygame.font.Font(font_name, 22) if font_name else pygame.font.SysFont(None, 26)
-            FONT_SMALL = pygame.font.Font(font_name, 16) if font_name else pygame.font.SysFont(None, 20)
-            FONT_BIG = pygame.font.Font(font_name, 32) if font_name else pygame.font.SysFont(None, 38)
+            FONT_MAIN = get_font(22)
+            FONT_SMALL = get_font(16)
+            FONT_BIG = get_font(32)
         except Exception as _e:
             FONT_MAIN = pygame.font.SysFont(None, 26)
             FONT_SMALL = pygame.font.SysFont(None, 20)
@@ -232,7 +219,9 @@ def main(screen=None):
             clock.tick(60)
 
     except Exception as e:
-        safe_exit("任务系统", str(e))
+        import traceback
+        traceback.print_exc()
+        return
 
 
 if __name__ == "__main__":

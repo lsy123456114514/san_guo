@@ -113,23 +113,13 @@ class Particle:
         self.size = max(0.5, self.size - 0.05)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = max(0, min(255, int(255 * (self.life / self.max_life))))
         color = (*self.color[:3], alpha)
         pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
 
-def draw_gradient_bg(surface, color1, color2):
-    """绘制渐变背景"""
-    width, height = surface.get_size()
-    for y in range(height):
-        ratio = y / height
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
-
 def draw_title(surface, text, y, screen_width):
     """绘制标题"""
-    font = pygame.font.Font(None, 60)
+    font = get_font(48)
     title_surf = font.render(text, True, COLORS["accent_gold"])
     title_rect = title_surf.get_rect(center=(screen_width // 2, y))
     surface.blit(title_surf, title_rect)
@@ -139,22 +129,6 @@ def draw_title(surface, text, y, screen_width):
     underline_x = (screen_width - underline_width) // 2
     pygame.draw.line(surface, COLORS["accent_gold"], 
                    (underline_x, y + 35), (underline_x + underline_width, y + 35), 3)
-
-def get_system_font_name():
-    """获取系统字体名称"""
-    if 'ANDROID_DATA' in os.environ:
-        return None
-    
-    # 尝试常见的中文字体
-    fonts = ["Microsoft YaHei", "SimHei", "Arial", "sans-serif"]
-    for font in fonts:
-        try:
-            test_font = pygame.font.SysFont(font, 24)
-            if test_font:
-                return font
-        except Exception as _e:
-            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
-    return None
 
 def get_today_date():
     """获取今天的日期字符串"""
@@ -235,6 +209,10 @@ def check_in():
         amount = int(reward.split("+")[-1].split("×")[1])
         data['resources']['时间卡'] = data['resources'].get('时间卡', 0) + amount
     
+    # 每次签到额外赠送 1 天赋点（天赋点用于天赋系统加点）
+    data.setdefault("talents", {"points": 0, "unlocked": []})
+    data['talents']['points'] = data['talents'].get('points', 0) + 1
+    
     # 记录奖励
     checkin_data['rewards_claimed'].append({
         'date': today,
@@ -253,23 +231,27 @@ def main():
             pygame.init()
             pygame.mixer.init()
         
-        # 分辨率适配
-        if 'ANDROID_DATA' in os.environ:
-            info = pygame.display.Info()
-            SCREEN_WIDTH = info.current_w
-            SCREEN_HEIGHT = info.current_h
+        # 分辨率适配：优先复用当前显示表面，避免返回主菜单错位
+        cur_surface = pygame.display.get_surface()
+        if cur_surface is not None:
+            SCREEN_WIDTH, SCREEN_HEIGHT = cur_surface.get_size()
+            screen = cur_surface
         else:
-            # 使用设置的分辨率
-            resolution = data['settings']['graphics']['resolution']
-            try:
-                width, height = map(int, resolution.split('x'))
-                SCREEN_WIDTH = width
-                SCREEN_HEIGHT = height
-            except ValueError:
-                SCREEN_WIDTH = 900
-                SCREEN_HEIGHT = 700
-        
-        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+            if 'ANDROID_DATA' in os.environ:
+                info = pygame.display.Info()
+                SCREEN_WIDTH = info.current_w
+                SCREEN_HEIGHT = info.current_h
+            else:
+                # 使用设置的分辨率
+                resolution = data['settings']['graphics']['resolution']
+                try:
+                    width, height = map(int, resolution.split('x'))
+                    SCREEN_WIDTH = width
+                    SCREEN_HEIGHT = height
+                except ValueError:
+                    SCREEN_WIDTH = 900
+                    SCREEN_HEIGHT = 700
+            screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption("每日签到")
         clock = pygame.time.Clock()
 
@@ -369,6 +351,11 @@ def main():
             streak_rect = streak_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT * 0.22))
             screen.blit(streak_text, streak_rect)
 
+            # 天赋点提示
+            tip_text = font_small.render("每次签到赠送 1 天赋点（用于天赋系统加点）", True, COLORS["text_gray"])
+            tip_rect = tip_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT * 0.22 + 34))
+            screen.blit(tip_text, tip_rect)
+
             # 绘制签到卡片
             for card in cards:
                 card.draw(screen)
@@ -443,10 +430,12 @@ def main():
             pygame.display.flip()
             clock.tick(60)
 
-        safe_exit("每日签到")
+        return
     except Exception as e:
         logger.info(f"异常：{str(e)}")
-        safe_exit("每日签到", str(e))
+        import traceback
+        traceback.print_exc()
+        return
 
 if __name__ == "__main__":
     main()

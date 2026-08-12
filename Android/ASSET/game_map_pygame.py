@@ -102,16 +102,6 @@ class FloatingText:
         text_surf.set_alpha(alpha)
         surface.blit(text_surf, (int(self.x), int(self.y)))
 
-def draw_gradient_bg(surface, color1, color2):
-    """绘制渐变背景"""
-    width, height = surface.get_size()
-    for y in range(height):
-        ratio = y / height
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
-
 def draw_grid(surface, offset_x, offset_y, screen_width, screen_height, grid_size=100):
     """绘制网格背景"""
     grid_color = (40, 45, 65)
@@ -328,16 +318,23 @@ def main():
         if not pygame.get_init():
             pygame.init()
         
-        # 分辨率适配
-        if 'ANDROID_DATA' in os.environ:
-            info = pygame.display.Info()
-            SCREEN_WIDTH = info.current_w
-            SCREEN_HEIGHT = info.current_h
+        # 分辨率适配：优先复用当前显示表面，不改窗口分辨率
+        # （否则返回主菜单时窗口尺寸被强制改变，导致菜单布局偏移/被裁切）
+        cur_surface = pygame.display.get_surface()
+        if cur_surface is not None:
+            # 从主菜单进入：沿用现有窗口尺寸
+            SCREEN_WIDTH, SCREEN_HEIGHT = cur_surface.get_size()
+            screen = cur_surface
         else:
-            SCREEN_WIDTH = 800
-            SCREEN_HEIGHT = 600
-        
-        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+            # 独立运行：才自己创建窗口
+            if 'ANDROID_DATA' in os.environ:
+                info = pygame.display.Info()
+                SCREEN_WIDTH = info.current_w
+                SCREEN_HEIGHT = info.current_h
+            else:
+                SCREEN_WIDTH = 800
+                SCREEN_HEIGHT = 600
+            screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption("🗺️ 游戏地图")
         clock = pygame.time.Clock()
 
@@ -745,7 +742,6 @@ def main():
                                         ))
                             else:
                                 # 攻击敌对单位
-                                import random
                                 # 计算奖励
                                 level = loc[3]
                                 gold_reward = random.randint(10 * level, 30 * level)
@@ -800,9 +796,15 @@ def main():
             pygame.display.flip()
             clock.tick(60)
 
-        safe_exit("地图模块")
+        # 正常返回：不能调用 safe_exit（内部会 sys.exit(0) 退出整个程序），
+        # 直接 return 回到主菜单
+        return
     except Exception as e:
-        safe_exit("地图模块", str(e))
+        # 异常时也只记录日志并返回，避免把主菜单一起关掉
+        logger.error("地图模块异常：%s", e)
+        import traceback as _tb
+        logger.error(_tb.format_exc())
+        return
 
 if __name__ == "__main__":
     main()

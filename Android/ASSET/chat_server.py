@@ -11,7 +11,7 @@ import threading
 import json
 import time
 from typing import Dict, List, Any, Set
-from ASSET.game_data import draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import draw_gradient_bg, cull_dead, get_font, logger
 
 
 class ChatServer:

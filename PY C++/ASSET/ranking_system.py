@@ -1,9 +1,11 @@
+"""排行榜系统 - 战力/胜场/副本进度榜单"""
+
 import os
 import pygame
 import json
 import random
 import math
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 
 # 颜色主题
@@ -25,6 +27,7 @@ COLORS = {
 }
 
 class Button:
+    """按钮控件 - 悬停变色与文字渲染"""
     def __init__(self, text, x, y, width, height, font):
         self.text = text
         self.rect = pygame.Rect(x, y, width, height)
@@ -44,6 +47,7 @@ class Button:
         surface.blit(text_surf, text_rect)
 
 class ScrollableContainer:
+    """滚动容器 - 支持滚轮拖拽与项目渲染的列表区域"""
     def __init__(self, x, y, width, height, item_height):
         self.x = x
         self.y = y
@@ -120,6 +124,7 @@ class ScrollableContainer:
                            border_radius=4)
 
 class RankingScrollContainer(ScrollableContainer):
+    """排行榜滚动容器 - 渲染名次、玩家与得分的排行项"""
     def __init__(self, x, y, width, height, item_height, items, font_small, ranking_types, current_ranking):
         super().__init__(x, y, width, height, item_height)
         self.items = items
@@ -147,6 +152,7 @@ class RankingScrollContainer(ScrollableContainer):
         surface.blit(score_text, (x + self.width - 150, y + 5))
 
 class Particle:
+    """粒子效果 - 带透明度渐变的圆形粒子"""
     def __init__(self, x, y, color, speed, size, life):
         self.x = x
         self.y = y
@@ -167,16 +173,6 @@ class Particle:
         alpha = int(255 * (self.life / self.max_life))
         color = (*self.color[:3], alpha)
         pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
-
-def draw_gradient_background(surface, color1, color2):
-    """绘制渐变背景"""
-    width, height = surface.get_size()
-    for y in range(height):
-        ratio = y / height
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
 
 def draw_title(surface, text, y, screen_width):
     """绘制标题"""
@@ -203,8 +199,8 @@ def get_system_font_name():
             test_font = pygame.font.SysFont(font, 24)
             if test_font:
                 return font
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
     return None
 
 def main():
@@ -240,13 +236,7 @@ def main():
 
         # 字体初始化（根据屏幕大小自适应）
         def init_font(size):
-            font_name = get_system_font_name()
-            # 根据屏幕大小调整字体
-            adjusted_size = int(size * scale)
-            try:
-                return pygame.font.SysFont(font_name, adjusted_size)
-            except Exception:
-                return pygame.font.Font(None, adjusted_size)
+            return get_font(size)
 
         font_title = init_font(36 if not 'ANDROID_DATA' in os.environ else 52)
         font_normal = init_font(24 if not 'ANDROID_DATA' in os.environ else 36)
@@ -320,7 +310,7 @@ def main():
             mx, my = pygame.mouse.get_pos()
             
             # 渐变背景
-            draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+            draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
             
             # 装饰粒子
             if random.random() < 0.1:
@@ -333,8 +323,6 @@ def main():
             for p in particles[:]:
                 p.update()
                 p.draw(screen)
-                if p.life <= 0:
-                    particles.remove(p)
 
             # 标题
             draw_title(screen, "排行榜系统", SCREEN_HEIGHT * 0.12, SCREEN_WIDTH)
@@ -429,7 +417,7 @@ def main():
 
         safe_exit("排行榜系统")
     except Exception as e:
-        print(f"异常：{str(e)}")
+        logger.info(f"异常：{str(e)}")
         safe_exit("排行榜系统", str(e))
 
 if __name__ == "__main__":

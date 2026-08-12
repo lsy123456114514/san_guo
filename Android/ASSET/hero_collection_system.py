@@ -1,3 +1,5 @@
+"""武将图鉴系统 - 名将收集与解锁奖励"""
+
 import time
 from ASSET.game_data import data, save, logger, draw_gradient_bg, cull_dead, get_font
 

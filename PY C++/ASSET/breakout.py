@@ -1,9 +1,11 @@
+"""打砖块小游戏系统（内置休闲玩法）"""
+
 import os
 import pygame
 import random
 import math
 import platform
-from ASSET.game_data import data, get_system_font_name, save
+from ASSET.game_data import data, get_system_font_name, save, logger, get_font, draw_gradient_bg
 from ASSET import safe_exit
 
 class BreakoutGame:
@@ -226,12 +228,7 @@ def main():
         
         # 字体初始化
         def init_font(size):
-            font_name = get_system_font_name()
-            try:
-                return pygame.font.SysFont(font_name, size)
-            except Exception:
-                return pygame.font.Font(None, size)
-        
+            return get_font(size)
         font_normal = init_font(24 if not 'ANDROID_DATA' in os.environ else 36)
         font_small = init_font(18 if not 'ANDROID_DATA' in os.environ else 28)
         

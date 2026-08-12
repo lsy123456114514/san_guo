@@ -35,6 +35,7 @@ COLORS = {
 
 
 class Particle:
+    """粒子效果 - 带透明度渐变的圆形粒子"""
     def __init__(self, x, y, color, speed, size, life):
         self.x = x
         self.y = y
@@ -57,6 +58,7 @@ class Particle:
 
 
 class AnimatedButton:
+    """动画按钮 - 悬停缩放与发光效果"""
     def __init__(self, text, x, y, width, height, font, color=COLORS["accent_blue"], icon=None):
         self.text = text
         self.rect = pygame.Rect(x, y, width, height)
@@ -100,6 +102,7 @@ class AnimatedButton:
 
 
 class InputBox:
+    """输入框 - 支持点击激活、光标闪烁与文字输入"""
     def __init__(self, x, y, width, height, font, text=""):
         self.rect = pygame.Rect(x, y, width, height)
         self.color = COLORS["accent_blue"]
@@ -141,6 +144,7 @@ class InputBox:
 
 
 class SuperPVP:
+    """超级对战大厅 - 整合世界聊天、局域网与P2P对战"""
     def __init__(self, screen):
         self.screen = screen
         self.width, self.height = screen.get_size()

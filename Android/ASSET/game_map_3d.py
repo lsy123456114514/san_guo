@@ -6,7 +6,7 @@ import random
 import json
 import os
 import time
-from ASSET.game_data import data, save, get_system_font_name, load_sound, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, get_system_font_name, create_font, load_sound, logger, draw_gradient_bg, cull_dead, get_font, get_writable_base_dir
 from ASSET import safe_exit
 
 MC_WORLD_KEY = "mc_world"
@@ -1238,8 +1238,8 @@ class GameMap3D:
             font_name = get_system_font_name()
             try:
                 if font_name:
-                    self.font_main = pygame.font.SysFont(font_name, 40)
-                    self.font_small = pygame.font.SysFont(font_name, 24)
+                    self.font_main = create_font(font_name, 40)
+                    self.font_small = create_font(font_name, 24)
                 else:
                     self.font_main = pygame.font.Font(None, 40)
                     self.font_small = pygame.font.Font(None, 24)
@@ -1317,10 +1317,10 @@ class GameMap3D:
             self.save_map_data(self.locations)
     
     def get_map_data_path(self):
-        """获取地图数据路径"""
+        """获取地图数据路径（打包后写入用户可写目录，避免 CWD 不可写）"""
         username = data.get("username", "")
         safe_username = username.replace('\\', '_').replace('/', '_').replace(':', '_')
-        return f"map_data_{safe_username}.json"
+        return os.path.join(get_writable_base_dir(), f"map_data_{safe_username}.json")
     
     def save_map_data(self, locations):
         """保存地图数据"""
@@ -2242,29 +2242,25 @@ class GameMap3D:
     def update_effect_particles(self):
         """更新特效粒子"""
         try:
-            for particle in list(self.effect_particles):
+            for particle in self.effect_particles:
                 particle["x"] += particle["vx"]
                 particle["y"] += particle["vy"]
                 particle["z"] += particle["vz"]
                 particle["vy"] -= 0.05  # 重力
                 particle["life"] -= 1
-                
-                if particle["life"] <= 0:
-                    self.effect_particles.remove(particle)
+            self.effect_particles[:] = [particle for particle in self.effect_particles if particle["life"] > 0]
         except Exception as e:
             logger.info(f"[错误] 更新特效粒子失败: {e}")
     
     def update_dust_particles(self):
         """更新尘埃粒子"""
         try:
-            for particle in list(self.dust_particles):
+            for particle in self.dust_particles:
                 particle["x"] += particle["vx"]
                 particle["y"] += particle["vy"]
                 particle["z"] += particle["vz"]
                 particle["life"] -= 1
-                
-                if particle["life"] <= 0:
-                    self.dust_particles.remove(particle)
+            self.dust_particles[:] = [particle for particle in self.dust_particles if particle["life"] > 0]
         except Exception as e:
             logger.info(f"[错误] 更新尘埃粒子失败: {e}")
     
@@ -2335,10 +2331,7 @@ class GameMap3D:
             animal["direction"] += random.uniform(-5, 5)
             animal["x"] += math.cos(math.radians(animal["direction"])) * animal["speed"]
             animal["z"] += math.sin(math.radians(animal["direction"])) * animal["speed"]
-            
-            if animal["x"] < self.player_pos[0] - 100 or animal["x"] > self.player_pos[0] + 100:
-                self.animals.remove(animal)
-                break
+        self.animals[:] = [animal for animal in self.animals if self.player_pos[0] - 100 <= animal["x"] <= self.player_pos[0] + 100]
         
         for monster in self.monsters:
             dx = self.player_pos[0] - monster["x"]
@@ -2346,10 +2339,7 @@ class GameMap3D:
             monster["direction"] = math.degrees(math.atan2(dz, dx))
             monster["x"] += math.cos(math.radians(monster["direction"])) * monster["speed"]
             monster["z"] += math.sin(math.radians(monster["direction"])) * monster["speed"]
-            
-            if monster["x"] < self.player_pos[0] - 100 or monster["x"] > self.player_pos[0] + 100:
-                self.monsters.remove(monster)
-                break
+        self.monsters[:] = [monster for monster in self.monsters if self.player_pos[0] - 100 <= monster["x"] <= self.player_pos[0] + 100]
     
     def draw_entities(self):
         """绘制生物"""
@@ -2489,15 +2479,11 @@ class GameMap3D:
                         "speed": random.uniform(0.02, 0.05)
                     })
         
-        for wave in list(self.wave_particles):
+        for wave in self.wave_particles:
             wave["y"] = 0.1 + wave["amplitude"] * math.sin(self.wave_timer * wave["frequency"] + wave["phase"])
             wave["x"] += wave["speed"] * math.cos(wave["phase"])
             wave["z"] += wave["speed"] * math.sin(wave["phase"])
-            
-            dx = wave["x"] - self.player_pos[0]
-            dz = wave["z"] - self.player_pos[2]
-            if math.hypot(dx, dz) > 200:
-                self.wave_particles.remove(wave)
+        self.wave_particles[:] = [wave for wave in self.wave_particles if math.hypot(wave["x"] - self.player_pos[0], wave["z"] - self.player_pos[2]) <= 200]
     
     def draw_waves(self):
         """绘制海浪效果"""
@@ -4786,7 +4772,6 @@ class GameMap3D:
             self.clock.tick(60)
         
         self.save_mc_world_data()
-        pygame.quit()
 
 def main():
     """3D地图主函数"""

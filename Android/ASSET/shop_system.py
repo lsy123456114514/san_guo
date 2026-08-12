@@ -1,11 +1,10 @@
 """商店系统 - 分类货架、限购、资源购买"""
 
 import os
+import sys
 import pygame
 import random
 import math
-import os
-import sys
 import traceback
 from ASSET.game_data import data, save, get_system_font_name, load_sound, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
@@ -64,6 +63,7 @@ EQUIP_ICONS = {
 }
 
 class Particle:
+    """粒子效果 - 带重力、旋转与发光的视觉粒子"""
     def __init__(self, x, y, color, speed, size, life):
         self.x = x
         self.y = y
@@ -119,6 +119,7 @@ class Particle:
         surface.blit(rotated_surf, rotated_rect)
 
 class FloatingText:
+    """浮动文字 - 向上飘移并带缩放动画的文字提示"""
     def __init__(self, text, x, y, color, font):
         self.text = text
         self.x = x
@@ -148,6 +149,7 @@ class FloatingText:
         surface.blit(scaled_surf, rect)
 
 class ScrollableContainer:
+    """滚动容器 - 支持拖拽与滚轮的长内容滚动区域"""
     def __init__(self, x, y, width, height, screen):
         self.x = x
         self.y = y
@@ -213,6 +215,7 @@ class ScrollableContainer:
                            1, border_radius=5)
 
 class AnimatedButton:
+    """动画按钮 - 悬停缩放、发光与粒子特效"""
     def __init__(self, x, y, width, height, text, font, 
                  normal_color, hover_color, text_color=(255, 255, 255), scale=1.0):
         # 保存原始尺寸和位置
@@ -311,6 +314,8 @@ class AnimatedButton:
         
         for p in self.particles:
             p.update()
+            # 限制光点水平范围不超过按钮左右边界
+            p.x = max(self.rect.x, min(self.rect.x + self.rect.width, p.x))
         self.particles[:] = [p for p in self.particles if p.life > 0]
 
     
@@ -351,16 +356,6 @@ class AnimatedButton:
         # 粒子
         for p in self.particles:
             p.draw(surface)
-
-def draw_gradient_bg(surface, color1, color2):
-    """绘制渐变背景"""
-    width, height = surface.get_size()
-    for y in range(height):
-        ratio = y / height
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
 
 def draw_shop_item_card(surface, x, y, width, height, icon, name, info, font_small, font_icon, scale=1.0):
     """绘制商品卡片"""
@@ -915,14 +910,18 @@ def main():
             return_btn.update((mx, my))
             return_btn.draw(screen)
 
-            # 更新和绘制特效
+            # 更新和绘制特效（清理已死亡的粒子/文字，防止无限增长导致闪退）
             for p in particles[:]:
                 p.update()
-                p.draw(screen)
+                if p.life > 0:
+                    p.draw(screen)
+            particles[:] = [p for p in particles if p.life > 0]
 
             for ft in floating_texts[:]:
                 ft.update()
-                ft.draw(screen)
+                if ft.life > 0:
+                    ft.draw(screen)
+            floating_texts[:] = [ft for ft in floating_texts if ft.life > 0]
 
             # 获取所有事件
             events = pygame.event.get()
@@ -1036,12 +1035,12 @@ def main():
             pygame.display.flip()
             clock.tick(60)
 
-        safe_exit("商城模块")
+        return
     except Exception as e:
         logger.info(f"异常：{str(e)}")
         logger.info("详细错误信息：")
         traceback.print_exc()
-        safe_exit("商城模块", str(e))
+        return
 
 if __name__ == "__main__":
     main()

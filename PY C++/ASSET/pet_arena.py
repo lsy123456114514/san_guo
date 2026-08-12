@@ -1,3 +1,5 @@
+"""宠物竞技场 - 宠物对战玩法"""
+
 import pygame
 import time
 import random
@@ -8,7 +10,7 @@ import math
 # 添加父目录到Python路径，确保可以正确导入ASSET模块
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ASSET.game_data import data, save, get_system_font_name
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET.game_main_menu import Button, COLORS, draw_gradient_background, draw_title, Particle
 from ASSET.pet_system import Pet
 
@@ -57,14 +59,14 @@ class BattlePet:
         # 处理状态效果
         current_time = time.time()
         if current_time - self.last_turn_time > 1:
-            for status in self.status[:]:
+            for status in self.status:
                 if status['type'] == 'poison':
                     self.take_damage(5)
                 elif status['type'] == 'bleed':
                     self.take_damage(3)
                 status['duration'] -= 1
-                if status['duration'] <= 0:
-                    self.status.remove(status)
+            self.status[:] = [status for status in self.status if status['duration'] > 0]
+
             self.last_turn_time = current_time
 
 def draw_battle_scene(surface, player_pet, enemy_pet, battle_log):
@@ -205,7 +207,7 @@ def battle(player_pet, enemy_pet):
         button_spacing = min(15, screen_height * 0.025)
         
         # 渐变背景
-        draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+        draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
         
         # 装饰粒子
         if random.random() < 0.1:
@@ -218,8 +220,6 @@ def battle(player_pet, enemy_pet):
         for p in particles[:]:
             p.update()
             p.draw(screen)
-            if p.life <= 0:
-                particles.remove(p)
         
         # 绘制战斗场景
         draw_battle_scene(screen, player_battle_pet, enemy_battle_pet, battle_log)
@@ -381,7 +381,7 @@ def pet_arena_menu():
         button_spacing = min(20, screen_height * 0.03)
         
         # 渐变背景
-        draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+        draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
         
         # 装饰粒子
         if random.random() < 0.1:
@@ -394,8 +394,6 @@ def pet_arena_menu():
         for p in particles[:]:
             p.update()
             p.draw(screen)
-            if p.life <= 0:
-                particles.remove(p)
         
         # 标题
         draw_title(screen, "宠物竞技场", screen_height * 0.12, screen_width)
@@ -475,7 +473,7 @@ def init_fonts():
         else:
             FONT_MAIN = pygame.font.Font(None, 40)
             FONT_SMALL = pygame.font.Font(None, 28)
-    except Exception:
+    except Exception as _e:
         FONT_MAIN = pygame.font.Font(None, 40)
         FONT_SMALL = pygame.font.Font(None, 28)
 

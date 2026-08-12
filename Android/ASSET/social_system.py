@@ -23,6 +23,7 @@ COLORS = {
 }
 
 class Button:
+    """按钮控件 - 渐变填充与悬停点击反馈"""
     def __init__(self, text, x, y, width, height, font, 
                  normal_color=COLORS["accent_blue"], 
                  hover_color=COLORS["accent_blue_light"], 
@@ -78,6 +79,7 @@ class Button:
         return False
 
 class ScrollableContainer:
+    """滚动容器 - 支持滚轮、拖拽与键盘的列表区域"""
     def __init__(self, x, y, width, height, item_height):
         self.x = x
         self.y = y
@@ -160,16 +162,6 @@ class ScrollableContainer:
             pygame.draw.rect(surface, (150, 130, 80),
                            (self.x + self.width - 12, scrollbar_y, 8, scrollbar_height),
                            border_radius=4)
-
-def draw_gradient_bg(surface, color1, color2):
-    """绘制渐变背景"""
-    width, height = surface.get_size()
-    for y in range(height):
-        ratio = y / height
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
 
 def draw_title(surface, text, y_pos, screen_width, font_big):
     """绘制带特效的标题"""
@@ -318,19 +310,23 @@ class TaskSystem:
     
     def init_tasks(self):
         """初始化任务"""
+        # 确保 tasks 数据存在（兼容旧存档/缺键情况）
+        tasks = data.setdefault("tasks", {})
+        tasks.setdefault("daily", [])
+        tasks.setdefault("main", [])
         # 检查每日任务
         today = datetime.date.today().isoformat()
         if "last_daily_reset" not in data or data["last_daily_reset"] != today:
-            data["tasks"]["daily"] = []
+            tasks["daily"] = []
             for task in self.daily_tasks:
-                data["tasks"]["daily"].append(task.copy())
+                tasks["daily"].append(task.copy())
             data["last_daily_reset"] = today
             save()
         
         # 检查主线任务
-        if not data["tasks"]["main"]:
+        if not tasks["main"]:
             for task in self.main_tasks:
-                data["tasks"]["main"].append(task.copy())
+                tasks["main"].append(task.copy())
             save()
     
     def complete_task(self, task_id):
@@ -760,8 +756,8 @@ def main():
                 {"金元宝": 100, "时间卡": 1}
             )
 
-        # 当前页面
-        current_page = "pet"  # pet, task, mail, friend
+        # 当前页面（默认好友页，即社交主功能）
+        current_page = "friend"  # pet, task, mail, friend
         
         # 滚动容器
         pet_container = ScrollableContainer(50, 120, SCREEN_WIDTH - 100, SCREEN_HEIGHT - 200, 90)
@@ -830,8 +826,9 @@ def main():
                     pygame.draw.rect(surface, COLORS["accent_gold"], task_rect, 2, border_radius=10)
                     
                     name_surf = font_main.render(task["name"], True, COLORS["accent_gold"])
-                    desc_surf = font_small.render(task["description"], True, COLORS["text_white"])
-                    reward_text = ", ".join([f"{k}:{v}" for k, v in task["reward"].items()])
+                    desc_surf = font_small.render(task.get("description", task["name"]), True, COLORS["text_white"])
+                    _rewards = task.get("reward", {}) or task.get("rewards", {})
+                    reward_text = ", ".join([f"{k}:{v}" for k, v in _rewards.items()])
                     reward_surf = font_small.render(f"奖励: {reward_text}", True, COLORS["text_gray"])
                     
                     surface.blit(name_surf, (10, y - 120 + 10))
@@ -855,7 +852,7 @@ def main():
                     
                     subject_surf = font_main.render(mail["subject"], True, COLORS["accent_gold"])
                     sender_surf = font_small.render(f"发件人: {mail['sender']}", True, COLORS["text_white"])
-                    time_surf = font_small.render(mail["time"], True, COLORS["text_gray"])
+                    time_surf = font_small.render(mail.get("timestamp", mail.get("time", "未知时间")), True, COLORS["text_gray"])
                     
                     surface.blit(subject_surf, (10, y - 120 + 10))
                     surface.blit(sender_surf, (10, y - 120 + 40))
@@ -875,13 +872,13 @@ def main():
                     pygame.draw.rect(surface, (40, 40, 70, 200), friend_rect, border_radius=10)
                     pygame.draw.rect(surface, COLORS["accent_gold"], friend_rect, 2, border_radius=10)
                     
-                    name_surf = font_main.render(friend["username"], True, COLORS["accent_gold"])
+                    name_surf = font_main.render(friend.get("username") or friend.get("from", "未知玩家"), True, COLORS["accent_gold"])
                     status_surf = font_small.render(f"状态: 在线" if friend.get("status", "online") == "online" else "状态: 离线", True, COLORS["text_white"])
                     
                     surface.blit(name_surf, (10, y - 120 + 10))
                     surface.blit(status_surf, (10, y - 120 + 40))
                     
-                    if "requests" in str(friend):
+                    if friend.get("status") == "pending":
                         accept_btn = Button("接受", screen_width - 110, y - 120 + 15, 100, 40, font_small)
                         accept_btn.draw(surface)
                     else:
@@ -936,13 +933,13 @@ def main():
             
             clock.tick(60)
         
-        safe_exit("社交系统")
+        return
     except Exception as e:
         logger.info(f"异常：{str(e)}")
         logger.info("详细错误信息：")
         import traceback
         traceback.print_exc()
-        safe_exit("社交系统", str(e))
+        return
 
 if __name__ == "__main__":
     main()

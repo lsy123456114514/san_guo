@@ -1,7 +1,10 @@
+"""五子棋小游戏系统（内置休闲玩法）"""
+
 import os
 import pygame
+import random
 import platform
-from ASSET.game_data import data, get_system_font_name, save, logger, get_font, draw_gradient_bg
+from ASSET.game_data import data, get_system_font_name, create_font, save, logger, get_font, draw_gradient_bg
 from ASSET import safe_exit
 
 class GobangGame:
@@ -19,7 +22,6 @@ class GobangGame:
     
     def spawn_enemy_units(self):
         """生成敌对单位"""
-        import random
         # 生成3-5个敌对单位
         enemy_count = random.randint(3, 5)
         for i in range(enemy_count):
@@ -66,7 +68,6 @@ class GobangGame:
         # 检查是否攻击了敌对单位
         if (row, col) in self.enemy_units:
             # 攻击成功，获得奖励
-            import random
             # 金元宝奖励 10-30
             gold_reward = random.randint(10, 30)
             # 其他资源奖励
@@ -264,7 +265,7 @@ def main():
         def init_font(size):
             font_name = get_system_font_name()
             try:
-                return pygame.font.SysFont(font_name, size)
+                return create_font(font_name, size)
             except ValueError:
                 return pygame.font.Font(None, size)
         
@@ -290,9 +291,11 @@ def main():
             pygame.display.flip()
             clock.tick(60)
         
-        safe_exit("五子棋游戏")
+        return
     except Exception as e:
-        safe_exit("五子棋游戏", str(e))
+        import traceback
+        traceback.print_exc()
+        return
 
 if __name__ == "__main__":
     main()

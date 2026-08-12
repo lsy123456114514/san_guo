@@ -4,7 +4,7 @@
 
 import pygame
 import os
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, get_system_font_name, create_font, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET.game_main_menu import Button, draw_gradient_background, COLORS
 
 # 字体变量
@@ -148,10 +148,14 @@ def main():
         screen_height = info.current_h
         screen = pygame.display.set_mode((screen_width, screen_height))
     else:
-        # PC设备
-        screen_width = 800
-        screen_height = 600
-        screen = pygame.display.set_mode((screen_width, screen_height))
+        # PC设备：复用当前显示表面，避免改分辨率导致返回错位
+        cur_surface = pygame.display.get_surface()
+        if cur_surface is not None:
+            screen_width, screen_height = cur_surface.get_size()
+            screen = cur_surface
+        else:
+            screen_width, screen_height = 800, 600
+            screen = pygame.display.set_mode((screen_width, screen_height))
     
     pygame.display.set_caption("疑难解答")
     clock = pygame.time.Clock()
@@ -160,9 +164,9 @@ def main():
     font_name = get_system_font_name()
     try:
         if font_name:
-            FONT_MAIN = pygame.font.SysFont(font_name, 40)
-            FONT_SMALL = pygame.font.SysFont(font_name, 28)
-            FONT_BIG = pygame.font.SysFont(font_name, 60)
+            FONT_MAIN = create_font(font_name, 40)
+            FONT_SMALL = create_font(font_name, 28)
+            FONT_BIG = create_font(font_name, 60)
         else:
             FONT_MAIN = pygame.font.Font(None, 40)
             FONT_SMALL = pygame.font.Font(None, 28)
@@ -254,7 +258,6 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 save()
-                pygame.quit()
                 return
             
             if event.type == pygame.MOUSEBUTTONDOWN:

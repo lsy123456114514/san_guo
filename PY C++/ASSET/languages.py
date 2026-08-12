@@ -1,3 +1,7 @@
+"""多语言本地化系统（i18n）"""
+
+from ASSET.game_data import draw_gradient_bg, cull_dead, get_font
+
 # 多语言支持系统
 
 # 语言包

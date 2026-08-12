@@ -10,7 +10,7 @@ import math
 # 添加父目录到Python路径，确保可以正确导入ASSET模块
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, get_system_font_name, create_font, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET.game_main_menu import Button, COLORS, draw_gradient_background, draw_title, Particle
 
 # 全局变量（延迟初始化）
@@ -169,6 +169,14 @@ class Pet:
         if self.evolution_level < len(evolution_names):
             return evolution_names[self.evolution_level]
         return f"{self.evolution_level}阶进化"
+
+    def get_stage_name(self):
+        """获取成长阶段名称"""
+        stage_names = ["幼年期", "成长期", "成熟期"]
+        stage = getattr(self, "stage", 1)
+        if 1 <= stage <= len(stage_names):
+            return stage_names[stage - 1]
+        return f"{stage}阶"
     
     def learn_skill(self, skill_name):
         """学习技能"""
@@ -317,8 +325,8 @@ def init_fonts():
     font_name = get_system_font_name()
     try:
         if font_name:
-            FONT_MAIN = pygame.font.SysFont(font_name, 40)
-            FONT_SMALL = pygame.font.SysFont(font_name, 28)
+            FONT_MAIN = create_font(font_name, 40)
+            FONT_SMALL = create_font(font_name, 28)
         else:
             FONT_MAIN = pygame.font.Font(None, 40)
             FONT_SMALL = pygame.font.Font(None, 28)
@@ -331,7 +339,7 @@ def init_fonts():
         import ASSET.game_main_menu
         if ASSET.game_main_menu.FONT_BIG is None:
             if font_name:
-                ASSET.game_main_menu.FONT_BIG = pygame.font.SysFont(font_name, 60)
+                ASSET.game_main_menu.FONT_BIG = create_font(font_name, 60)
             else:
                 ASSET.game_main_menu.FONT_BIG = pygame.font.Font(None, 60)
     except Exception as _e:
@@ -484,23 +492,13 @@ def pet_menu():
     if FONT_MAIN is None or FONT_SMALL is None:
         init_fonts()
     
-    # 保存原始屏幕
-    original_screen = screen
-    
-    # 设置宠物系统专用分辨率 1000x1000
-    PET_SCREEN_WIDTH = 1800
-    PET_SCREEN_HEIGHT = 1000
-    
-    # 创建宠物系统专用屏幕
-    pet_screen = pygame.display.set_mode((PET_SCREEN_WIDTH, PET_SCREEN_HEIGHT))
-    screen = pet_screen
-    
-    # 更新game_main_menu模块的屏幕引用
-    import ASSET.game_main_menu
-    ASSET.game_main_menu.screen = pet_screen
-    
-    screen_width = PET_SCREEN_WIDTH
-    screen_height = PET_SCREEN_HEIGHT
+    # 智能分辨率：复用当前显示表面，避免超出屏幕或返回主菜单错位
+    cur_surface = pygame.display.get_surface()
+    if screen is None:
+        screen = cur_surface
+    if screen is None:
+        screen = pygame.display.set_mode((800, 600))
+    screen_width, screen_height = screen.get_size()
     
     # 确保宠物数据存在
     if 'pet' not in data:
@@ -750,11 +748,7 @@ def pet_menu():
         
         clock.tick(60)
     
-    # 恢复原始屏幕
-    screen = original_screen
-    import ASSET.game_main_menu
-    ASSET.game_main_menu.screen = original_screen
-    pygame.display.set_mode(original_screen.get_size())
+    # 全程未改变显示模式，无需恢复，主界面不会错位
 
 def hatch_selection_menu():
     """孵化选择界面 - 让用户选择要孵化哪个宠物蛋"""
@@ -991,7 +985,6 @@ def main():
     pet_menu()
 
 # 导入必要的模块
-import math
 from ASSET.game_main_menu import Particle
 
 if __name__ == '__main__':

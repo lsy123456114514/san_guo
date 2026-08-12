@@ -1,7 +1,9 @@
+"""每日签到系统 - 连续签到与奖励领取"""
+
 import time
 import json
 import os
-from ASSET.game_data import data, save, default_save
+from ASSET.game_data import data, save, default_save, logger, draw_gradient_bg, cull_dead, get_font
 
 class DailyRewardSystem:
     """每日签到奖励系统"""

@@ -1,6 +1,7 @@
 """炼丹系统 - 资源合成、丹药炼制与冷却"""
 
 import os
+import time
 import pygame
 import random
 import datetime
@@ -78,16 +79,6 @@ class Button:
             if pygame.time.get_ticks() - self.click_timer > 200:
                 self.is_clicked = False
         return False
-
-def draw_gradient_bg(surface, color1, color2):
-    """绘制渐变背景"""
-    width, height = surface.get_size()
-    for y in range(height):
-        ratio = y / height
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
 
 def draw_title(surface, text, y_pos, screen_width, font_big):
     """绘制带特效的标题"""
@@ -226,7 +217,6 @@ class AlchemySystem:
     
     def craft_potion(self, recipe_id):
         """制作药水"""
-        import time
         for recipe in data["alchemy"]["recipes"]:
             if recipe["id"] == recipe_id and recipe["unlocked"]:
                 if self.has_ingredients(recipe):
@@ -265,19 +255,46 @@ class AlchemySystem:
         return False, "配方不存在或未解锁"
     
     def use_potion(self, potion_id):
-        """使用药水"""
+        """使用药水（效果转化为临时增益 buff，持续5分钟，战斗中自动生效）"""
         for potion in data["alchemy"]["potions"]:
             if potion["id"] == potion_id:
-                # 应用药水效果
+                # 应用药水效果：转化为临时增益 buff
+                data["alchemy"].setdefault("active_buffs", [])
+                now = time.time()
+                buff_text = []
                 for effect, value in potion["effect"].items():
-                    # 这里可以添加药水效果的具体实现
-                    pass
-                
+                    # 同类型 buff 叠加刷新
+                    replaced = False
+                    for b in data["alchemy"]["active_buffs"]:
+                        if b["effect"] == effect and b["expire_at"] > now:
+                            b["value"] = b.get("value", 0) + value
+                            b["expire_at"] = max(b.get("expire_at", 0), now + 300)
+                            replaced = True
+                            break
+                    if not replaced:
+                        data["alchemy"]["active_buffs"].append({
+                            "effect": effect,
+                            "value": value,
+                            "expire_at": now + 300,
+                            "source": potion["name"],
+                        })
+                    buff_text.append(f"{effect}+{value}")
+
                 # 移除药水
                 data["alchemy"]["potions"].remove(potion)
                 save()
-                return True, f"使用了 {potion['name']}"
+                return True, f"使用了 {potion['name']}：{'，'.join(buff_text)}，持续5分钟（战斗中自动生效）"
         return False, "药水不存在"
+
+    def get_active_buffs(self):
+        """获取当前有效的增益 buff，并清理过期 buff"""
+        now = time.time()
+        data["alchemy"].setdefault("active_buffs", [])
+        active = [b for b in data["alchemy"]["active_buffs"] if b.get("expire_at", 0) > now]
+        if len(active) != len(data["alchemy"]["active_buffs"]):
+            data["alchemy"]["active_buffs"] = active
+            save()
+        return active
     
     def get_unlocked_recipes(self):
         """获取已解锁的配方"""
@@ -409,7 +426,6 @@ def main():
         # 主循环
         running = True
         while running:
-            import time
             mx, my = pygame.mouse.get_pos()
             
             # 处理时间任务
@@ -497,13 +513,13 @@ def main():
             
             clock.tick(60)
         
-        safe_exit("炼金系统")
+        return
     except Exception as e:
         logger.info(f"异常：{str(e)}")
         logger.info("详细错误信息：")
         import traceback
         traceback.print_exc()
-        safe_exit("炼金系统", str(e))
+        return
 
 if __name__ == "__main__":
     main()

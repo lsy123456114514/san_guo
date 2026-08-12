@@ -3,7 +3,7 @@
 import pygame
 import random
 import time
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, get_system_font_name, create_font, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 
 # 颜色定义
@@ -828,9 +828,9 @@ class DictionarySystem:
             font_name = get_system_font_name()
             try:
                 if font_name:
-                    self.font_main = pygame.font.SysFont(font_name, font_size_main)
-                    self.font_small = pygame.font.SysFont(font_name, font_size_small)
-                    self.font_large = pygame.font.SysFont(font_name, font_size_large)
+                    self.font_main = create_font(font_name, font_size_main)
+                    self.font_small = create_font(font_name, font_size_small)
+                    self.font_large = create_font(font_name, font_size_large)
                 else:
                     self.font_main = pygame.font.Font(None, font_size_main)
                     self.font_small = pygame.font.Font(None, font_size_small)

@@ -31,6 +31,7 @@ COLORS = {
 
 
 class Particle:
+    """粒子效果 - 支持普通圆形与星形闪烁粒子"""
     def __init__(self, x, y, color, speed, size, life, particle_type="normal"):
         self.x = x
         self.y = y
@@ -70,6 +71,7 @@ class Particle:
 
 
 class AnimatedButton:
+    """动画按钮 - 悬停缩放、发光与星形粒子特效"""
     def __init__(self, text, x, y, width, height, font, 
                  normal_color=COLORS["accent_blue"], 
                  hover_color=COLORS["accent_blue_light"], 
@@ -169,6 +171,7 @@ class AnimatedButton:
 
 
 class InputBox:
+    """输入框 - 支持点击激活、光标闪烁与文字输入"""
     def __init__(self, x, y, width, height, font, text=''):
         self.rect = pygame.Rect(x, y, width, height)
         self.color = COLORS["text_gray"]
@@ -215,17 +218,6 @@ class InputBox:
         txt_surface = self.font.render(display_text, True, COLORS["text_white"])
         surface.blit(txt_surface, (self.rect.x + 10, self.rect.y + 10))
 
-
-def draw_gradient_bg(surface, color1, color2):
-    width, height = surface.get_size()
-    for y in range(height):
-        ratio = y / height
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
-
-
 def draw_title(surface, text, y_pos, screen_width, font, color=COLORS["accent_gold"]):
     for offset in range(5, 0, -1):
         alpha = max(0, 60 - offset * 10)
@@ -255,6 +247,7 @@ def draw_title(surface, text, y_pos, screen_width, font, color=COLORS["accent_go
 
 
 class PVPOnline:
+    """在线对战 - 在线PVP匹配与对战主控类"""
     def __init__(self, screen):
         self.screen = screen
         self.width, self.height = screen.get_size()
