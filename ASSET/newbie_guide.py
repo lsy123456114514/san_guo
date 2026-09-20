@@ -8,7 +8,7 @@ import sys
 import pygame
 import math
 import random
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET.game_main_menu import Button, COLORS, init_fonts
 
 # 全局变量
@@ -105,7 +105,7 @@ class Particle:
         self.size = max(1, self.size - 0.1)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
+        alpha = int(255 * (self.life / self.max_life))
         color = self.color[:3]
         pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
 
@@ -134,8 +134,6 @@ def main():
     global screen, clock, FONT_MAIN, FONT_SMALL, FONT_BIG
     
     # 确保pygame已导入
-    import pygame
-    
     # 初始化pygame
     if not pygame.get_init():
         pygame.init()
@@ -148,12 +146,23 @@ def main():
     FONT_SMALL = SMALL_FONT
     FONT_BIG = BIG_FONT
     
-    # 获取当前屏幕大小
-    info = pygame.display.Info()
-    screen_width = info.current_w
-    screen_height = info.current_h
+    # 获取屏幕真实物理像素分辨率
+    import platform
+    if platform.system() == "Windows":
+        try:
+            import ctypes
+            screen_width = ctypes.windll.user32.GetSystemMetrics(0)
+            screen_height = ctypes.windll.user32.GetSystemMetrics(1)
+        except Exception:
+            info = pygame.display.Info()
+            screen_width = info.current_w
+            screen_height = info.current_h
+    else:
+        info = pygame.display.Info()
+        screen_width = info.current_w
+        screen_height = info.current_h
     
-    # 设置屏幕（保持当前分辨率）
+    # 设置屏幕（使用物理分辨率）
     screen = pygame.display.set_mode((screen_width, screen_height))
     pygame.display.set_caption("新手引导")
     clock = pygame.time.Clock()
@@ -194,8 +203,6 @@ def main():
             p.update()
             p.x += math.sin(p.y * 0.02) * 0.5
             p.draw(screen)
-            if p.life <= 0:
-                particles.remove(p)
         
         # 绘制引导内容
         step = GUIDE_STEPS[current_step]
@@ -205,17 +212,28 @@ def main():
         title_rect = title_surf.get_rect(center=(screen_width // 2, 100))
         screen.blit(title_surf, title_rect)
         
-        # 内容
+        # 内容（支持中文字符级自动换行）
         content_lines = []
-        words = step["content"].split()
+        text = step["content"]
+        max_width = screen_width - 120
         current_line = ""
-        for word in words:
-            test_line = current_line + word + " "
-            if FONT_SMALL.size(test_line)[0] > screen_width - 100:
+        i = 0
+        while i < len(text):
+            ch = text[i]
+            # 遇到换行符直接换行
+            if ch == '\n':
                 content_lines.append(current_line)
-                current_line = word + " "
+                current_line = ""
+                i += 1
+                continue
+            test_line = current_line + ch
+            if FONT_SMALL.size(test_line)[0] > max_width:
+                if current_line:
+                    content_lines.append(current_line)
+                current_line = ch
             else:
                 current_line = test_line
+            i += 1
         if current_line:
             content_lines.append(current_line)
         

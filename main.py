@@ -9,6 +9,29 @@ os.environ['SDL_VIDEO_CENTERED'] = '1'
 os.environ['SDL_VIDEO_WINDOW_POS'] = 'center'
 import pygame
 
+def get_physical_resolution():
+    """获取屏幕真实物理像素分辨率（非逻辑分辨率）"""
+    if platform.system() == "Windows":
+        try:
+            import ctypes
+            # SM_CXSCREEN=0, SM_CYSCREEN=1 返回物理像素分辨率（不受DPI缩放影响）
+            w = ctypes.windll.user32.GetSystemMetrics(0)
+            h = ctypes.windll.user32.GetSystemMetrics(1)
+            if w > 0 and h > 0:
+                return w, h
+        except Exception:
+            pass
+    # 回退方案
+    try:
+        sizes = pygame.display.get_desktop_sizes()
+        if sizes:
+            return sizes[0]
+    except Exception:
+        pass
+    info = pygame.display.Info()
+    return info.current_w, info.current_h
+
+
 def get_safe_resolution(screen_width, screen_height, min_width=640, min_height=360, ratio=0.8):
     """获取安全的窗口尺寸，确保不超出屏幕"""
     safe_width = int(screen_width * ratio)
@@ -38,29 +61,29 @@ if 'ANDROID_DATA' in os.environ:
     sys.path.append(os.path.join(os.path.dirname(__file__), 'ASSET'))
     # 安卓全屏
     pygame.init()
-    info = pygame.display.Info()
-    SCREEN_WIDTH = info.current_w
-    SCREEN_HEIGHT = info.current_h
+    SCREEN_WIDTH, SCREEN_HEIGHT = get_physical_resolution()
 else:
     # 全局初始化
     pygame.init()
-    info = pygame.display.Info()
-    screen_width_full = info.current_w
-    screen_height_full = info.current_h
+    # 获取屏幕真实物理像素分辨率
+    screen_width_full, screen_height_full = get_physical_resolution()
     
     # 从设置中读取分辨率
     sys.path.append(os.path.join(os.path.dirname(__file__), 'ASSET'))
     from ASSET.game_data import SETTINGS
     resolution = SETTINGS['graphics']['resolution']
-    try:
-        SCREEN_WIDTH, SCREEN_HEIGHT = map(int, resolution.split('x'))
-    except ValueError:
-        # 默认分辨率：屏幕的 4/5，但不超过屏幕
-        SCREEN_WIDTH, SCREEN_HEIGHT = get_safe_resolution(screen_width_full, screen_height_full)
+    if resolution == "auto" or not resolution:
+        # 默认使用屏幕真实分辨率
+        SCREEN_WIDTH, SCREEN_HEIGHT = screen_width_full, screen_height_full
+    else:
+        try:
+            SCREEN_WIDTH, SCREEN_HEIGHT = map(int, resolution.split('x'))
+        except ValueError:
+            SCREEN_WIDTH, SCREEN_HEIGHT = screen_width_full, screen_height_full
     
-    # 确保窗口不超出屏幕
-    SCREEN_WIDTH = min(SCREEN_WIDTH, screen_width_full - 100)
-    SCREEN_HEIGHT = min(SCREEN_HEIGHT, screen_height_full - 100)
+    # 确保窗口不超出物理屏幕
+    SCREEN_WIDTH = min(SCREEN_WIDTH, screen_width_full)
+    SCREEN_HEIGHT = min(SCREEN_HEIGHT, screen_height_full)
 
 # 全局初始化
 pygame.mixer.init()
@@ -83,8 +106,16 @@ def save_login_state(username, user_data):
             "user_data": user_data,
             "logged_in": True
         }
-        with open(LOGIN_STATE_PATH, "w", encoding="utf-8") as f:
+        # 确保目录存在
+        os.makedirs(os.path.dirname(LOGIN_STATE_PATH), exist_ok=True)
+        unhide_file(LOGIN_STATE_PATH)
+        tmp_path = LOGIN_STATE_PATH + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(login_state, f, ensure_ascii=False, indent=2)
+        if os.path.exists(LOGIN_STATE_PATH):
+            os.replace(tmp_path, LOGIN_STATE_PATH)
+        else:
+            os.rename(tmp_path, LOGIN_STATE_PATH)
         hide_file(LOGIN_STATE_PATH)
     except Exception as e:
         import logging
@@ -118,7 +149,7 @@ def clear_login_state():
 from ASSET.login_system import main as login_main
 from ASSET.login_system import save_user_progress
 from ASSET.game_main_menu import main as menu_main
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, unhide_file
 from ASSET.dictionary_system import main as dictionary_main
 from ASSET.whiteboard import main as whiteboard_main
 
