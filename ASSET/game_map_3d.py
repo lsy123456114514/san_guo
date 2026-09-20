@@ -1,13 +1,17 @@
+"""3D 世界地图（MC 模式）- 方块放置、摄像机、热键栏"""
+
 import pygame
 import math
 import random
 import json
 import os
-import sys
 import time
-from ASSET.game_data import data, save, get_system_font_name, load_sound
+from ASSET.game_data import data, save, get_system_font_name, load_sound, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 
+MC_WORLD_KEY = "mc_world"
+
+# 尝试导入OpenGL
 try:
     from OpenGL.GL import *
     from OpenGL.GLU import *
@@ -15,6 +19,17 @@ try:
 except ImportError:
     opengl_available = False
 
+# 尝试导入C++渲染器
+try:
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from renderer_bindings import renderer, TreeData, LocationData, NPCData, EnemyData, GeneralData, PetData, PlayerData, FollowerData, ProjectileData, PickupData, TechBlockData, ParticleData, BlockData
+    cpp_renderer_available = renderer.is_available
+except Exception as e:
+    logger.info(f"无法加载C++渲染器: {e}")
+    cpp_renderer_available = False
+
+# 颜色定义
 COLORS = {
     "bg_dark": (20, 20, 30),
     "bg_light": (30, 30, 50),
@@ -26,700 +41,14 @@ COLORS = {
     "accent_blue_dark": (30, 60, 120)
 }
 
+# 地图配置
 MAP_SIZE = (2000, 2000)
 MAX_LOCATIONS = 50
 SCREEN_WIDTH = 1024
 SCREEN_HEIGHT = 768
-MINIMAP_SIZE = 200
-INVENTORY_SLOTS = 36
-MAX_PICKUP_DISTANCE = 5
-
-MC_BLOCKS = {
-    "air": {"color": (0, 0, 0, 0), "solid": False, "transparent": True},
-    "stone": {"color": (128, 128, 128), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "dirt": {"color": (139, 90, 43), "solid": True, "transparent": False, "hardness": 0.5, "tool": "shovel"},
-    "grass": {"color": (34, 139, 34), "solid": True, "transparent": False, "hardness": 0.6, "tool": "shovel"},
-    "cobblestone": {"color": (96, 96, 96), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "oak_log": {"color": (101, 67, 33), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
-    "oak_planks": {"color": (188, 152, 98), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
-    "oak_leaves": {"color": (50, 150, 50), "solid": False, "transparent": True, "hardness": 0.2, "tool": "shears"},
-    "sand": {"color": (230, 220, 170), "solid": True, "transparent": False, "hardness": 0.5, "tool": "shovel"},
-    "gravel": {"color": (150, 140, 130), "solid": True, "transparent": False, "hardness": 0.6, "tool": "shovel"},
-    "water": {"color": (30, 60, 200, 150), "solid": False, "transparent": True, "hardness": 100, "source": True},
-    "lava": {"color": (255, 80, 0), "solid": False, "transparent": True, "hardness": 100, "emissive": True},
-    "glass": {"color": (200, 220, 255, 100), "solid": True, "transparent": True, "hardness": 0.3, "tool": "none"},
-    "brick": {"color": (180, 80, 60), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "coal_ore": {"color": (100, 100, 100), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
-    "iron_ore": {"color": (170, 140, 120), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
-    "gold_ore": {"color": (230, 200, 100), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
-    "diamond_ore": {"color": (60, 220, 220), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
-    "oak_sapling": {"color": (50, 180, 50), "solid": False, "transparent": True, "hardness": 0.0},
-    "bedrock": {"color": (50, 50, 50), "solid": True, "transparent": False, "hardness": -1},
-    "snow": {"color": (255, 255, 255), "solid": True, "transparent": False, "hardness": 0.2, "tool": "shovel"},
-    "ice": {"color": (150, 180, 255, 200), "solid": True, "transparent": True, "hardness": 0.5},
-    "clay": {"color": (170, 170, 180), "solid": True, "transparent": False, "hardness": 0.6, "tool": "shovel"},
-    "oak_wood": {"color": (120, 80, 40), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
-    "oak_slab": {"color": (180, 140, 90), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
-    "oak_stairs": {"color": (175, 145, 95), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
-    "oak_door": {"color": (140, 100, 60), "solid": True, "transparent": False, "hardness": 3.0, "tool": "axe"},
-    "oak_fence": {"color": (160, 120, 80), "solid": False, "transparent": True, "hardness": 2.0, "tool": "axe"},
-    "oak_trapdoor": {"color": (130, 90, 50), "solid": True, "transparent": False, "hardness": 3.0, "tool": "axe"},
-    "oak_button": {"color": (160, 130, 90), "solid": False, "transparent": True, "hardness": 0.5},
-    "oak_pressure_plate": {"color": (180, 150, 100), "solid": False, "transparent": True, "hardness": 0.5},
-    "wall_torch": {"color": (255, 200, 50), "solid": False, "transparent": True, "hardness": 0.0, "emissive": True},
-    "floor_torch": {"color": (255, 180, 50), "solid": False, "transparent": True, "hardness": 0.0, "emissive": True},
-    "redstone_lamp": {"color": (150, 50, 50), "solid": True, "transparent": False, "hardness": 0.3, "tool": "pickaxe"},
-    "glowstone": {"color": (255, 200, 100), "solid": True, "transparent": False, "hardness": 0.3, "emissive": True},
-    "sea_lantern": {"color": (180, 220, 220), "solid": True, "transparent": True, "hardness": 0.3, "emissive": True},
-    "obsidian": {"color": (20, 10, 30), "solid": True, "transparent": False, "hardness": 50, "tool": "diamond_pickaxe"},
-    "netherrack": {"color": (110, 50, 50), "solid": True, "transparent": False, "hardness": 0.4, "tool": "pickaxe"},
-    "soul_sand": {"color": (80, 65, 50), "solid": True, "transparent": False, "hardness": 0.5, "tool": "shovel"},
-    "nether_bricks": {"color": (45, 25, 35), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "quartz_block": {"color": (230, 225, 215), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
-    "end_stone": {"color": (220, 220, 180), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
-    "purpur_block": {"color": (170, 120, 170), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "prismarine": {"color": (80, 150, 130), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "prismarine_bricks": {"color": (90, 160, 140), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "dark_prismarine": {"color": (50, 90, 80), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "sea_pickle": {"color": (100, 180, 100), "solid": False, "transparent": True, "hardness": 0.0},
-    "kelp": {"color": (50, 130, 50), "solid": False, "transparent": True, "hardness": 0.0},
-    "seagrass": {"color": (40, 130, 60), "solid": False, "transparent": True, "hardness": 0.0},
-    "coral_block": {"color": (200, 100, 120), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "coral": {"color": (180, 80, 100), "solid": False, "transparent": True, "hardness": 0.0},
-    "coral_fan": {"color": (160, 70, 90), "solid": False, "transparent": True, "hardness": 0.0},
-    "sandstone": {"color": (220, 200, 140), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
-    "red_sandstone": {"color": (180, 90, 40), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
-    "smooth_stone": {"color": (140, 140, 145), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "andesite": {"color": (130, 130, 135), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "diorite": {"color": (180, 180, 185), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "granite": {"color": (150, 100, 85), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "polished_andesite": {"color": (140, 140, 145), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "polished_diorite": {"color": (190, 190, 195), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "polished_granite": {"color": (160, 110, 95), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "cobblestone_slab": {"color": (105, 105, 110), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "cobblestone_stairs": {"color": (100, 100, 105), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "cobblestone_wall": {"color": (100, 100, 105), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "mossy_cobblestone": {"color": (80, 100, 80), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "stone_bricks": {"color": (120, 120, 125), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "chiseled_stone_bricks": {"color": (115, 115, 120), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "cracked_stone_bricks": {"color": (125, 125, 130), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "mossy_stone_bricks": {"color": (90, 110, 90), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "iron_block": {"color": (220, 220, 220), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
-    "gold_block": {"color": (255, 215, 0), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
-    "diamond_block": {"color": (60, 220, 220), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
-    "emerald_block": {"color": (50, 220, 100), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
-    "lapis_block": {"color": (40, 60, 180), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
-    "redstone_block": {"color": (180, 20, 20), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
-    "coal_block": {"color": (40, 40, 40), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
-    "netherite_block": {"color": (50, 40, 50), "solid": True, "transparent": False, "hardness": 50, "tool": "diamond_pickaxe"},
-    "hay_block": {"color": (200, 180, 80), "solid": True, "transparent": False, "hardness": 1.0, "tool": "sickle"},
-    "melon": {"color": (80, 140, 40), "solid": True, "transparent": False, "hardness": 1.0, "tool": "axe"},
-    "pumpkin": {"color": (200, 130, 30), "solid": True, "transparent": False, "hardness": 1.0, "tool": "axe"},
-    "carved_pumpkin": {"color": (210, 140, 40), "solid": True, "transparent": False, "hardness": 1.0, "tool": "axe"},
-    "jack_o_lantern": {"color": (220, 150, 50), "solid": True, "transparent": False, "hardness": 1.0, "emissive": True, "tool": "axe"},
-    "terracotta": {"color": (155, 95, 70), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
-    "white_terracotta": {"color": (210, 180, 160), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
-    "orange_terracotta": {"color": (165, 85, 45), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
-    "magenta_terracotta": {"color": (150, 90, 110), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
-    "light_blue_terracotta": {"color": (115, 110, 140), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
-    "yellow_terracotta": {"color": (190, 135, 45), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
-    "lime_terracotta": {"color": (105, 120, 60), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
-    "pink_terracotta": {"color": (160, 80, 75), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
-    "gray_terracotta": {"color": (60, 40, 35), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
-    "light_gray_terracotta": {"color": (135, 105, 95), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
-    "cyan_terracotta": {"color": (85, 90, 90), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
-    "purple_terracotta": {"color": (120, 70, 85), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
-    "blue_terracotta": {"color": (75, 60, 90), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
-    "brown_terracotta": {"color": (80, 55, 40), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
-    "green_terracotta": {"color": (80, 85, 50), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
-    "red_terracotta": {"color": (145, 65, 55), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
-    "black_terracotta": {"color": (40, 30, 25), "solid": True, "transparent": False, "hardness": 1.8, "tool": "shovel"},
-    "concrete": {"color": (160, 160, 170), "solid": True, "transparent": False, "hardness": 2.0},
-    "white_concrete": {"color": (210, 215, 220), "solid": True, "transparent": False, "hardness": 2.0},
-    "orange_concrete": {"color": (225, 100, 15), "solid": True, "transparent": False, "hardness": 2.0},
-    "magenta_concrete": {"color": (170, 50, 150), "solid": True, "transparent": False, "hardness": 2.0},
-    "light_blue_concrete": {"color": (40, 130, 220), "solid": True, "transparent": False, "hardness": 2.0},
-    "yellow_concrete": {"color": (250, 210, 30), "solid": True, "transparent": False, "hardness": 2.0},
-    "lime_concrete": {"color": (95, 170, 25), "solid": True, "transparent": False, "hardness": 2.0},
-    "pink_concrete": {"color": (215, 130, 150), "solid": True, "transparent": False, "hardness": 2.0},
-    "gray_concrete": {"color": (55, 60, 65), "solid": True, "transparent": False, "hardness": 2.0},
-    "light_gray_concrete": {"color": (130, 130, 135), "solid": True, "transparent": False, "hardness": 2.0},
-    "cyan_concrete": {"color": (25, 120, 150), "solid": True, "transparent": False, "hardness": 2.0},
-    "purple_concrete": {"color": (100, 35, 140), "solid": True, "transparent": False, "hardness": 2.0},
-    "blue_concrete": {"color": (45, 60, 150), "solid": True, "transparent": False, "hardness": 2.0},
-    "brown_concrete": {"color": (115, 75, 45), "solid": True, "transparent": False, "hardness": 2.0},
-    "green_concrete": {"color": (75, 95, 30), "solid": True, "transparent": False, "hardness": 2.0},
-    "red_concrete": {"color": (150, 30, 25), "solid": True, "transparent": False, "hardness": 2.0},
-    "black_concrete": {"color": (10, 12, 16), "solid": True, "transparent": False, "hardness": 2.0},
-    "concrete_powder": {"color": (165, 165, 175), "solid": True, "transparent": False, "hardness": 0.5, "gravity": True},
-    "white_concrete_powder": {"color": (215, 220, 225), "solid": True, "transparent": False, "hardness": 0.5, "gravity": True},
-    "wool": {"color": (220, 220, 220), "solid": True, "transparent": False, "hardness": 0.8, "tool": "shears"},
-    "carpet": {"color": (180, 180, 180), "solid": False, "transparent": True, "hardness": 0.1, "tool": "shears"},
-    "cake": {"color": (230, 200, 180), "solid": False, "transparent": False, "hardness": 0.5},
-    "white_bed": {"color": (230, 230, 230), "solid": False, "transparent": False, "hardness": 0.2},
-    "black_bed": {"color": (30, 30, 35), "solid": False, "transparent": False, "hardness": 0.2},
-    "brown_bed": {"color": (100, 70, 50), "solid": False, "transparent": False, "hardness": 0.2},
-    "bookshelf": {"color": (160, 120, 80), "solid": True, "transparent": False, "hardness": 1.5, "tool": "axe"},
-    "chest": {"color": (160, 120, 80), "solid": True, "transparent": False, "hardness": 2.5},
-    "ender_chest": {"color": (20, 40, 40), "solid": True, "transparent": False, "hardness": 22.5},
-    "furnace": {"color": (120, 120, 120), "solid": True, "transparent": False, "hardness": 3.5, "tool": "pickaxe"},
-    "blast_furnace": {"color": (120, 120, 130), "solid": True, "transparent": False, "hardness": 3.5, "tool": "pickaxe"},
-    "smoker": {"color": (140, 100, 80), "solid": True, "transparent": False, "hardness": 3.5, "tool": "axe"},
-    "cartography_table": {"color": (140, 120, 90), "solid": True, "transparent": False, "hardness": 2.5, "tool": "axe"},
-    "crafting_table": {"color": (150, 110, 70), "solid": True, "transparent": False, "hardness": 2.5, "tool": "axe"},
-    "enchanting_table": {"color": (150, 100, 200), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
-    "anvil": {"color": (120, 120, 130), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
-    "grindstone": {"color": (130, 130, 135), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "stonecutter": {"color": (140, 140, 145), "solid": True, "transparent": False, "hardness": 3.5, "tool": "pickaxe"},
-    "loom": {"color": (140, 110, 90), "solid": True, "transparent": False, "hardness": 2.5, "tool": "axe"},
-    "lectern": {"color": (160, 130, 100), "solid": True, "transparent": False, "hardness": 2.5, "tool": "axe"},
-    "smithing_table": {"color": (130, 110, 90), "solid": True, "transparent": False, "hardness": 2.5, "tool": "axe"},
-    "composter": {"color": (140, 110, 80), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
-    "barrel": {"color": (150, 110, 80), "solid": True, "transparent": False, "hardness": 2.5, "tool": "axe"},
-    "smithing_table": {"color": (130, 110, 90), "solid": True, "transparent": False, "hardness": 2.5, "tool": "axe"},
-    "bell": {"color": (180, 160, 90), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
-    "campfire": {"color": (140, 100, 60), "solid": False, "transparent": True, "hardness": 1.0, "emissive": True},
-    "soul_campfire": {"color": (80, 60, 40), "solid": False, "transparent": True, "hardness": 1.0, "emissive": True},
-    "lantern": {"color": (255, 200, 100), "solid": False, "transparent": True, "hardness": 1.0, "emissive": True},
-    "soul_lantern": {"color": (150, 180, 200), "solid": False, "transparent": True, "hardness": 1.0, "emissive": True},
-    "candle": {"color": (240, 240, 220), "solid": False, "transparent": True, "hardness": 0.1},
-    "end_rod": {"color": (220, 220, 220), "solid": False, "transparent": True, "hardness": 0.0, "emissive": True},
-    "chain": {"color": (100, 100, 110), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
-    "iron_bars": {"color": (150, 150, 160), "solid": False, "transparent": True, "hardness": 5.0, "tool": "pickaxe"},
-    "glass_pane": {"color": (200, 220, 255, 150), "solid": False, "transparent": True, "hardness": 0.3},
-    "iron_door": {"color": (180, 180, 190), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
-    "iron_trapdoor": {"color": (180, 180, 190), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
-    "oak_sign": {"color": (160, 130, 90), "solid": False, "transparent": True, "hardness": 1.0},
-    "spruce_sign": {"color": (130, 100, 60), "solid": False, "transparent": True, "hardness": 1.0},
-    "birch_sign": {"color": (200, 190, 160), "solid": False, "transparent": True, "hardness": 1.0},
-    "jungle_sign": {"color": (170, 130, 90), "solid": False, "transparent": True, "hardness": 1.0},
-    "acacia_sign": {"color": (170, 100, 60), "solid": False, "transparent": True, "hardness": 1.0},
-    "dark_oak_sign": {"color": (60, 40, 25), "solid": False, "transparent": True, "hardness": 1.0},
-    "oak_hanging_sign": {"color": (140, 110, 70), "solid": False, "transparent": True, "hardness": 1.0},
-    "item_frame": {"color": (160, 130, 80), "solid": False, "transparent": True, "hardness": 1.0},
-    "glow_item_frame": {"color": (170, 140, 90), "solid": False, "transparent": True, "hardness": 1.0, "emissive": True},
-    "painting": {"color": (180, 140, 100), "solid": False, "transparent": True, "hardness": 1.0},
-    "flower_pot": {"color": (180, 100, 60), "solid": False, "transparent": True, "hardness": 0.0},
-    "armor_stand": {"color": (120, 120, 130), "solid": False, "transparent": False, "hardness": 2.5},
-    "player_head": {"color": (200, 160, 120), "solid": False, "transparent": False, "hardness": 1.0},
-    "zombie_head": {"color": (80, 130, 80), "solid": False, "transparent": False, "hardness": 1.0},
-    "skeleton_skull": {"color": (210, 210, 200), "solid": False, "transparent": False, "hardness": 1.0},
-    "wither_skeleton_skull": {"color": (50, 50, 60), "solid": False, "transparent": False, "hardness": 1.0},
-    "dragon_head": {"color": (120, 80, 140), "solid": False, "transparent": False, "hardness": 1.0},
-    "beehive": {"color": (180, 140, 80), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
-    "bee_nest": {"color": (170, 150, 80), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
-    "honey_block": {"color": (230, 180, 60), "solid": True, "transparent": False, "hardness": 0.0},
-    "honeycomb_block": {"color": (240, 190, 70), "solid": True, "transparent": False, "hardness": 0.0},
-    "lodestone": {"color": (100, 100, 110), "solid": True, "transparent": False, "hardness": 3.5, "tool": "pickaxe"},
-    "sculk_sensor": {"color": (20, 30, 40), "solid": False, "transparent": True, "hardness": 1.5, "tool": "pickaxe"},
-    "sculk_catalyst": {"color": (25, 35, 45), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "sculk_shrieker": {"color": (30, 40, 50), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "sculk_vein": {"color": (15, 25, 35), "solid": False, "transparent": True, "hardness": 0.0},
-    "moss_block": {"color": (80, 120, 60), "solid": True, "transparent": False, "hardness": 0.1, "tool": "shovel"},
-    "moss_carpet": {"color": (70, 110, 50), "solid": False, "transparent": True, "hardness": 0.1, "tool": "shears"},
-    "sponge": {"color": (200, 200, 80), "solid": True, "transparent": False, "hardness": 0.6, "tool": "shovel"},
-    "wet_sponge": {"color": (180, 190, 100), "solid": True, "transparent": False, "hardness": 0.6, "tool": "shovel"},
-    "turtle_egg": {"color": (220, 220, 200), "solid": False, "transparent": False, "hardness": 0.1},
-    "dragon_egg": {"color": (40, 30, 50), "solid": False, "transparent": False, "hardness": 3.0},
-    " warden_spawn": {"color": (50, 55, 60), "solid": False, "transparent": False, "hardness": 0.0},
-    "respawn_anchor": {"color": (50, 50, 80), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
-    "crying_obsidian": {"color": (30, 20, 40), "solid": True, "transparent": False, "hardness": 50, "tool": "diamond_pickaxe"},
-    "shulker_box": {"color": (150, 100, 160), "solid": True, "transparent": False, "hardness": 2.5},
-    "undyed_shulker_box": {"color": (170, 150, 170), "solid": True, "transparent": False, "hardness": 2.5},
-    "loom": {"color": (140, 110, 90), "solid": True, "transparent": False, "hardness": 2.5, "tool": "axe"},
-    "fletching_table": {"color": (180, 150, 100), "solid": True, "transparent": False, "hardness": 2.5, "tool": "axe"},
-    "brewing_stand": {"color": (120, 120, 130), "solid": False, "transparent": True, "hardness": 0.5, "tool": "pickaxe"},
-    "cauldron": {"color": (120, 120, 130), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "water_cauldron": {"color": (40, 80, 200, 180), "solid": True, "transparent": True, "hardness": 2.0, "tool": "pickaxe"},
-    "lavacauldron": {"color": (220, 60, 0, 180), "solid": True, "transparent": True, "hardness": 2.0, "tool": "pickaxe"},
-    "flower_pot": {"color": (180, 100, 60), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_oak_sapling": {"color": (50, 180, 50), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_spruce_sapling": {"color": (40, 170, 40), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_birch_sapling": {"color": (60, 190, 60), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_jungle_sapling": {"color": (55, 175, 55), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_acacia_sapling": {"color": (45, 165, 45), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_dark_oak_sapling": {"color": (35, 155, 35), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_fern": {"color": (60, 150, 60), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_dandelion": {"color": (240, 220, 50), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_poppy": {"color": (220, 50, 50), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_blue_orchid": {"color": (50, 50, 200), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_allium": {"color": (180, 100, 180), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_azure_bluet": {"color": (240, 240, 240), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_red_tulip": {"color": (200, 40, 40), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_orange_tulip": {"color": (220, 100, 30), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_white_tulip": {"color": (240, 240, 230), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_pink_tulip": {"color": (240, 150, 170), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_oxeye_daisy": {"color": (230, 230, 200), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_cornflower": {"color": (80, 120, 220), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_lily_of_the_valley": {"color": (230, 235, 220), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_wither_rose": {"color": (40, 40, 50), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_red_mushroom": {"color": (220, 80, 80), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_brown_mushroom": {"color": (160, 120, 80), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_dead_bush": {"color": (120, 90, 60), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_azalea_bush": {"color": (60, 180, 80), "solid": False, "transparent": True, "hardness": 0.0},
-    "potted_flowering_azalea_bush": {"color": (70, 190, 90), "solid": False, "transparent": True, "hardness": 0.0},
-    "chain_command_block": {"color": (140, 150, 130), "solid": True, "transparent": False, "hardness": 0.0},
-    "repeating_command_block": {"color": (140, 100, 130), "solid": True, "transparent": False, "hardness": 0.0},
-    "command_block": {"color": (140, 80, 100), "solid": True, "transparent": False, "hardness": 0.0},
-    "chain": {"color": (100, 100, 110), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe"},
-    "lightning_rod": {"color": (210, 170, 120), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
-    "daylight_detector": {"color": (160, 150, 130), "solid": True, "transparent": False, "hardness": 0.0},
-    "daylight_detector_inverted": {"color": (140, 130, 110), "solid": True, "transparent": False, "hardness": 0.0},
-    "target": {"color": (200, 200, 200), "solid": True, "transparent": False, "hardness": 0.0},
-    "scaffolding": {"color": (160, 130, 100), "solid": False, "transparent": True, "hardness": 0.0},
-    "brick_stairs": {"color": (170, 80, 60), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "oak_stairs": {"color": (175, 145, 95), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
-    "spruce_stairs": {"color": (110, 80, 45), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
-    "birch_stairs": {"color": (195, 180, 140), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
-    "jungle_stairs": {"color": (155, 115, 75), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
-    "acacia_stairs": {"color": (160, 90, 55), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
-    "dark_oak_stairs": {"color": (65, 45, 25), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
-    "cobblestone_stairs": {"color": (100, 100, 105), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "sandstone_stairs": {"color": (210, 190, 130), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
-    "red_sandstone_stairs": {"color": (170, 85, 35), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
-    "prismarine_stairs": {"color": (80, 150, 130), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "prismarine_brick_stairs": {"color": (90, 160, 140), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "dark_prismarine_stairs": {"color": (50, 90, 80), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "quartz_stairs": {"color": (220, 215, 205), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
-    "purpur_stairs": {"color": (160, 110, 160), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "nether_brick_stairs": {"color": (50, 30, 40), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "red_nether_brick_stairs": {"color": (60, 20, 20), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "stone_stairs": {"color": (140, 140, 145), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "smooth_quartz_stairs": {"color": (225, 220, 210), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
-    "smooth_red_sandstone_stairs": {"color": (175, 90, 40), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
-    "granite_stairs": {"color": (150, 100, 85), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "andesite_stairs": {"color": (130, 130, 135), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "diorite_stairs": {"color": (180, 180, 185), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "polished_granite_stairs": {"color": (160, 110, 95), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "polished_diorite_stairs": {"color": (190, 190, 195), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "polished_andesite_stairs": {"color": (140, 140, 145), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "mossy_cobblestone_stairs": {"color": (80, 100, 80), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "mossy_stone_brick_stairs": {"color": (90, 110, 90), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "end_stone_brick_stairs": {"color": (215, 215, 175), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
-    "stone_brick_stairs": {"color": (120, 120, 125), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "oak_slab": {"color": (180, 140, 90), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
-    "spruce_slab": {"color": (115, 85, 50), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
-    "birch_slab": {"color": (195, 180, 140), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
-    "jungle_slab": {"color": (160, 120, 80), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
-    "acacia_slab": {"color": (165, 95, 60), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
-    "dark_oak_slab": {"color": (70, 50, 30), "solid": True, "transparent": False, "hardness": 2.0, "tool": "axe"},
-    "cobblestone_slab": {"color": (105, 105, 110), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "sandstone_slab": {"color": (210, 190, 130), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
-    "red_sandstone_slab": {"color": (170, 85, 35), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
-    "quartz_slab": {"color": (220, 215, 205), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
-    "prismarine_slab": {"color": (80, 150, 130), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "prismarine_brick_slab": {"color": (90, 160, 140), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "dark_prismarine_slab": {"color": (50, 90, 80), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "purpur_slab": {"color": (160, 110, 160), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "smooth_stone_slab": {"color": (145, 145, 150), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "smooth_quartz_slab": {"color": (225, 220, 210), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
-    "smooth_red_sandstone_slab": {"color": (175, 90, 40), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
-    "cobblestone_wall": {"color": (100, 100, 105), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "mossy_cobblestone_wall": {"color": (80, 100, 80), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "granite_wall": {"color": (150, 100, 85), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "diorite_wall": {"color": (180, 180, 185), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "andesite_wall": {"color": (130, 130, 135), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "sandstone_wall": {"color": (210, 190, 130), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
-    "red_sandstone_wall": {"color": (170, 85, 35), "solid": True, "transparent": False, "hardness": 0.8, "tool": "pickaxe"},
-    "brick_wall": {"color": (170, 80, 60), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "stone_brick_wall": {"color": (120, 120, 125), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "mossy_stone_brick_wall": {"color": (90, 110, 90), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "nether_brick_wall": {"color": (50, 30, 40), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe"},
-    "end_stone_brick_wall": {"color": (215, 215, 175), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
-    "prismarine_wall": {"color": (80, 150, 130), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "redstone_torch": {"color": (180, 30, 30), "solid": False, "transparent": True, "hardness": 0.0, "emissive": True},
-    "redstone_wire": {"color": (180, 30, 30), "solid": False, "transparent": True, "hardness": 0.0},
-    "repeater": {"color": (160, 60, 60), "solid": False, "transparent": True, "hardness": 0.0},
-    "comparator": {"color": (160, 60, 60), "solid": False, "transparent": True, "hardness": 0.0},
-    "piston": {"color": (150, 150, 155), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "sticky_piston": {"color": (150, 150, 155), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "observer": {"color": (130, 130, 135), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "hopper": {"color": (120, 120, 130), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe"},
-    "dropper": {"color": (120, 120, 125), "solid": True, "transparent": False, "hardness": 3.5, "tool": "pickaxe"},
-    "dispenser": {"color": (120, 120, 125), "solid": True, "transparent": False, "hardness": 3.5, "tool": "pickaxe"},
-    "lever": {"color": (120, 100, 80), "solid": False, "transparent": True, "hardness": 1.0},
-    "stone_button": {"color": (140, 140, 145), "solid": False, "transparent": True, "hardness": 0.5},
-    "oak_button": {"color": (160, 130, 90), "solid": False, "transparent": True, "hardness": 0.5},
-    "tripwire_hook": {"color": (160, 140, 100), "solid": False, "transparent": True, "hardness": 0.0},
-    "trapped_chest": {"color": (160, 120, 80), "solid": True, "transparent": False, "hardness": 2.5},
-    "tnt": {"color": (200, 80, 60), "solid": True, "transparent": False, "hardness": 0.0},
-    "note_block": {"color": (160, 130, 80), "solid": True, "transparent": False, "hardness": 0.8, "tool": "axe"},
-    "jukebox": {"color": (150, 110, 70), "solid": True, "transparent": False, "hardness": 2.5, "tool": "axe"},
-    "record_13": {"color": (200, 200, 50), "solid": False, "transparent": False, "hardness": 0.1},
-    "record_cat": {"color": (50, 200, 50), "solid": False, "transparent": False, "hardness": 0.1},
-    "record_blocks": {"color": (200, 50, 50), "solid": False, "transparent": False, "hardness": 0.1},
-    "record_chirp": {"color": (50, 200, 200), "solid": False, "transparent": False, "hardness": 0.1},
-    "record_far": {"color": (50, 50, 200), "solid": False, "transparent": False, "hardness": 0.1},
-    "record_mall": {"color": (200, 50, 200), "solid": False, "transparent": False, "hardness": 0.1},
-    "record_mellohi": {"color": (200, 100, 50), "solid": False, "transparent": False, "hardness": 0.1},
-    "record_stal": {"color": (100, 50, 200), "solid": False, "transparent": False, "hardness": 0.1},
-    "record_strad": {"color": (200, 200, 200), "solid": False, "transparent": False, "hardness": 0.1},
-    "record_ward": {"color": (50, 100, 200), "solid": False, "transparent": False, "hardness": 0.1},
-    "record_11": {"color": (50, 200, 100), "solid": False, "transparent": False, "hardness": 0.1},
-    "record_wait": {"color": (200, 200, 100), "solid": False, "transparent": False, "hardness": 0.1},
-    "gold_ingot": {"color": (255, 215, 0), "solid": False, "transparent": False, "hardness": 0.1},
-    "iron_ingot": {"color": (220, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
-    "diamond": {"color": (60, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
-    "emerald": {"color": (50, 220, 100), "solid": False, "transparent": False, "hardness": 0.1},
-    "lapis_lazuli": {"color": (40, 60, 180), "solid": False, "transparent": False, "hardness": 0.1},
-    "coal": {"color": (40, 40, 40), "solid": False, "transparent": False, "hardness": 0.1},
-    "charcoal": {"color": (60, 50, 40), "solid": False, "transparent": False, "hardness": 0.1},
-    "netherite_ingot": {"color": (60, 50, 60), "solid": False, "transparent": False, "hardness": 0.1},
-    "wooden_pickaxe": {"color": (180, 140, 80), "solid": False, "transparent": False, "hardness": 0.1},
-    "stone_pickaxe": {"color": (140, 140, 145), "solid": False, "transparent": False, "hardness": 0.1},
-    "iron_pickaxe": {"color": (220, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
-    "diamond_pickaxe": {"color": (60, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
-    "netherite_pickaxe": {"color": (60, 50, 60), "solid": False, "transparent": False, "hardness": 0.1},
-    "wooden_axe": {"color": (180, 140, 80), "solid": False, "transparent": False, "hardness": 0.1},
-    "stone_axe": {"color": (140, 140, 145), "solid": False, "transparent": False, "hardness": 0.1},
-    "iron_axe": {"color": (220, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
-    "diamond_axe": {"color": (60, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
-    "netherite_axe": {"color": (60, 50, 60), "solid": False, "transparent": False, "hardness": 0.1},
-    "wooden_shovel": {"color": (180, 140, 80), "solid": False, "transparent": False, "hardness": 0.1},
-    "stone_shovel": {"color": (140, 140, 145), "solid": False, "transparent": False, "hardness": 0.1},
-    "iron_shovel": {"color": (220, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
-    "diamond_shovel": {"color": (60, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
-    "netherite_shovel": {"color": (60, 50, 60), "solid": False, "transparent": False, "hardness": 0.1},
-    "wooden_hoe": {"color": (180, 140, 80), "solid": False, "transparent": False, "hardness": 0.1},
-    "stone_hoe": {"color": (140, 140, 145), "solid": False, "transparent": False, "hardness": 0.1},
-    "iron_hoe": {"color": (220, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
-    "diamond_hoe": {"color": (60, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
-    "netherite_hoe": {"color": (60, 50, 60), "solid": False, "transparent": False, "hardness": 0.1},
-    "wooden_sword": {"color": (180, 140, 80), "solid": False, "transparent": False, "hardness": 0.1},
-    "stone_sword": {"color": (140, 140, 145), "solid": False, "transparent": False, "hardness": 0.1},
-    "iron_sword": {"color": (220, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
-    "diamond_sword": {"color": (60, 220, 220), "solid": False, "transparent": False, "hardness": 0.1},
-    "netherite_sword": {"color": (60, 50, 60), "solid": False, "transparent": False, "hardness": 0.1},
-    "bow": {"color": (150, 110, 70), "solid": False, "transparent": False, "hardness": 0.1},
-    "crossbow": {"color": (150, 110, 70), "solid": False, "transparent": False, "hardness": 0.1},
-    "arrow": {"color": (180, 150, 100), "solid": False, "transparent": False, "hardness": 0.1},
-    "shield": {"color": (140, 110, 70), "solid": False, "transparent": False, "hardness": 0.1},
-    "trident": {"color": (60, 200, 200), "solid": False, "transparent": False, "hardness": 0.1},
-    "fishing_rod": {"color": (150, 110, 70), "solid": False, "transparent": False, "hardness": 0.1},
-    "carrot_on_a_stick": {"color": (230, 150, 50), "solid": False, "transparent": False, "hardness": 0.1},
-    "warped_fungus_on_a_stick": {"color": (40, 180, 140), "solid": False, "transparent": False, "hardness": 0.1},
-    "oak_boat": {"color": (160, 120, 70), "solid": False, "transparent": False, "hardness": 0.1},
-    "spruce_boat": {"color": (100, 70, 40), "solid": False, "transparent": False, "hardness": 0.1},
-    "birch_boat": {"color": (190, 175, 140), "solid": False, "transparent": False, "hardness": 0.1},
-    "jungle_boat": {"color": (150, 110, 70), "solid": False, "transparent": False, "hardness": 0.1},
-    "acacia_boat": {"color": (160, 90, 50), "solid": False, "transparent": False, "hardness": 0.1},
-    "dark_oak_boat": {"color": (60, 40, 25), "solid": False, "transparent": False, "hardness": 0.1},
-    "saddle": {"color": (120, 80, 50), "solid": False, "transparent": False, "hardness": 0.1},
-    "horse_armor_leather": {"color": (140, 100, 70), "solid": False, "transparent": False, "hardness": 0.1},
-    "horse_armor_iron": {"color": (200, 200, 210), "solid": False, "transparent": False, "hardness": 0.1},
-    "horse_armor_gold": {"color": (250, 210, 0), "solid": False, "transparent": False, "hardness": 0.1},
-    "horse_armor_diamond": {"color": (60, 210, 210), "solid": False, "transparent": False, "hardness": 0.1},
-    "leather_helmet": {"color": (140, 100, 70), "solid": False, "transparent": False, "hardness": 0.1},
-    "leather_chestplate": {"color": (140, 100, 70), "solid": False, "transparent": False, "hardness": 0.1},
-    "leather_leggings": {"color": (140, 100, 70), "solid": False, "transparent": False, "hardness": 0.1},
-    "leather_boots": {"color": (140, 100, 70), "solid": False, "transparent": False, "hardness": 0.1},
-    "chainmail_helmet": {"color": (120, 120, 130), "solid": False, "transparent": False, "hardness": 0.1},
-    "chainmail_chestplate": {"color": (120, 120, 130), "solid": False, "transparent": False, "hardness": 0.1},
-    "chainmail_leggings": {"color": (120, 120, 130), "solid": False, "transparent": False, "hardness": 0.1},
-    "chainmail_boots": {"color": (120, 120, 130), "solid": False, "transparent": False, "hardness": 0.1},
-    "iron_helmet": {"color": (210, 210, 220), "solid": False, "transparent": False, "hardness": 0.1},
-    "iron_chestplate": {"color": (210, 210, 220), "solid": False, "transparent": False, "hardness": 0.1},
-    "iron_leggings": {"color": (210, 210, 220), "solid": False, "transparent": False, "hardness": 0.1},
-    "iron_boots": {"color": (210, 210, 220), "solid": False, "transparent": False, "hardness": 0.1},
-    "diamond_helmet": {"color": (60, 210, 210), "solid": False, "transparent": False, "hardness": 0.1},
-    "diamond_chestplate": {"color": (60, 210, 210), "solid": False, "transparent": False, "hardness": 0.1},
-    "diamond_leggings": {"color": (60, 210, 210), "solid": False, "transparent": False, "hardness": 0.1},
-    "diamond_boots": {"color": (60, 210, 210), "solid": False, "transparent": False, "hardness": 0.1},
-    "netherite_helmet": {"color": (60, 50, 60), "solid": False, "transparent": False, "hardness": 0.1},
-    "netherite_chestplate": {"color": (60, 50, 60), "solid": False, "transparent": False, "hardness": 0.1},
-    "netherite_leggings": {"color": (60, 50, 60), "solid": False, "transparent": False, "hardness": 0.1},
-    "netherite_boots": {"color": (60, 50, 60), "solid": False, "transparent": False, "hardness": 0.1},
-    "turtle_helmet": {"color": (140, 190, 180), "solid": False, "transparent": False, "hardness": 0.1},
-    "elytra": {"color": (180, 180, 160), "solid": False, "transparent": False, "hardness": 0.1},
-    "totem_of_undying": {"color": (255, 215, 0), "solid": False, "transparent": False, "hardness": 0.1},
-    "enchanted_golden_apple": {"color": (255, 220, 100), "solid": False, "transparent": False, "hardness": 0.1},
-    "golden_apple": {"color": (255, 200, 50), "solid": False, "transparent": False, "hardness": 0.1},
-    "apple": {"color": (200, 150, 100), "solid": False, "transparent": False, "hardness": 0.1},
-    "bread": {"color": (220, 190, 140), "solid": False, "transparent": False, "hardness": 0.1},
-    "cooked_beef": {"color": (110, 60, 40), "solid": False, "transparent": False, "hardness": 0.1},
-    "raw_beef": {"color": (180, 60, 60), "solid": False, "transparent": False, "hardness": 0.1},
-    "cooked_chicken": {"color": (200, 160, 120), "solid": False, "transparent": False, "hardness": 0.1},
-    "raw_chicken": {"color": (200, 180, 180), "solid": False, "transparent": False, "hardness": 0.1},
-    "cooked_mutton": {"color": (190, 150, 120), "solid": False, "transparent": False, "hardness": 0.1},
-    "raw_mutton": {"color": (200, 180, 180), "solid": False, "transparent": False, "hardness": 0.1},
-    "cooked_porkchop": {"color": (170, 120, 100), "solid": False, "transparent": False, "hardness": 0.1},
-    "raw_porkchop": {"color": (200, 150, 160), "solid": False, "transparent": False, "hardness": 0.1},
-    "cooked_rabbit": {"color": (180, 140, 110), "solid": False, "transparent": False, "hardness": 0.1},
-    "raw_rabbit": {"color": (200, 180, 180), "solid": False, "transparent": False, "hardness": 0.1},
-    "cooked_cod": {"color": (200, 180, 140), "solid": False, "transparent": False, "hardness": 0.1},
-    "raw_cod": {"color": (200, 200, 180), "solid": False, "transparent": False, "hardness": 0.1},
-    "cooked_salmon": {"color": (200, 140, 120), "solid": False, "transparent": False, "hardness": 0.1},
-    "raw_salmon": {"color": (220, 140, 120), "solid": False, "transparent": False, "hardness": 0.1},
-    "tropical_fish": {"color": (220, 180, 140), "solid": False, "transparent": False, "hardness": 0.1},
-    "pufferfish": {"color": (200, 200, 120), "solid": False, "transparent": False, "hardness": 0.1},
-    "rotten_flesh": {"color": (120, 100, 80), "solid": False, "transparent": False, "hardness": 0.1},
-    "spider_eye": {"color": (180, 60, 60), "solid": False, "transparent": False, "hardness": 0.1},
-    "cooked_spider_eye": {"color": (140, 80, 80), "solid": False, "transparent": False, "hardness": 0.1},
-    "rabbit_stew": {"color": (180, 140, 100), "solid": False, "transparent": False, "hardness": 0.1},
-    "mushroom_stew": {"color": (180, 140, 100), "solid": False, "transparent": False, "hardness": 0.1},
-    "beetroot_soup": {"color": (140, 60, 60), "solid": False, "transparent": False, "hardness": 0.1},
-    "suspicious_stew": {"color": (180, 150, 100), "solid": False, "transparent": False, "hardness": 0.1},
-    "pumpkin_pie": {"color": (220, 180, 120), "solid": False, "transparent": False, "hardness": 0.1},
-    "cake": {"color": (230, 200, 180), "solid": False, "transparent": False, "hardness": 0.1},
-    "cookie": {"color": (200, 170, 130), "solid": False, "transparent": False, "hardness": 0.1},
-    "melon_slice": {"color": (140, 190, 80), "solid": False, "transparent": False, "hardness": 0.1},
-    "dried_kelp": {"color": (80, 140, 80), "solid": False, "transparent": False, "hardness": 0.1},
-    "carrot": {"color": (230, 130, 30), "solid": False, "transparent": False, "hardness": 0.1},
-    "golden_carrot": {"color": (255, 200, 50), "solid": False, "transparent": False, "hardness": 0.1},
-    "potato": {"color": (210, 180, 140), "solid": False, "transparent": False, "hardness": 0.1},
-    "baked_potato": {"color": (220, 170, 120), "solid": False, "transparent": False, "hardness": 0.1},
-    "poisonous_potato": {"color": (180, 160, 120), "solid": False, "transparent": False, "hardness": 0.1},
-    "beetroot": {"color": (150, 40, 40), "solid": False, "transparent": False, "hardness": 0.1},
-    "sweet_berries": {"color": (60, 140, 200), "solid": False, "transparent": False, "hardness": 0.1},
-    "glow_berries": {"color": (220, 200, 100), "solid": False, "transparent": False, "hardness": 0.1},
-    "chorus_fruit": {"color": (180, 120, 200), "solid": False, "transparent": False, "hardness": 0.1},
-    "popped_chorus_fruit": {"color": (200, 160, 200), "solid": False, "transparent": False, "hardness": 0.1},
-    "wheat": {"color": (220, 200, 100), "solid": False, "transparent": False, "hardness": 0.1},
-    "wheat_seeds": {"color": (220, 210, 120), "solid": False, "transparent": False, "hardness": 0.1},
-    "pumpkin_seeds": {"color": (200, 160, 100), "solid": False, "transparent": False, "hardness": 0.1},
-    "melon_seeds": {"color": (160, 190, 100), "solid": False, "transparent": False, "hardness": 0.1},
-    "beetroot_seeds": {"color": (170, 60, 60), "solid": False, "transparent": False, "hardness": 0.1},
-    "oak_sapling": {"color": (50, 180, 50), "solid": False, "transparent": False, "hardness": 0.1},
-    "spruce_sapling": {"color": (40, 170, 40), "solid": False, "transparent": False, "hardness": 0.1},
-    "birch_sapling": {"color": (60, 190, 60), "solid": False, "transparent": False, "hardness": 0.1},
-    "jungle_sapling": {"color": (55, 175, 55), "solid": False, "transparent": False, "hardness": 0.1},
-    "acacia_sapling": {"color": (45, 165, 45), "solid": False, "transparent": False, "hardness": 0.1},
-    "dark_oak_sapling": {"color": (35, 155, 35), "solid": False, "transparent": False, "hardness": 0.1},
-    "azalea": {"color": (60, 180, 80), "solid": False, "transparent": False, "hardness": 0.1},
-    "flowering_azalea": {"color": (70, 190, 90), "solid": False, "transparent": False, "hardness": 0.1},
-    "oak_leaves": {"color": (50, 150, 50), "solid": False, "transparent": True, "hardness": 0.2},
-    "spruce_leaves": {"color": (40, 120, 40), "solid": False, "transparent": True, "hardness": 0.2},
-    "birch_leaves": {"color": (60, 160, 60), "solid": False, "transparent": True, "hardness": 0.2},
-    "jungle_leaves": {"color": (50, 140, 50), "solid": False, "transparent": True, "hardness": 0.2},
-    "acacia_leaves": {"color": (55, 155, 55), "solid": False, "transparent": True, "hardness": 0.2},
-    "dark_oak_leaves": {"color": (40, 130, 40), "solid": False, "transparent": True, "hardness": 0.2},
-    "vine": {"color": (50, 130, 50), "solid": False, "transparent": True, "hardness": 0.1},
-    "lily_pad": {"color": (40, 140, 50), "solid": False, "transparent": True, "hardness": 0.0},
-    "spore_blossom": {"color": (200, 180, 220), "solid": False, "transparent": True, "hardness": 0.0},
-    "hanging_roots": {"color": (100, 80, 60), "solid": False, "transparent": True, "hardness": 0.0},
-    "small_dripleaf": {"color": (50, 140, 50), "solid": False, "transparent": True, "hardness": 0.0},
-    "big_dripleaf": {"color": (50, 140, 50), "solid": False, "transparent": True, "hardness": 0.1},
-    "moss_carpet": {"color": (70, 110, 50), "solid": False, "transparent": True, "hardness": 0.1},
-    "rooted_dirt": {"color": (130, 85, 40), "solid": True, "transparent": False, "hardness": 0.5, "tool": "shovel"},
-    "grass_block": {"color": (90, 160, 60), "solid": True, "transparent": False, "hardness": 0.6, "tool": "shovel"},
-    "podzol": {"color": (90, 60, 30), "solid": True, "transparent": False, "hardness": 0.5, "tool": "shovel"},
-    "mycelium": {"color": (140, 100, 130), "solid": True, "transparent": False, "hardness": 0.6, "tool": "shovel"},
-    "dirt_path": {"color": (120, 85, 50), "solid": True, "transparent": False, "hardness": 0.5, "tool": "shovel"},
-    "farmland": {"color": (120, 80, 50), "solid": True, "transparent": False, "hardness": 0.6, "tool": "shovel"},
-    "grass": {"color": (80, 160, 50), "solid": False, "transparent": True, "hardness": 0.0},
-    "tall_grass": {"color": (70, 150, 45), "solid": False, "transparent": True, "hardness": 0.0},
-    "fern": {"color": (70, 140, 50), "solid": False, "transparent": True, "hardness": 0.0},
-    "large_fern": {"color": (70, 140, 50), "solid": False, "transparent": True, "hardness": 0.0},
-    "dead_bush": {"color": (120, 90, 60), "solid": False, "transparent": True, "hardness": 0.0},
-    "seagrass": {"color": (40, 130, 60), "solid": False, "transparent": True, "hardness": 0.0},
-    "kelp": {"color": (50, 130, 50), "solid": False, "transparent": True, "hardness": 0.0},
-    "sea_pickle": {"color": (100, 180, 100), "solid": False, "transparent": True, "hardness": 0.0},
-    "bamboo": {"color": (140, 180, 80), "solid": False, "transparent": True, "hardness": 0.0},
-    "sugar_cane": {"color": (140, 200, 100), "solid": False, "transparent": True, "hardness": 0.0},
-    "cactus": {"color": (20, 140, 60), "solid": True, "transparent": False, "hardness": 0.4},
-    "sweet_berry_bush": {"color": (60, 140, 200), "solid": False, "transparent": True, "hardness": 0.0},
-    "cave_vines": {"color": (50, 130, 50), "solid": False, "transparent": True, "hardness": 0.0},
-    "cave_vines_plant": {"color": (50, 130, 50), "solid": False, "transparent": True, "hardness": 0.0},
-    "glow_lichen": {"color": (150, 200, 100), "solid": False, "transparent": True, "hardness": 0.0, "emissive": True},
-    "lily_of_the_valley": {"color": (230, 235, 220), "solid": False, "transparent": False, "hardness": 0.0},
-    "wither_rose": {"color": (40, 40, 50), "solid": False, "transparent": False, "hardness": 0.0},
-    "cornflower": {"color": (80, 120, 220), "solid": False, "transparent": False, "hardness": 0.0},
-    "lily_of_the_valley": {"color": (230, 235, 220), "solid": False, "transparent": False, "hardness": 0.0},
-    "wither_rose": {"color": (40, 40, 50), "solid": False, "transparent": False, "hardness": 0.0},
-    "sunflower": {"color": (240, 220, 60), "solid": False, "transparent": False, "hardness": 0.0},
-    "lilac": {"color": (180, 120, 180), "solid": False, "transparent": False, "hardness": 0.0},
-    "rose_bush": {"color": (200, 50, 50), "solid": False, "transparent": False, "hardness": 0.0},
-    "peony": {"color": (200, 160, 180), "solid": False, "transparent": False, "hardness": 0.0},
-    "tall_grass": {"color": (70, 150, 45), "solid": False, "transparent": True, "hardness": 0.0},
-    "large_fern": {"color": (70, 140, 50), "solid": False, "transparent": True, "hardness": 0.0},
-    "dandelion": {"color": (240, 220, 50), "solid": False, "transparent": False, "hardness": 0.0},
-    "poppy": {"color": (220, 50, 50), "solid": False, "transparent": False, "hardness": 0.0},
-    "blue_orchid": {"color": (50, 50, 200), "solid": False, "transparent": False, "hardness": 0.0},
-    "allium": {"color": (180, 100, 180), "solid": False, "transparent": False, "hardness": 0.0},
-    "azure_bluet": {"color": (240, 240, 240), "solid": False, "transparent": False, "hardness": 0.0},
-    "red_tulip": {"color": (200, 40, 40), "solid": False, "transparent": False, "hardness": 0.0},
-    "orange_tulip": {"color": (220, 100, 30), "solid": False, "transparent": False, "hardness": 0.0},
-    "white_tulip": {"color": (240, 240, 230), "solid": False, "transparent": False, "hardness": 0.0},
-    "pink_tulip": {"color": (240, 150, 170), "solid": False, "transparent": False, "hardness": 0.0},
-    "oxeye_daisy": {"color": (230, 230, 200), "solid": False, "transparent": False, "hardness": 0.0},
-    "cornflower": {"color": (80, 120, 220), "solid": False, "transparent": False, "hardness": 0.0},
-    "lily_pad": {"color": (40, 140, 50), "solid": False, "transparent": True, "hardness": 0.0},
-    "brain_coral_block": {"color": (200, 100, 120), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "bubble_coral_block": {"color": (140, 80, 180), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "fire_coral_block": {"color": (180, 60, 60), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "horn_coral_block": {"color": (220, 200, 80), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "tube_coral_block": {"color": (60, 100, 200), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "dead_brain_coral_block": {"color": (130, 125, 115), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "dead_bubble_coral_block": {"color": (130, 125, 115), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "dead_fire_coral_block": {"color": (130, 125, 115), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "dead_horn_coral_block": {"color": (130, 125, 115), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "dead_tube_coral_block": {"color": (130, 125, 115), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe"},
-    "brain_coral": {"color": (200, 100, 120), "solid": False, "transparent": True, "hardness": 0.0},
-    "bubble_coral": {"color": (140, 80, 180), "solid": False, "transparent": True, "hardness": 0.0},
-    "fire_coral": {"color": (180, 60, 60), "solid": False, "transparent": True, "hardness": 0.0},
-    "horn_coral": {"color": (220, 200, 80), "solid": False, "transparent": True, "hardness": 0.0},
-    "tube_coral": {"color": (60, 100, 200), "solid": False, "transparent": True, "hardness": 0.0},
-    "dead_brain_coral": {"color": (130, 125, 115), "solid": False, "transparent": True, "hardness": 0.0},
-    "dead_bubble_coral": {"color": (130, 125, 115), "solid": False, "transparent": True, "hardness": 0.0},
-    "dead_fire_coral": {"color": (130, 125, 115), "solid": False, "transparent": True, "hardness": 0.0},
-    "dead_horn_coral": {"color": (130, 125, 115), "solid": False, "transparent": True, "hardness": 0.0},
-    "dead_tube_coral": {"color": (130, 125, 115), "solid": False, "transparent": True, "hardness": 0.0},
-    "brain_coral_fan": {"color": (190, 95, 115), "solid": False, "transparent": True, "hardness": 0.0},
-    "bubble_coral_fan": {"color": (135, 75, 175), "solid": False, "transparent": True, "hardness": 0.0},
-    "fire_coral_fan": {"color": (170, 55, 55), "solid": False, "transparent": True, "hardness": 0.0},
-    "horn_coral_fan": {"color": (210, 195, 75), "solid": False, "transparent": True, "hardness": 0.0},
-    "tube_coral_fan": {"color": (55, 95, 195), "solid": False, "transparent": True, "hardness": 0.0},
-    "dead_brain_coral_fan": {"color": (120, 115, 105), "solid": False, "transparent": True, "hardness": 0.0},
-    "dead_bubble_coral_fan": {"color": (120, 115, 105), "solid": False, "transparent": True, "hardness": 0.0},
-    "dead_fire_coral_fan": {"color": (120, 115, 105), "solid": False, "transparent": True, "hardness": 0.0},
-    "dead_horn_coral_fan": {"color": (120, 115, 105), "solid": False, "transparent": True, "hardness": 0.0},
-    "dead_tube_coral_fan": {"color": (120, 115, 105), "solid": False, "transparent": True, "hardness": 0.0},
-    "brain_coral_wall_fan": {"color": (190, 95, 115), "solid": False, "transparent": True, "hardness": 0.0},
-    "bubble_coral_wall_fan": {"color": (135, 75, 175), "solid": False, "transparent": True, "hardness": 0.0},
-    "fire_coral_wall_fan": {"color": (170, 55, 55), "solid": False, "transparent": True, "hardness": 0.0},
-    "horn_coral_wall_fan": {"color": (210, 195, 75), "solid": False, "transparent": True, "hardness": 0.0},
-    "tube_coral_wall_fan": {"color": (55, 95, 195), "solid": False, "transparent": True, "hardness": 0.0},
-    "dead_brain_coral_wall_fan": {"color": (120, 115, 105), "solid": False, "transparent": True, "hardness": 0.0},
-    "dead_bubble_coral_wall_fan": {"color": (120, 115, 105), "solid": False, "transparent": True, "hardness": 0.0},
-    "dead_fire_coral_wall_fan": {"color": (120, 115, 105), "solid": False, "transparent": True, "hardness": 0.0},
-    "dead_horn_coral_wall_fan": {"color": (120, 115, 105), "solid": False, "transparent": True, "hardness": 0.0},
-    "dead_tube_coral_wall_fan": {"color": (120, 115, 105), "solid": False, "transparent": True, "hardness": 0.0},
-    
-    "tech_machine_frame": {"color": (100, 110, 120), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe", "tech": True},
-    "tech_energy_core": {"color": (0, 150, 255), "solid": True, "transparent": True, "hardness": 4.0, "tool": "pickaxe", "emissive": True, "tech": True},
-    "tech_generator": {"color": (50, 70, 90), "solid": True, "transparent": False, "hardness": 3.5, "tool": "pickaxe", "tech": True},
-    "tech_matter_transporter": {"color": (100, 50, 150), "solid": True, "transparent": True, "hardness": 4.0, "tool": "pickaxe", "emissive": True, "tech": True},
-    "tech_laser_node": {"color": (255, 0, 50), "solid": True, "transparent": True, "hardness": 3.0, "tool": "pickaxe", "emissive": True, "tech": True},
-    "tech_solar_panel": {"color": (20, 40, 60), "solid": True, "transparent": False, "hardness": 2.5, "tool": "pickaxe", "tech": True},
-    "tech_quantum_storage": {"color": (80, 200, 200), "solid": True, "transparent": True, "hardness": 4.0, "tool": "pickaxe", "emissive": True, "tech": True},
-    "tech_nano_assembler": {"color": (200, 200, 220), "solid": True, "transparent": False, "hardness": 3.5, "tool": "pickaxe", "tech": True},
-    "tech_hologram_projector": {"color": (150, 100, 200), "solid": False, "transparent": True, "hardness": 3.0, "tool": "pickaxe", "emissive": True, "tech": True},
-    "tech_force_field": {"color": (100, 180, 255, 100), "solid": True, "transparent": True, "hardness": -1, "tech": True},
-    "tech_anti_gravity": {"color": (50, 255, 200), "solid": True, "transparent": True, "hardness": 4.0, "tool": "pickaxe", "emissive": True, "tech": True},
-    "tech_teleporter": {"color": (200, 50, 200), "solid": False, "transparent": True, "hardness": 4.5, "tool": "pickaxe", "emissive": True, "tech": True},
-    "tech_fabricator": {"color": (120, 100, 80), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe", "tech": True},
-    "tech_reactor": {"color": (30, 30, 50), "solid": True, "transparent": False, "hardness": 5.0, "tool": "pickaxe", "emissive": True, "tech": True},
-    "tech_fusion_core": {"color": (255, 200, 100), "solid": True, "transparent": True, "hardness": 4.5, "tool": "pickaxe", "emissive": True, "tech": True},
-    "tech_circuit_board": {"color": (50, 80, 50), "solid": True, "transparent": False, "hardness": 1.5, "tool": "pickaxe", "tech": True},
-    "tech_advanced_chip": {"color": (100, 150, 200), "solid": True, "transparent": False, "hardness": 2.0, "tool": "pickaxe", "tech": True},
-    "tech_plasma_conduit": {"color": (200, 100, 50), "solid": True, "transparent": True, "hardness": 3.5, "tool": "pickaxe", "tech": True},
-    "tech_gravity_plate": {"color": (100, 80, 120), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe", "tech": True},
-    "tech_security_door": {"color": (80, 100, 120), "solid": True, "transparent": False, "hardness": 4.0, "tool": "pickaxe", "tech": True},
-    "tech_cooling_unit": {"color": (70, 130, 160), "solid": True, "transparent": False, "hardness": 3.0, "tool": "pickaxe", "tech": True},
-    "tech_autominer": {"color": (150, 70, 50), "solid": True, "transparent": False, "hardness": 3.5, "tool": "pickaxe", "tech": True},
-    "tech_energy_cable": {"color": (60, 60, 70), "solid": False, "transparent": True, "hardness": 1.0, "tool": "none", "tech": True},
-    
-    "gun_m4a1": {"color": (60, 60, 60), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "ar", "damage": 25, "fire_rate": 0.09, "ammo_type": "ammo_556", "mag_size": 30, "range": 400, "recoil": 1.2},
-    "gun_ak47": {"color": (80, 60, 40), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "ar", "damage": 32, "fire_rate": 0.1, "ammo_type": "ammo_762", "mag_size": 30, "range": 380, "recoil": 2.0},
-    "gun_scarh": {"color": (55, 55, 55), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "ar", "damage": 35, "fire_rate": 0.11, "ammo_type": "ammo_762", "mag_size": 20, "range": 450, "recoil": 1.5},
-    "gun_groza": {"color": (70, 70, 70), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "ar", "damage": 34, "fire_rate": 0.08, "ammo_type": "ammo_762", "mag_size": 30, "range": 350, "recoil": 1.8},
-    "gun_aug": {"color": (50, 55, 60), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "ar", "damage": 28, "fire_rate": 0.095, "ammo_type": "ammo_556", "mag_size": 30, "range": 420, "recoil": 1.0},
-    "gun_famas": {"color": (65, 65, 70), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "ar", "damage": 26, "fire_rate": 0.085, "ammo_type": "ammo_556", "mag_size": 25, "range": 400, "recoil": 1.1},
-    "gun_qbz95": {"color": (45, 50, 55), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "ar", "damage": 27, "fire_rate": 0.1, "ammo_type": "ammo_556", "mag_size": 30, "range": 390, "recoil": 1.3},
-    "gun_type56": {"color": (75, 65, 55), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "ar", "damage": 31, "fire_rate": 0.11, "ammo_type": "ammo_762", "mag_size": 30, "range": 360, "recoil": 1.9},
-    "gun_m16a4": {"color": (55, 55, 60), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "ar", "damage": 24, "fire_rate": 0.12, "ammo_type": "ammo_556", "mag_size": 30, "range": 430, "recoil": 0.8},
-    "gun_hk416": {"color": (58, 58, 62), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "ar", "damage": 26, "fire_rate": 0.09, "ammo_type": "ammo_556", "mag_size": 30, "range": 410, "recoil": 1.0},
-    "gun_ak12": {"color": (85, 70, 50), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "ar", "damage": 30, "fire_rate": 0.095, "ammo_type": "ammo_556", "mag_size": 30, "range": 400, "recoil": 1.6},
-    "gun_m762": {"color": (78, 68, 58), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "ar", "damage": 33, "fire_rate": 0.085, "ammo_type": "ammo_762", "mag_size": 30, "range": 370, "recoil": 2.2},
-    
-    "gun_awm": {"color": (45, 45, 50), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "sr", "damage": 120, "fire_rate": 1.2, "ammo_type": "ammo_300wm", "mag_size": 5, "range": 800, "recoil": 4.0},
-    "gun_m200": {"color": (40, 45, 55), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "sr", "damage": 130, "fire_rate": 1.5, "ammo_type": "ammo_408", "mag_size": 7, "range": 1000, "recoil": 5.0},
-    "gun_barrett": {"color": (35, 35, 40), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "sr", "damage": 150, "fire_rate": 2.0, "ammo_type": "ammo_50bmg", "mag_size": 10, "range": 900, "recoil": 6.0},
-    "gun_svds": {"color": (70, 60, 50), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "sr", "damage": 75, "fire_rate": 0.8, "ammo_type": "ammo_762", "mag_size": 10, "range": 500, "recoil": 3.0},
-    "gun_sks": {"color": (65, 55, 45), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "sr", "damage": 55, "fire_rate": 0.4, "ammo_type": "ammo_762", "mag_size": 10, "range": 400, "recoil": 2.5},
-    "gun_vss": {"color": (55, 50, 45), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "sr", "damage": 45, "fire_rate": 0.15, "ammo_type": "ammo_9x39", "mag_size": 10, "range": 200, "recoil": 1.5, "silenced": True},
-    "gun_mk14": {"color": (50, 50, 55), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "sr", "damage": 60, "fire_rate": 0.12, "ammo_type": "ammo_762", "mag_size": 20, "range": 550, "recoil": 2.8},
-    "gun_g28": {"color": (48, 48, 52), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "sr", "damage": 58, "fire_rate": 0.25, "ammo_type": "ammo_762", "mag_size": 20, "range": 600, "recoil": 2.0},
-    
-    "gun_mp5": {"color": (70, 70, 70), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "smg", "damage": 20, "fire_rate": 0.065, "ammo_type": "ammo_9mm", "mag_size": 30, "range": 200, "recoil": 0.8},
-    "gun_p90": {"color": (65, 65, 65), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "smg", "damage": 22, "fire_rate": 0.05, "ammo_type": "ammo_57mm", "mag_size": 50, "range": 250, "recoil": 0.6},
-    "gun_ump45": {"color": (60, 60, 65), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "smg", "damage": 28, "fire_rate": 0.08, "ammo_type": "ammo_45acp", "mag_size": 25, "range": 220, "recoil": 0.9},
-    "gun_vector": {"color": (55, 55, 60), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "smg", "damage": 18, "fire_rate": 0.04, "ammo_type": "ammo_45acp", "mag_size": 13, "range": 180, "recoil": 0.5},
-    "gun_pp19": {"color": (68, 68, 72), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "smg", "damage": 19, "fire_rate": 0.07, "ammo_type": "ammo_9mm", "mag_size": 30, "range": 210, "recoil": 0.7},
-    "gun_mp7": {"color": (52, 52, 58), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "smg", "damage": 17, "fire_rate": 0.055, "ammo_type": "ammo_46mm", "mag_size": 40, "range": 230, "recoil": 0.4},
-    "gun_mp9": {"color": (48, 48, 52), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "smg", "damage": 16, "fire_rate": 0.05, "ammo_type": "ammo_9mm", "mag_size": 30, "range": 200, "recoil": 0.35},
-    "gun_uzi": {"color": (45, 45, 45), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "smg", "damage": 15, "fire_rate": 0.045, "ammo_type": "ammo_9mm", "mag_size": 32, "range": 150, "recoil": 0.5},
-    
-    "gun_glock18": {"color": (40, 40, 40), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "pistol", "damage": 22, "fire_rate": 0.12, "ammo_type": "ammo_9mm", "mag_size": 17, "range": 100, "recoil": 1.2},
-    "gun_m1911": {"color": (50, 50, 50), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "pistol", "damage": 30, "fire_rate": 0.18, "ammo_type": "ammo_45acp", "mag_size": 7, "range": 120, "recoil": 1.8},
-    "gun_deserteagle": {"color": (60, 50, 40), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "pistol", "damage": 45, "fire_rate": 0.25, "ammo_type": "ammo_50ae", "mag_size": 7, "range": 150, "recoil": 3.0},
-    "gun_p226": {"color": (45, 45, 50), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "pistol", "damage": 25, "fire_rate": 0.15, "ammo_type": "ammo_9mm", "mag_size": 15, "range": 110, "recoil": 1.3},
-    "gun_cz75": {"color": (52, 52, 55), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "pistol", "damage": 28, "fire_rate": 0.16, "ammo_type": "ammo_9mm", "mag_size": 16, "range": 115, "recoil": 1.4},
-    "gun_usp": {"color": (48, 48, 52), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "pistol", "damage": 24, "fire_rate": 0.14, "ammo_type": "ammo_9mm", "mag_size": 12, "range": 105, "recoil": 1.1},
-    "gun_fiveseven": {"color": (55, 55, 60), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "pistol", "damage": 20, "fire_rate": 0.13, "ammo_type": "ammo_57mm", "mag_size": 20, "range": 130, "recoil": 0.9},
-    
-    "gun_m870": {"color": (60, 50, 45), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "shotgun", "damage": 80, "fire_rate": 0.8, "ammo_type": "ammo_buckshot", "mag_size": 8, "range": 50, "recoil": 3.5},
-    "gun_spas12": {"color": (55, 48, 42), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "shotgun", "damage": 90, "fire_rate": 0.6, "ammo_type": "ammo_buckshot", "mag_size": 8, "range": 60, "recoil": 4.0},
-    "gun_aa12": {"color": (50, 45, 40), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "shotgun", "damage": 65, "fire_rate": 0.2, "ammo_type": "ammo_buckshot", "mag_size": 20, "range": 45, "recoil": 2.5},
-    "gun_saiga12": {"color": (65, 55, 48), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "shotgun", "damage": 70, "fire_rate": 0.35, "ammo_type": "ammo_buckshot", "mag_size": 10, "range": 55, "recoil": 3.0},
-    "gun_m590": {"color": (58, 48, 44), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "shotgun", "damage": 75, "fire_rate": 0.7, "ammo_type": "ammo_buckshot", "mag_size": 6, "range": 50, "recoil": 3.3},
-    
-    "gun_m249": {"color": (55, 50, 45), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "lmg", "damage": 28, "fire_rate": 0.06, "ammo_type": "ammo_556", "mag_size": 100, "range": 350, "recoil": 1.2},
-    "gun_rpk": {"color": (72, 62, 52), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "lmg", "damage": 30, "fire_rate": 0.08, "ammo_type": "ammo_762", "mag_size": 40, "range": 400, "recoil": 1.8},
-    "gun_m60": {"color": (45, 42, 38), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "lmg", "damage": 35, "fire_rate": 0.07, "ammo_type": "ammo_762", "mag_size": 50, "range": 450, "recoil": 2.0},
-    "gun_pkm": {"color": (68, 58, 48), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "lmg", "damage": 32, "fire_rate": 0.075, "ammo_type": "ammo_762", "mag_size": 100, "range": 420, "recoil": 1.6},
-    "gun_qjy88": {"color": (50, 48, 45), "solid": False, "transparent": False, "hardness": 0.1, "gun": True, "category": "lmg", "damage": 26, "fire_rate": 0.07, "ammo_type": "ammo_556", "mag_size": 75, "range": 380, "recoil": 1.3},
-    
-    "ammo_762": {"color": (180, 140, 100), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": "7.62mm"},
-    "ammo_556": {"color": (160, 130, 90), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": "5.56mm"},
-    "ammo_9mm": {"color": (200, 180, 140), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": "9mm"},
-    "ammo_45acp": {"color": (190, 170, 130), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": ".45 ACP"},
-    "ammo_50ae": {"color": (220, 200, 160), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": ".50 AE"},
-    "ammo_50bmg": {"color": (210, 190, 150), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": ".50 BMG"},
-    "ammo_57mm": {"color": (170, 150, 110), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": "5.7mm"},
-    "ammo_300wm": {"color": (195, 155, 115), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": ".300 WM"},
-    "ammo_408": {"color": (205, 165, 125), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": ".408 CT"},
-    "ammo_9x39": {"color": (185, 165, 135), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": "9x39mm"},
-    "ammo_46mm": {"color": (175, 155, 115), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": "4.6mm"},
-    "ammo_buckshot": {"color": (160, 140, 100), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": "12ga Buckshot"},
-    "ammo_slug": {"color": (180, 160, 120), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": "12ga Slug"},
-    "ammo_rpg": {"color": (100, 80, 60), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": "RPG"},
-    "ammo_arrow": {"color": (140, 100, 60), "solid": False, "transparent": False, "hardness": 0.1, "ammo": True, "caliber": "arrow"},
-    
-    "attachment_scope_holo": {"color": (45, 45, 55), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "scope", "zoom": 1, "aim_speed": 1.2},
-    "attachment_scope_red_dot": {"color": (50, 50, 60), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "scope", "zoom": 1, "aim_speed": 1.3},
-    "attachment_scope_2x": {"color": (42, 42, 52), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "scope", "zoom": 2, "aim_speed": 1.1},
-    "attachment_scope_3x": {"color": (40, 40, 50), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "scope", "zoom": 3, "aim_speed": 1.0},
-    "attachment_scope_4x": {"color": (38, 38, 48), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "scope", "zoom": 4, "aim_speed": 0.9},
-    "attachment_scope_6x": {"color": (35, 35, 45), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "scope", "zoom": 6, "aim_speed": 0.7},
-    "attachment_scope_8x": {"color": (32, 32, 42), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "scope", "zoom": 8, "aim_speed": 0.5},
-    "attachment_scope_10x": {"color": (30, 30, 40), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "scope", "zoom": 10, "aim_speed": 0.4},
-    "attachment_scope_15x": {"color": (28, 28, 38), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "scope", "zoom": 15, "aim_speed": 0.3},
-    
-    "attachment_muzzle_suppressor": {"color": (35, 35, 35), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "muzzle", "effect": "silence", "recoil_reduction": 0.15},
-    "attachment_muzzle_compensator": {"color": (38, 38, 38), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "muzzle", "effect": "compensate", "recoil_reduction": 0.25, "horiz_reduction": 0.3},
-    "attachment_muzzle_flash_hider": {"color": (40, 40, 40), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "muzzle", "effect": "flash_hide", "recoil_reduction": 0.1},
-    "attachment_muzzle_break": {"color": (42, 42, 42), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "muzzle", "effect": "break", "recoil_reduction": 0.3},
-    "attachment_muzzle_choke": {"color": (45, 45, 45), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "muzzle", "effect": "choke", "spread_reduction": 0.4},
-    
-    "attachment_mag_extended": {"color": (45, 45, 45), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "mag", "capacity_bonus": 50, "reload_penalty": 0.2},
-    "attachment_mag_quick": {"color": (48, 48, 48), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "mag", "reload_speed": 0.3},
-    "attachment_mag_quick_extended": {"color": (50, 50, 50), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "mag", "capacity_bonus": 30, "reload_speed": 0.2},
-    "attachment_mag_drum": {"color": (52, 52, 52), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "mag", "capacity_bonus": 100, "reload_penalty": 0.4},
-    
-    "attachment_grip_vertical": {"color": (55, 55, 55), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "grip", "vertical_recoil": 0.25, "aim_speed": -0.1},
-    "attachment_grip_angled": {"color": (58, 58, 58), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "grip", "horizontal_recoil": 0.2, "aim_speed": 0.1},
-    "attachment_grip_tactical": {"color": (56, 56, 56), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "grip", "vertical_recoil": 0.15, "horizontal_recoil": 0.15},
-    "attachment_grip_thumb": {"color": (57, 57, 57), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "grip", "aim_speed": 0.2, "recoil_recovery": 0.2},
-    "attachment_grip_folding": {"color": (54, 54, 54), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "grip", "movement_speed": 0.05, "recoil_reduction": 0.1},
-    
-    "attachment_stock_tactical": {"color": (60, 50, 40), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "stock", "recoil_reduction": 0.2, "aim_speed": 0.1},
-    "attachment_stock_lightweight": {"color": (58, 48, 38), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "stock", "movement_speed": 0.1, "aim_speed": 0.2},
-    "attachment_stock_folding": {"color": (62, 52, 42), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "stock", "movement_speed": 0.15, "recoil_reduction": 0.1},
-    "attachment_stock_heavy": {"color": (65, 55, 45), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "stock", "recoil_reduction": 0.3, "movement_penalty": 0.05},
-    
-    "attachment_laser_red": {"color": (60, 40, 40), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "laser", "color": "red", "hip_accuracy": 0.3},
-    "attachment_laser_green": {"color": (40, 60, 40), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "laser", "color": "green", "hip_accuracy": 0.35},
-    "attachment_flashlight_tactical": {"color": (70, 70, 70), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "flashlight", "brightness": 1.0},
-    "attachment_flashlight_compact": {"color": (68, 68, 68), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "flashlight", "brightness": 0.7, "movement_speed": 0.05},
-    
-    "attachment_bipod": {"color": (50, 50, 50), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "bipod", "prone_recoil": 0.5, "prone_accuracy": 0.3},
-    "attachment_underbarrel_shotgun": {"color": (55, 45, 40), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "underbarrel", "damage": 25, "range": 15},
-    "attachment_underbarrel_grenade": {"color": (52, 42, 38), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "underbarrel", "damage": 50, "range": 30},
-    "attachment_foregrip": {"color": (53, 53, 53), "solid": False, "transparent": False, "hardness": 0.1, "attachment": True, "type": "grip", "recoil_recovery": 0.3}
-}
 
 class GameMap3D:
+    """3D游戏地图系统"""
     def __init__(self):
         self.screen = None
         self.clock = None
@@ -731,10 +60,9 @@ class GameMap3D:
             "x": 0,
             "y": 10,
             "z": 20,
-            "pitch": -20,
-            "yaw": 0,
-            "speed": 0.5,
-            "mode": "first"
+            "pitch": -20,  # 俯仰角
+            "yaw": 0,      # 偏航角
+            "speed": 0.5
         }
         self.mouse_sensitivity = 0.05
         self.is_mouse_locked = False
@@ -742,71 +70,1187 @@ class GameMap3D:
         self.follow_target = None
         self.message = None
         self.message_timer = 0
-        self.velocity = [0, 0, 0]
-        self.gravity = -0.35
-        self.friction = 0.85
-        self.npcs = []
-        self.selected_npc = None
-        self.npc_interaction_distance = 8
-        self.large_structures = []
-        self.render_cache = {}
-        self.cache_valid = False
-        self.selected_location = None
-        self.owned_territories = []
-        self.trees = []
-        self.inventory = [None] * INVENTORY_SLOTS
-        self.selected_slot = 0
-        self.pickups = []
-        self.block_world = {}
-        self.minimap_enabled = True
-        self.inventory_open = False
-        self.tech_blocks = []
-        self.energy_level = 100
-        self.tech_mode = False
-        self.teleporter_targets = []
-        self.last_tech_interact = 0
-        self.generals = []
-        self.projectiles = []
-        self.pets = []
-        self.enemies = []
-        self.player_health = 20
-        self.player_max_health = 20
-        self.has_saddle = False
-        self.marketplace = []
-        self.marketplace_timer = 0
-        self.marketplace_refresh_interval = 300
-        self.marketplace_open = False
         
-        self.auto_firing = False
-        self.current_gun = None
-        self.current_ammo = 0
-        self.max_ammo = 30
-        self.recoil = [0, 0]
-        self.sight_zoom = 1.0
-        self.is_aiming = False
-        self.hit_markers = []
-        self.damage_numbers = []
+        # 物理参数（按 60FPS 每帧步进；重力/跳跃速度经调校，跳跃高度约 1.5 格）
+        self.velocity = [0, 0, 0]  # x, y, z 方向速度
+        self.gravity = -0.02      # 重力加速度
+        self.jump_speed = 0.25    # 起跳初速度（约 1.5 格高）
+        self.on_ground = True     # 是否站在地面上
+        # 地形显示列表缓存（按玩家位置分块重建，避免每帧重复生成上百万个面）
+        self._terrain_list = None
+        self._terrain_origin = None
+        
+        # 相机模式
+        self.camera["mode"] = "first"  # first 或 third
+        
+        # 暂停菜单
+        self.is_paused = False
+        self.pause_menu_selected = 0
+        self.pause_menu_options = ["继续游戏", "设置", "保存并退出", "返回主菜单"]
+        
+        # 快捷栏（类似MC）
+        self.hotbar = [None] * 9
+        self.hotbar_selected = 0
+        
+        # 十字准星
+        self.show_crosshair = True
+        
+        # 方块系统
+        self.placed_blocks = []
+        self.selected_block_type = 0
+        self.block_types = ["泥土", "石头", "木头", "草地", "沙子", "水", "玻璃", "砖块"]
 
+        # 默认填充快捷栏（进入游戏即可见，模拟《我的世界》快捷键栏）
+        for _slot, _block in enumerate(self.block_types[:9]):
+            self.hotbar[_slot] = _block
+        
+        # 背包系统（类似旅行者背包）
+        self.show_inventory = False
+        self.inventory_slots = 27  # 3行9列
+        self.inventory = [None] * self.inventory_slots
+        self.max_stack_size = 64
+        
+        # 物品类型定义（MC 1.12.2风格）
+        self.item_types = {
+            "方块类": ["泥土", "石头", "圆石", "木头", "草地", "沙子", "砂砾", "水", "岩浆", 
+                      "玻璃", "砖块", "砖块方块", "木板", "橡木台阶", "石台阶", "砖台阶",
+                      "楼梯", "石楼梯", "砖楼梯", "栅栏", "栅栏门", "梯子", "门", "压力板",
+                      "石压力板", "按钮", "橡木按钮", "玻璃面板", "混凝土粉末", "陶瓦", "带釉陶瓦"],
+            "资源类": ["煤炭", "铁矿石", "金矿石", "钻石矿石", "红石矿石", "绿宝石矿石",
+                      "下界石英", "黑曜石", "末地石", "灵魂沙", "沙砾", "粘土", "甘蔗", 
+                      "小麦", "胡萝卜", "土豆", "甜菜根", "南瓜", "西瓜", "可可豆", "仙人掌",
+                      "羊毛", "线", "羽毛", "鸡蛋", "骨头", "皮革", "兔子皮", "粘液球",
+                      "烈焰棒", "烈焰粉", "末影珍珠", "恶魂之泪", "龙息", "下界之星", "青金石"],
+            "武器类": ["木剑", "石剑", "铁剑", "金剑", "钻石剑", "弓", "弩", "盾牌", "三叉戟"],
+            "工具类": ["木头镐子", "石头镐子", "铁镐", "金镐", "钻石镐",
+                      "木头斧头", "石头斧头", "铁斧", "金斧", "钻石斧",
+                      "木头铲子", "石头铲子", "铁铲", "金铲", "钻石铲",
+                      "木头锄", "石头锄", "铁锄", "金锄", "钻石锄",
+                      "钓鱼竿", "剪刀", "打火石"],
+            "食物类": ["面包", "蛋糕", "曲奇", "南瓜派", "甜菜汤", "蘑菇煲", "炖兔肉",
+                      "胡萝卜蛋糕", "糖", "胡萝卜", "土豆", "烤土豆",
+                      "牛肉", "猪肉", "羊肉", "鸡肉", "兔肉",
+                      "熟牛肉", "熟猪肉", "熟羊肉", "熟鸡肉", "熟兔肉",
+                      "苹果", "西瓜", "金苹果", "附魔金苹果"],
+            "染料类": ["骨粉", "墨囊", "红色染料", "橙色染料", "黄色染料", "绿色染料",
+                      "青色染料", "蓝色染料", "紫色染料", "品红色染料", "粉色染料",
+                      "棕色染料", "灰色染料", "淡灰色染料", "黄绿色染料", "淡蓝色染料"],
+            "羊毛类": ["白色羊毛", "橙色羊毛", "品红色羊毛", "淡蓝色羊毛", "黄色羊毛",
+                      "黄绿色羊毛", "粉色羊毛", "灰色羊毛", "淡灰色羊毛", "青色羊毛",
+                      "紫色羊毛", "蓝色羊毛", "棕色羊毛", "绿色羊毛", "红色羊毛", "黑色羊毛"],
+            "机械类": ["活塞", "粘性活塞", "红石中继器", "红石比较器", "红石火把", "红石灯",
+                      "发射器", "投掷器", "漏斗", "箱子", "陷阱箱", "木桶", "酿造台",
+                      "炼药锅", "铁砧", "砂轮", "织布机", "制图台", "烟熏炉", "高炉",
+                      "营火", "灵魂营火", "矿车", "储物矿车", "漏斗矿车", "动力矿车",
+                      "船", "深色橡木船", "云杉船", "白桦船", "丛林木船", "金合欢船"],
+            "装饰类": ["画", "物品展示框", "旗帜", "花盆", "末地烛", "灯笼", "灵魂灯笼",
+                      "钟", "测重压力板", "绊线钩"],
+            "特殊类": ["信标", "龙蛋", "结构方块", "命令方块", "调试棒", "知识之书",
+                      "附魔书", "书与笔", "经验瓶"],
+            "药水类": ["水瓶", "粗制药水", "治疗药水", "抗火药水", "迅捷药水", "力量药水",
+                      "再生药水", "隐身药水", "夜视药水", "水下呼吸药水"],
+            "武将卡": ["刘备卡", "关羽卡", "张飞卡", "赵云卡", "诸葛亮卡", "曹操卡",
+                      "马超卡", "黄忠卡", "魏延卡", "庞统卡", "孙权卡", "周瑜卡"],
+            "弹药类": ["普通子弹", "高级子弹", "稀有子弹", "箭矢"]
+        }
+        
+        # 背包界面状态
+        self.inventory_selected_slot = -1
+        self.dragging_item = None
+        self.drag_source = None
+        self.inventory_category = "全部"
+        
+        # 合成系统（完整MC 1.12.2风格配方）
+        self.crafting_recipes = {
+            # 工具
+            "木头镐子": {"木头": 3, "木棍": 2},
+            "石头镐子": {"圆石": 3, "木棍": 2},
+            "铁镐": {"铁锭": 3, "木棍": 2},
+            "金镐": {"金锭": 3, "木棍": 2},
+            "钻石镐": {"钻石": 3, "木棍": 2},
+            "木头斧头": {"木头": 3, "木棍": 2},
+            "石头斧头": {"圆石": 3, "木棍": 2},
+            "铁斧": {"铁锭": 3, "木棍": 2},
+            "金斧": {"金锭": 3, "木棍": 2},
+            "钻石斧": {"钻石": 3, "木棍": 2},
+            "木头铲子": {"木头": 1, "木棍": 2},
+            "石头铲子": {"圆石": 1, "木棍": 2},
+            "铁铲": {"铁锭": 1, "木棍": 2},
+            "金铲": {"金锭": 1, "木棍": 2},
+            "钻石铲": {"钻石": 1, "木棍": 2},
+            "木头锄": {"木头": 2, "木棍": 2},
+            "石头锄": {"圆石": 2, "木棍": 2},
+            "铁锄": {"铁锭": 2, "木棍": 2},
+            "金锄": {"金锭": 2, "木棍": 2},
+            "钻石锄": {"钻石": 2, "木棍": 2},
+            # 武器
+            "木剑": {"木头": 2, "木棍": 1},
+            "石剑": {"圆石": 2, "木棍": 1},
+            "铁剑": {"铁锭": 2, "木棍": 1},
+            "金剑": {"金锭": 2, "木棍": 1},
+            "钻石剑": {"钻石": 2, "木棍": 1},
+            "弓": {"线": 3, "木棍": 3},
+            "弩": {"铁锭": 2, "线": 3, "绊线钩": 1},
+            "盾牌": {"木板": 6, "铁锭": 1},
+            # 建筑
+            "木板": {"木头": 1},
+            "木棍": {"木板": 2},
+            "砖块": {"粘土": 4},
+            "砖块方块": {"砖块": 4},
+            "玻璃": {"沙子": 1},
+            "玻璃面板": {"玻璃": 6},
+            "梯子": {"木棍": 7},
+            "门": {"木板": 6},
+            "栅栏": {"木棍": 4},
+            "栅栏门": {"木棍": 4, "木板": 2},
+            "橡木台阶": {"木板": 6},
+            "石台阶": {"圆石": 6},
+            "砖台阶": {"砖块方块": 6},
+            "楼梯": {"木板": 5},
+            "石楼梯": {"圆石": 6},
+            "砖楼梯": {"砖块方块": 6},
+            "压力板": {"木板": 2},
+            "石压力板": {"石头": 2},
+            "按钮": {"石头": 1},
+            "橡木按钮": {"木板": 1},
+            # 1.12.2新增建筑方块
+            "混凝土粉末": {"沙子": 4, "砂砾": 4, "染料": 1},
+            "陶瓦": {"粘土": 1},
+            "带釉陶瓦": {"陶瓦": 1},
+            # 羊毛染色
+            "白色羊毛": {"羊毛": 1},
+            "橙色羊毛": {"白色羊毛": 1, "橙色染料": 1},
+            "品红色羊毛": {"白色羊毛": 1, "品红色染料": 1},
+            "淡蓝色羊毛": {"白色羊毛": 1, "淡蓝色染料": 1},
+            "黄色羊毛": {"白色羊毛": 1, "黄色染料": 1},
+            "黄绿色羊毛": {"白色羊毛": 1, "黄绿色染料": 1},
+            "粉色羊毛": {"白色羊毛": 1, "粉色染料": 1},
+            "灰色羊毛": {"白色羊毛": 1, "灰色染料": 1},
+            "淡灰色羊毛": {"白色羊毛": 1, "淡灰色染料": 1},
+            "青色羊毛": {"白色羊毛": 1, "青色染料": 1},
+            "紫色羊毛": {"白色羊毛": 1, "紫色染料": 1},
+            "蓝色羊毛": {"白色羊毛": 1, "蓝色染料": 1},
+            "棕色羊毛": {"白色羊毛": 1, "棕色染料": 1},
+            "绿色羊毛": {"白色羊毛": 1, "绿色染料": 1},
+            "红色羊毛": {"白色羊毛": 1, "红色染料": 1},
+            "黑色羊毛": {"白色羊毛": 1, "黑色染料": 1},
+            # 染料
+            "骨粉": {"骨头": 1},
+            "墨囊": {"鱿鱼": 1},
+            "红色染料": {"虞美人": 1},
+            "橙色染料": {"橙色郁金香": 1},
+            "黄色染料": {"向日葵": 1},
+            "绿色染料": {"仙人掌绿": 1},
+            "青色染料": {"绿色染料": 1, "淡蓝色染料": 1},
+            "蓝色染料": {"矢车菊": 1},
+            "紫色染料": {"蓝色染料": 1, "红色染料": 1},
+            "品红色染料": {"紫色染料": 1, "粉色染料": 1},
+            "粉色染料": {"粉红色郁金香": 1},
+            "棕色染料": {"可可豆": 1},
+            "灰色染料": {"墨囊": 1, "骨粉": 2},
+            "淡灰色染料": {"骨粉": 1, "灰色染料": 1},
+            "黄绿色染料": {"仙人掌绿": 2},
+            "淡蓝色染料": {"蓝花楹": 1},
+            # 食物
+            "面包": {"小麦": 3},
+            "蛋糕": {"小麦": 3, "鸡蛋": 2, "牛奶": 1, "糖": 1},
+            "曲奇": {"小麦": 2, "可可豆": 1},
+            "西瓜": {"西瓜种子": 1},
+            "南瓜派": {"南瓜": 1, "鸡蛋": 1, "糖": 1},
+            "甜菜汤": {"甜菜根": 3, "碗": 1},
+            "蘑菇煲": {"棕色蘑菇": 1, "红色蘑菇": 1, "碗": 1},
+            "炖兔肉": {"兔子": 1, "胡萝卜": 1, "烤土豆": 1, "碗": 1},
+            "糖": {"甘蔗": 1},
+            "胡萝卜": {"胡萝卜": 1},
+            "土豆": {"土豆": 1},
+            "烤土豆": {"土豆": 1},
+            "胡萝卜蛋糕": {"胡萝卜": 2, "糖": 3, "鸡蛋": 1, "小麦": 3},
+            # 材料
+            "铁锭": {"铁矿石": 1, "煤炭": 1},
+            "金锭": {"金矿石": 1, "煤炭": 1},
+            "钻石": {"钻石矿石": 1},
+            "线": {"羊毛": 1},
+            "纸": {"甘蔗": 3},
+            "书": {"纸": 3, "皮革": 1},
+            "书与笔": {"书": 1, "羽毛": 1, "墨囊": 1},
+            "附魔书": {"书": 1, "青金石": 3, "经验瓶": 1},
+            "兔子皮": {"兔子": 1},
+            "粘液球": {"史莱姆": 1},
+            "烈焰棒": {"烈焰人": 1},
+            "烈焰粉": {"烈焰棒": 1},
+            "末影珍珠": {"末影人": 1},
+            "恶魂之泪": {"恶魂": 1},
+            "龙息": {"末影龙": 1},
+            "下界之星": {"凋灵": 1},
+            "骨头": {"骷髅": 1},
+            "羽毛": {"鸡": 1},
+            "鸡蛋": {"鸡": 1},
+            "皮革": {"牛": 1},
+            "牛肉": {"牛": 1},
+            "猪肉": {"猪": 1},
+            "羊肉": {"羊": 1},
+            "鸡肉": {"鸡": 1},
+            "兔肉": {"兔子": 1},
+            "熟牛肉": {"牛肉": 1, "煤炭": 1},
+            "熟猪肉": {"猪肉": 1, "煤炭": 1},
+            "熟羊肉": {"羊肉": 1, "煤炭": 1},
+            "熟鸡肉": {"鸡肉": 1, "煤炭": 1},
+            "熟兔肉": {"兔肉": 1, "煤炭": 1},
+            # 机械/红石
+            "活塞": {"木板": 3, "圆石": 4, "铁锭": 1, "红石": 1},
+            "粘性活塞": {"活塞": 1, "粘液球": 1},
+            "红石中继器": {"红石火把": 2, "圆石": 3, "红石": 1},
+            "红石比较器": {"红石火把": 3, "石英": 1, "下界石英": 1},
+            "红石火把": {"红石": 1, "木棍": 1},
+            "红石灯": {"红石": 4, "玻璃": 1},
+            "发射器": {"圆石": 7, "弓": 1, "红石": 1},
+            "投掷器": {"圆石": 7, "红石": 1},
+            "漏斗": {"铁锭": 5, "箱子": 1},
+            "箱子": {"木板": 8},
+            "陷阱箱": {"箱子": 1, "绊线钩": 1},
+            "木桶": {"木板": 8},
+            "酿造台": {"烈焰棒": 1, "圆石": 3},
+            "炼药锅": {"铁锭": 7},
+            "铁砧": {"铁块": 3, "铁锭": 4},
+            "砂轮": {"石头": 2, "木板": 1},
+            "织布机": {"木板": 3, "线": 2},
+            "制图台": {"木板": 4, "纸": 2},
+            "烟熏炉": {"圆石": 8, "熔炉": 1},
+            "高炉": {"圆石": 8, "熔炉": 1},
+            "营火": {"原木": 3, "木棍": 1, "煤炭": 1},
+            "灵魂营火": {"灵魂沙": 3, "木棍": 1, "煤炭": 1},
+            # 运输
+            "矿车": {"铁锭": 5},
+            "储物矿车": {"矿车": 1, "箱子": 1},
+            "漏斗矿车": {"矿车": 1, "漏斗": 1},
+            "动力矿车": {"矿车": 1, "熔炉": 1},
+            "船": {"木板": 5},
+            "深色橡木船": {"深色橡木木板": 5},
+            "云杉船": {"云杉木板": 5},
+            "白桦船": {"白桦木板": 5},
+            "丛林木船": {"丛林木木板": 5},
+            "金合欢船": {"金合欢木板": 5},
+            # 装饰
+            "画": {"木棍": 8, "羊毛": 1},
+            "物品展示框": {"木棍": 8, "皮革": 1},
+            "旗帜": {"羊毛": 6, "木棍": 1},
+            "花盆": {"红砖": 3},
+            "末地烛": {"末地石砖": 1, "烈焰棒": 1},
+            "灯笼": {"铁锭": 8, "火把": 1},
+            "灵魂灯笼": {"铁锭": 8, "灵魂火把": 1},
+            "钟": {"铜锭": 4},
+            "测重压力板": {"铁锭": 2},
+            "绊线钩": {"铁锭": 1, "线": 1},
+            # 1.12.2特色物品
+            "信标": {"下界之星": 1, "玻璃": 5, "黑曜石": 3},
+            "龙蛋": {"末影龙": 1},
+            "结构方块": {"结构空位": 1},
+            "命令方块": {"命令方块": 1},
+            "调试棒": {"调试棒": 1},
+            "知识之书": {"知识之书": 1},
+            # 三国特色
+            "武将召唤台": {"金锭": 4, "木头": 4, "武将卡": 1},
+            "武器架": {"木头": 6},
+            "弹药箱": {"木头": 8, "铁锭": 2}
+        }
+        
+        # 🧪 附魔系统（MC 1.12.2风格）
+        self.enchantments = {
+            # 武器附魔
+            "锋利": {"max_level": 5, "description": "增加近战伤害", "type": "weapon"},
+            "亡灵杀手": {"max_level": 5, "description": "对亡灵生物造成额外伤害", "type": "weapon"},
+            "节肢杀手": {"max_level": 5, "description": "对节肢生物造成额外伤害", "type": "weapon"},
+            "击退": {"max_level": 2, "description": "击退敌人", "type": "weapon"},
+            "火焰附加": {"max_level": 2, "description": "点燃敌人", "type": "weapon"},
+            "抢夺": {"max_level": 3, "description": "增加掉落物", "type": "weapon"},
+            # 工具附魔
+            "效率": {"max_level": 5, "description": "加快挖掘速度", "type": "tool"},
+            "精准采集": {"max_level": 1, "description": "获取方块本身", "type": "tool"},
+            "耐久": {"max_level": 3, "description": "减少工具损耗", "type": "tool"},
+            "时运": {"max_level": 3, "description": "增加稀有掉落", "type": "tool"},
+            " silk_touch": {"max_level": 1, "description": "精准采集", "type": "tool"},
+            # 弓箭附魔
+            "力量": {"max_level": 5, "description": "增加弓箭伤害", "type": "bow"},
+            "冲击": {"max_level": 2, "description": "击退箭矢目标", "type": "bow"},
+            "火矢": {"max_level": 1, "description": "箭矢点燃目标", "type": "bow"},
+            "无限": {"max_level": 1, "description": "无限箭矢", "type": "bow"},
+            "穿刺": {"max_level": 4, "description": "对水生生物伤害", "type": "bow"},
+            # 护甲附魔
+            "保护": {"max_level": 4, "description": "减少所有伤害", "type": "armor"},
+            "火焰保护": {"max_level": 4, "description": "减少火焰伤害", "type": "armor"},
+            "爆炸保护": {"max_level": 4, "description": "减少爆炸伤害", "type": "armor"},
+            "弹射物保护": {"max_level": 4, "description": "减少远程伤害", "type": "armor"},
+            "摔落保护": {"max_level": 4, "description": "减少摔落伤害", "type": "armor"},
+            "深海探索者": {"max_level": 3, "description": "水下移动更快", "type": "armor"},
+            "冰霜行者": {"max_level": 2, "description": "在水上行走", "type": "armor"},
+            "荆棘": {"max_level": 3, "description": "反弹伤害", "type": "armor"},
+            # 其他附魔
+            "经验修补": {"max_level": 1, "description": "用经验修复物品", "type": "all"},
+            "绑定诅咒": {"max_level": 1, "description": "无法移除物品", "type": "curse"},
+            "消失诅咒": {"max_level": 1, "description": "死亡时消失", "type": "curse"}
+        }
+        
+        # ⚡ 信标效果（MC 1.12.2风格）
+        self.beacon_effects = {
+            "速度": {"level": 2, "range": 50, "description": "增加移动速度"},
+            "跳跃提升": {"level": 2, "range": 50, "description": "增加跳跃高度"},
+            "力量": {"level": 2, "range": 50, "description": "增加近战伤害"},
+            "抗性提升": {"level": 2, "range": 50, "description": "减少伤害"},
+            "生命恢复": {"level": 2, "range": 50, "description": "缓慢恢复生命"},
+            "急迫": {"level": 1, "range": 50, "description": "加快挖掘速度"},
+            "幸运": {"level": 1, "range": 50, "description": "增加掉落率"}
+        }
+        
+        # 当前激活的信标效果
+        self.active_beacon_effect = None
+        self.beacon_range = 0
+        
+        # 合成网格（3x3）
+        self.crafting_grid = [[None for _ in range(3)] for _ in range(3)]
+        self.show_crafting = False
+        self.crafting_result = None
+        
+        # MC风格玩家状态
+        self.health = 20  # 生命值 (0-20)
+        self.max_health = 20
+        self.hunger = 20  # 饥饿值 (0-20)
+        self.max_hunger = 20
+        self.oxygen = 10  # 氧气值 (0-10, 水中使用)
+        self.max_oxygen = 10
+        self.experience = 0  # 经验值
+        self.level = 0  # 等级
+        self.armor = 0  # 护甲值 (0-20)
+        self.max_armor = 20
+        self.is_sneaking = False  # 潜行
+        self.is_sprinting = False  # 冲刺
+        
+        # 昼夜系统（MC风格）
+        self.day_time = 0  # 0-24000 (MC时间)
+        self.day_speed = 10  # 时间流逝速度
+        self.is_day = True
+        self.sun_angle = 0
+        self.moon_angle = 0
+        self.time_of_day = "上午"
+        
+        # MC风格音效系统
+        self.sounds = {
+            "block_place": {"pitch": 1.0, "volume": 0.5},
+            "block_break": {"pitch": 0.8, "volume": 0.6},
+            "jump": {"pitch": 1.0, "volume": 0.3},
+            "hurt": {"pitch": 1.0, "volume": 0.5},
+            "eat": {"pitch": 1.0, "volume": 0.4},
+            "craft": {"pitch": 0.9, "volume": 0.5}
+        }
+        
+        # MC风格粒子效果
+        self.particles = []
+        
+        # MC风格聊天系统
+        self.chat_messages = []
+        self.max_chat_lines = 10
+        
+        # MC风格物品提示
+        self.hovered_item = None
+        self.item_tooltip_timer = 0
+        
+        # MC风格成就系统
+        self.achievements = {
+            "first_block": {"name": "开始建造", "description": "放置第一个方块", "unlocked": False},
+            "first_craft": {"name": "工匠", "description": "完成第一次合成", "unlocked": False},
+            "first_kill": {"name": "猎人", "description": "杀死第一个怪物", "unlocked": False},
+            "day_night": {"name": "经历一天", "description": "度过一个完整的昼夜循环", "unlocked": False}
+        }
+        
+        # MC风格统计数据
+        self.stats = {
+            "blocks_placed": 0,
+            "blocks_broken": 0,
+            "items_crafted": 0,
+            "mobs_killed": 0,
+            "days_passed": 0
+        }
+        
+        # MC风格游戏模式
+        self.game_mode = "survival"  # survival, creative, adventure
+        self.can_fly = False
+        self.flying = False
+        self.fly_speed = 0.1
+        
+        # 🐾 MC 1.12.2生物类型系统
+        self.mob_types = {
+            # 被动生物
+            "passive": [
+                {"name": "鸡", "health": 4, "drop": ["鸡肉", "羽毛", "鸡蛋"], "spawn_biome": "所有"},
+                {"name": "牛", "health": 10, "drop": ["牛肉", "皮革"], "spawn_biome": "平原、森林"},
+                {"name": "猪", "health": 10, "drop": ["猪肉"], "spawn_biome": "平原、森林"},
+                {"name": "羊", "health": 8, "drop": ["羊肉", "羊毛"], "spawn_biome": "平原、草原"},
+                {"name": "兔子", "health": 3, "drop": ["兔肉", "兔子皮"], "spawn_biome": "森林、平原"},
+                {"name": "马", "health": 15-30, "drop": ["皮革"], "spawn_biome": "平原、草原"},
+                {"name": "驴", "health": 15, "drop": ["皮革"], "spawn_biome": "平原"},
+                {"name": "骡", "health": 15, "drop": ["皮革"], "spawn_biome": "平原"},
+                {"name": "羊驼", "health": 15, "drop": ["皮革"], "spawn_biome": "沙漠、热带草原"},
+                {"name": "狼", "health": 8, "drop": ["骨头"], "spawn_biome": "森林、针叶林"},
+                {"name": "猫", "health": 10, "drop": [], "spawn_biome": "村庄"},
+                {"name": "鹦鹉", "health": 6, "drop": ["羽毛"], "spawn_biome": "丛林"},
+                {"name": "蝙蝠", "health": 6, "drop": [], "spawn_biome": "洞穴"},
+                {"name": "鱿鱼", "health": 10, "drop": ["墨囊"], "spawn_biome": "海洋"},
+                {"name": "海龟", "health": 30, "drop": ["海龟壳"], "spawn_biome": "沙滩"},
+                {"name": "熊猫", "health": 20, "drop": ["竹子"], "spawn_biome": "竹林"},
+                {"name": "狐狸", "health": 10, "drop": ["兔子皮"], "spawn_biome": "针叶林、积雪针叶林"},
+                {"name": "蜜蜂", "health": 10, "drop": ["蜂蜜瓶"], "spawn_biome": "森林、花林"},
+                {"name": "海豚", "health": 10, "drop": ["生鱼"], "spawn_biome": "海洋"},
+                {"name": "河豚", "health": 1, "drop": ["河豚"], "spawn_biome": "温暖海洋"},
+                {"name": "热带鱼", "health": 1, "drop": ["热带鱼"], "spawn_biome": "温暖海洋"},
+                {"name": "鳕鱼", "health": 3, "drop": ["鳕鱼"], "spawn_biome": "海洋"},
+                {"name": "三文鱼", "health": 3, "drop": ["三文鱼"], "spawn_biome": "冷水海洋、河流"},
+                {"name": "鲑鱼", "health": 3, "drop": ["鲑鱼"], "spawn_biome": "冷水海洋"},
+                {"name": "美西螈", "health": 14, "drop": ["美西螈"], "spawn_biome": "繁茂洞穴"},
+                {"name": "发光鱿鱼", "health": 10, "drop": ["荧光墨囊"], "spawn_biome": "地下洞穴"},
+                {"name": "骆驼", "health": 30, "drop": ["皮革"], "spawn_biome": "沙漠"},
+                {"name": "嗅探兽", "health": 30, "drop": ["远古种子"], "spawn_biome": "远古城市"}
+            ],
+            # 中立生物
+            "neutral": [
+                {"name": "末影人", "health": 40, "drop": ["末影珍珠"], "spawn_biome": "末地、地下"},
+                {"name": "蜘蛛", "health": 16, "drop": ["线", "蜘蛛眼"], "spawn_biome": "地下、夜晚"},
+                {"name": "洞穴蜘蛛", "health": 12, "drop": ["线", "蜘蛛眼"], "spawn_biome": "废弃矿井"},
+                {"name": "僵尸猪人", "health": 20, "drop": ["金锭", "腐肉"], "spawn_biome": "下界"},
+                {"name": "猪灵", "health": 20, "drop": ["金锭"], "spawn_biome": "下界"},
+                {"name": "猪灵蛮兵", "health": 50, "drop": ["下界合金锭"], "spawn_biome": "下界堡垒"},
+                {"name": "北极熊", "health": 30, "drop": ["生羊肉"], "spawn_biome": "雪原"},
+                {"name": "狼", "health": 8, "drop": ["骨头"], "spawn_biome": "森林"},
+                {"name": "铁傀儡", "health": 100, "drop": ["铁锭"], "spawn_biome": "村庄"},
+                {"name": "雪傀儡", "health": 4, "drop": ["雪球"], "spawn_biome": "雪地"}
+            ],
+            # 敌对生物
+            "hostile": [
+                {"name": "僵尸", "health": 20, "drop": ["腐肉", "铁锭"], "spawn_biome": "夜晚、地下"},
+                {"name": "骷髅", "health": 20, "drop": ["骨头", "箭矢"], "spawn_biome": "夜晚、地下"},
+                {"name": "苦力怕", "health": 20, "drop": ["火药"], "spawn_biome": "夜晚、地下"},
+                {"name": "史莱姆", "health": 4-16, "drop": ["粘液球"], "spawn_biome": "沼泽、地下"},
+                {"name": "恶魂", "health": 10, "drop": ["恶魂之泪", "火药"], "spawn_biome": "下界"},
+                {"name": "烈焰人", "health": 20, "drop": ["烈焰棒"], "spawn_biome": "下界堡垒"},
+                {"name": "岩浆怪", "health": 4-16, "drop": ["岩浆膏"], "spawn_biome": "下界"},
+                {"name": "女巫", "health": 26, "drop": ["药水", "红石"], "spawn_biome": "沼泽小屋"},
+                {"name": "守卫者", "health": 30, "drop": ["海晶碎片"], "spawn_biome": "海底遗迹"},
+                {"name": "远古守卫者", "health": 80, "drop": ["海晶碎片", "海绵"], "spawn_biome": "海底遗迹"},
+                {"name": "凋灵骷髅", "health": 20, "drop": ["凋灵骷髅头", "石剑"], "spawn_biome": "下界堡垒"},
+                {"name": "流浪者", "health": 20, "drop": ["骨头", "箭矢"], "spawn_biome": "雪原"},
+                {"name": "尸壳", "health": 20, "drop": ["腐肉", "金锭"], "spawn_biome": "沙漠"},
+                {"name": "幻翼", "health": 20, "drop": ["幻翼膜"], "spawn_biome": "高空（长时间不睡觉）"},
+                {"name": "掠夺者", "health": 24, "drop": ["弩", "箭矢"], "spawn_biome": "掠夺者前哨站"},
+                {"name": "卫道士", "health": 24, "drop": ["铁斧"], "spawn_biome": "林地府邸"},
+                {"name": "唤魔者", "health": 24, "drop": ["不死图腾"], "spawn_biome": "林地府邸"},
+                {"name": "潜影贝", "health": 30, "drop": ["潜影壳"], "spawn_biome": "末地城"},
+                {"name": "劫掠兽", "health": 100, "drop": ["皮革", "铁锭"], "spawn_biome": "袭击事件"},
+                {"name": "监守者", "health": 500, "drop": ["回响碎片"], "spawn_biome": "深暗之域"},
+                {"name": "末影龙", "health": 200, "drop": ["经验", "龙蛋"], "spawn_biome": "末地"},
+                {"name": "凋灵", "health": 300, "drop": ["下界之星"], "spawn_biome": "下界"}
+            ],
+            # 1.12.2新增生物
+            "special_1_12": [
+                {"name": "鹦鹉", "health": 6, "drop": ["羽毛"], "spawn_biome": "丛林"},
+                {"name": "北极熊", "health": 30, "drop": ["生羊肉"], "spawn_biome": "雪原"},
+                {"name": "狐狸", "health": 10, "drop": ["兔子皮"], "spawn_biome": "针叶林"},
+                {"name": "幻翼", "health": 20, "drop": ["幻翼膜"], "spawn_biome": "高空"},
+                {"name": "掠夺者", "health": 24, "drop": ["弩"], "spawn_biome": "前哨站"},
+                {"name": "卫道士", "health": 24, "drop": ["铁斧"], "spawn_biome": "林地府邸"},
+                {"name": "唤魔者", "health": 24, "drop": ["不死图腾"], "spawn_biome": "林地府邸"},
+                {"name": "劫掠兽", "health": 100, "drop": ["皮革"], "spawn_biome": "袭击"}
+            ]
+        }
+        
+        # 当前生物列表
+        self.active_mobs = []
+        
+        # MC风格命令系统
+        self.command_input = ""
+        self.show_command = False
+        self.command_history = []
+        
+        # 自动存档系统
+        self.auto_save_interval = 300  # 每5分钟自动存档（300秒）
+        self.auto_save_timer = 0
+        self.last_auto_save_time = time.time()
+        
+        # 彩蛋系统（150个彩蛋！）
+        self.eggs = {
+            "notch": {"found": False, "hint": "找到Notch的头像"},
+            "herobrine": {"found": False, "hint": "在夜晚遇到Herobrine"},
+            "creeper_explosion": {"found": False, "hint": "让苦力怕在你面前爆炸"},
+            "secret_base": {"found": False, "hint": "找到隐藏的基地"},
+            "developer": {"found": False, "hint": "输入开发者命令"},
+            "first_block": {"found": False, "hint": "放置第一个方块"},
+            "first_craft": {"found": False, "hint": "完成第一次合成"},
+            "first_kill": {"found": False, "hint": "杀死第一个怪物"},
+            "day_night": {"found": False, "hint": "度过一个完整的昼夜循环"},
+            "100_blocks": {"found": False, "hint": "放置100个方块"},
+            "100_kills": {"found": False, "hint": "杀死100个怪物"},
+            "diamond": {"found": False, "hint": "找到钻石"},
+            "gold": {"found": False, "hint": "找到金矿"},
+            "iron": {"found": False, "hint": "找到铁矿"},
+            "coal": {"found": False, "hint": "找到煤矿"},
+            "lava": {"found": False, "hint": "找到岩浆"},
+            "water": {"found": False, "hint": "找到水源"},
+            "tree": {"found": False, "hint": "砍倒10棵树"},
+            "house": {"found": False, "hint": "建造一个房子"},
+            "tower": {"found": False, "hint": "建造一个高塔"},
+            "bridge": {"found": False, "hint": "建造一座桥"},
+            "underground": {"found": False, "hint": "深入地下50格"},
+            "high_altitude": {"found": False, "hint": "到达高空50格"},
+            "speed_run": {"found": False, "hint": "在1分钟内跑100格"},
+            "no_damage": {"found": False, "hint": "无伤生存10分钟"},
+            "night_owl": {"found": False, "hint": "在夜晚活动30分钟"},
+            "sunrise": {"found": False, "hint": "观看一次日出"},
+            "sunset": {"found": False, "hint": "观看一次日落"},
+            "rain": {"found": False, "hint": "在雨中待5分钟"},
+            "snow": {"found": False, "hint": "在雪中待5分钟"},
+            "swim": {"found": False, "hint": "游泳100格"},
+            "jump_100": {"found": False, "hint": "跳跃100次"},
+            "sneak": {"found": False, "hint": "潜行100格"},
+            "sprint": {"found": False, "hint": "冲刺100格"},
+            "fly_creative": {"found": False, "hint": "在创造模式飞行100格"},
+            "build_pyramid": {"found": False, "hint": "建造一个金字塔"},
+            "build_castle": {"found": False, "hint": "建造一座城堡"},
+            "farm": {"found": False, "hint": "建造一个农场"},
+            "mine_shaft": {"found": False, "hint": "挖掘一个矿道"},
+            "library": {"found": False, "hint": "建造一个图书馆"},
+            "armor": {"found": False, "hint": "穿上全套护甲"},
+            "sword": {"found": False, "hint": "制作一把剑"},
+            "bow": {"found": False, "hint": "制作一把弓"},
+            "pickaxe": {"found": False, "hint": "制作一把镐子"},
+            "axe": {"found": False, "hint": "制作一把斧头"},
+            "shovel": {"found": False, "hint": "制作一把铲子"},
+            "hoe": {"found": False, "hint": "制作一把锄头"},
+            "craft_table": {"found": False, "hint": "制作一个工作台"},
+            "furnace": {"found": False, "hint": "制作一个熔炉"},
+            "chest": {"found": False, "hint": "制作一个箱子"},
+            "bed": {"found": False, "hint": "制作一张床"},
+            "door": {"found": False, "hint": "制作一扇门"},
+            "fence": {"found": False, "hint": "制作栅栏"},
+            "ladder": {"found": False, "hint": "制作梯子"},
+            "glass": {"found": False, "hint": "制作玻璃"},
+            "brick": {"found": False, "hint": "制作砖块"},
+            "cake": {"found": False, "hint": "制作一个蛋糕"},
+            "bread": {"found": False, "hint": "制作面包"},
+            "gold_ingot": {"found": False, "hint": "冶炼金锭"},
+            "iron_ingot": {"found": False, "hint": "冶炼铁锭"},
+            "cook_food": {"found": False, "hint": "烹饪食物"},
+            "fish": {"found": False, "hint": "钓一条鱼"},
+            "pet": {"found": False, "hint": "拥有一只宠物"},
+            "follower": {"found": False, "hint": "拥有一个追随者"},
+            "general": {"found": False, "hint": "召唤一名武将"},
+            "gun": {"found": False, "hint": "制作一把枪"},
+            "ammo": {"found": False, "hint": "制作弹药"},
+            "firework": {"found": False, "hint": "制作烟花"},
+            "music_disc": {"found": False, "hint": "找到音乐唱片"},
+            "painting": {"found": False, "hint": "放置一幅画"},
+            "map": {"found": False, "hint": "制作一张地图"},
+            "compass": {"found": False, "hint": "制作一个指南针"},
+            "clock": {"found": False, "hint": "制作一个时钟"},
+            "enchant": {"found": False, "hint": "附魔物品"},
+            "anvil": {"found": False, "hint": "制作铁砧"},
+            "beacon": {"found": False, "hint": "激活信标"},
+            "ender_eye": {"found": False, "hint": "制作末影之眼"},
+            "nether_portal": {"found": False, "hint": "建造地狱门"},
+            "end_portal": {"found": False, "hint": "建造末地传送门"},
+            "dragon_kill": {"found": False, "hint": "击败末影龙"},
+            "wither_kill": {"found": False, "hint": "击败凋灵"},
+            "elder_guardian": {"found": False, "hint": "击败远古守卫者"},
+            "wither_skeleton": {"found": False, "hint": "击败凋灵骷髅"},
+            "stray": {"found": False, "hint": "击败流浪者"},
+            "husk": {"found": False, "hint": "击败尸壳"},
+            "phantom": {"found": False, "hint": "击败幻翼"},
+            "ravager": {"found": False, "hint": "击败劫掠兽"},
+            "pillager": {"found": False, "hint": "击败掠夺者"},
+            "vindicator": {"found": False, "hint": "击败卫道士"},
+            "evoker": {"found": False, "hint": "击败唤魔者"},
+            "shulker": {"found": False, "hint": "击败潜影贝"},
+            "enderman": {"found": False, "hint": "击败末影人"},
+            "slime": {"found": False, "hint": "击败史莱姆"},
+            "magma_cube": {"found": False, "hint": "击败岩浆怪"},
+            "ghast": {"found": False, "hint": "击败恶魂"},
+            "blaze": {"found": False, "hint": "击败烈焰人"},
+            "cave_spider": {"found": False, "hint": "击败洞穴蜘蛛"},
+            "spider_jockey": {"found": False, "hint": "击败蜘蛛骑士"},
+            "jockey": {"found": False, "hint": "击败骷髅骑士"},
+            "zombie_villager": {"found": False, "hint": "治愈僵尸村民"},
+            "villager_trade": {"found": False, "hint": "与村民交易"},
+            "raid": {"found": False, "hint": "完成一次袭击"},
+            "pillager_outpost": {"found": False, "hint": "找到掠夺者前哨站"},
+            "stronghold": {"found": False, "hint": "找到要塞"},
+            "jungle_temple": {"found": False, "hint": "找到丛林神庙"},
+            "desert_temple": {"found": False, "hint": "找到沙漠神殿"},
+            "ocean_monument": {"found": False, "hint": "找到海底遗迹"},
+            "woodland_mansion": {"found": False, "hint": "找到林地府邸"},
+            "shipwreck": {"found": False, "hint": "找到沉船"},
+            "ruined_portal": {"found": False, "hint": "找到废弃传送门"},
+            "treasure": {"found": False, "hint": "找到宝藏"},
+            "easter_egg": {"found": False, "hint": "找到复活节彩蛋"},
+            "birthday": {"found": False, "hint": "庆祝生日"},
+            "anniversary": {"found": False, "hint": "庆祝一周年"},
+            "secret_command": {"found": False, "hint": "发现隐藏命令"},
+            "secret_room": {"found": False, "hint": "找到一个秘密房间"},
+            "hidden_treasure": {"found": False, "hint": "找到隐藏的宝藏"},
+            "mysterious_cave": {"found": False, "hint": "发现一个神秘洞穴"},
+            "ancient_ruins": {"found": False, "hint": "探索古代遗迹"},
+            "floating_island": {"found": False, "hint": "找到一个浮空岛"},
+            "underwater_base": {"found": False, "hint": "建造一个水下基地"},
+            "sky_base": {"found": False, "hint": "建造一个天空基地"},
+            "underground_bunker": {"found": False, "hint": "建造一个地下 bunker"},
+            "tree_house": {"found": False, "hint": "建造一个树屋"},
+            "desert_base": {"found": False, "hint": "在沙漠建造基地"},
+            "ice_base": {"found": False, "hint": "在冰原建造基地"},
+            "jungle_base": {"found": False, "hint": "在丛林建造基地"},
+            "mountain_base": {"found": False, "hint": "在山脉建造基地"},
+            "volcano_base": {"found": False, "hint": "在火山建造基地"},
+            "portal_base": {"found": False, "hint": "建造传送门基地"},
+            "nether_fortress": {"found": False, "hint": "找到地狱堡垒"},
+            "bastion_remnant": {"found": False, "hint": "找到荒漠前哨"},
+            "end_city": {"found": False, "hint": "找到末地城"},
+            "deep_dark": {"found": False, "hint": "探索深暗之域"},
+            "mangrove_swamp": {"found": False, "hint": "探索红树林沼泽"},
+            "cherry_grove": {"found": False, "hint": "找到樱花林"},
+            "suspicious_sand": {"found": False, "hint": "挖掘可疑沙子"},
+            " Suspicious_gravel": {"found": False, "hint": "挖掘可疑砂砾"},
+            "ancient_city": {"found": False, "hint": "进入远古城市"},
+            "warden": {"found": False, "hint": "遭遇监守者"},
+            "allay": {"found": False, "hint": "找到一只同伴"},
+            "axolotl": {"found": False, "hint": "找到一只美西螈"},
+            "glow_squid": {"found": False, "hint": "找到一只发光鱿鱼"},
+            "goat": {"found": False, "hint": "找到一只山羊"},
+            "frog": {"found": False, "hint": "找到一只青蛙"},
+            "tadpole": {"found": False, "hint": "找到一只蝌蚪"},
+            "sniffer": {"found": False, "hint": "找到一只嗅探兽"},
+            "camel": {"found": False, "hint": "找到一只骆驼"},
+            "horse_armor": {"found": False, "hint": "制作马铠"},
+            "horse_bridge": {"found": False, "hint": "骑马跑1000格"},
+            "boat_base": {"found": False, "hint": "建造船坞"},
+            "minecart_base": {"found": False, "hint": "建造矿车轨道"},
+            "railway": {"found": False, "hint": "建造铁路"},
+            "hopper_minecart": {"found": False, "hint": "制作漏斗矿车"},
+            "command_block": {"found": False, "hint": "获得命令方块"},
+            "structure_block": {"found": False, "hint": "获得结构方块"},
+            "debug_stick": {"found": False, "hint": "获得调试棒"},
+            "knowledge_book": {"found": False, "hint": "获得知识之书"},
+            "spawner": {"found": False, "hint": "找到刷怪笼"},
+            "dragon_egg": {"found": False, "hint": "获得龙蛋"},
+            "nether_star": {"found": False, "hint": "获得下界之星"},
+            "elytra": {"found": False, "hint": "获得鞘翅"},
+            "shulker_box": {"found": False, "hint": "获得潜影盒"},
+            "totem_undying": {"found": False, "hint": "获得不死图腾"},
+            "heart_of_the_sea": {"found": False, "hint": "获得海洋之心"},
+            "trident": {"found": False, "hint": "获得三叉戟"},
+            "crossbow": {"found": False, "hint": "制作弩"},
+            "shield": {"found": False, "hint": "制作盾牌"},
+            "turtle_helmet": {"found": False, "hint": "制作海龟壳"},
+            "棱彩染料": {"found": False, "hint": "收集所有棱彩染料"},
+            "马匹速度": {"found": False, "hint": "驯服最快的马"},
+            "马匹跳跃": {"found": False, "hint": "驯服跳得最高的马"},
+            "骆驼冲刺": {"found": False, "hint": "骑骆驼冲刺"},
+            "蜜蜂授粉": {"found": False, "hint": "给花朵授粉"},
+            "蜜蜂蜂蜜": {"found": False, "hint": "收集蜂蜜"},
+            "村民职业": {"found": False, "hint": "让村民获得所有职业"},
+            "僵尸围城": {"found": False, "hint": "在僵尸围城中幸存"},
+            "凋灵围城": {"found": False, "hint": "在凋灵围城中幸存"},
+            "激流三叉戟": {"found": False, "hint": "用三叉戟激活激流"},
+            "闪电苦力怕": {"found": False, "hint": "让苦力怕被闪电击中"},
+            "高压爬行者": {"found": False, "hint": "击杀高压爬行者"},
+            "闪电指令": {"found": False, "hint": "使用闪电指令"},
+            "猪灵交易": {"found": False, "hint": "与猪灵交易"},
+            "猪灵布林": {"found": False, "hint": "给猪灵金锭让它变敌意"},
+            "下界要塞": {"found": False, "hint": "找到下界要塞"},
+            "灵魂沙峡谷": {"found": False, "hint": "探索灵魂沙峡谷"},
+            "玄武岩三角洲": {"found": False, "hint": "探索玄武岩三角洲"},
+            "诡异森林": {"found": False, "hint": "探索诡异森林"},
+            "绯红森林": {"found": False, "hint": "探索绯红森林"}
+        }
+        self.herobrine_active = False
+        self.herobrine_pos = None
+        self.herobrine_timer = 0
+        
+        # 🎮 作弊码系统（经典按键序列）
+        self.cheat_code_buffer = []  # 按键序列缓冲区
+        self.cheat_code_max_length = 20  # 最大缓冲长度
+        self.cheat_code_input_timer = 0  # 输入计时器
+        self.cheat_code_input_timeout = 2.0  # 输入超时时间（秒）
+        self.last_cheat_key_time = time.time()
+        
+        # 🎯 作弊码定义（经典+创意）
+        self.cheat_codes = {
+            # 经典Konami代码风格
+            "konami": {
+                "sequence": ["up", "up", "down", "down", "left", "right", "left", "right", "b", "a"],
+                "name": "Konami大师",
+                "effect": "full_power",
+                "message": "🎉 Konami代码激活！你获得了无限力量！",
+                "reward": {"health": 999, "hunger": 999, "experience": 9999, "level": 100}
+            },
+            # 简化版Konami
+            "konami_simple": {
+                "sequence": ["up", "up", "down", "down", "left", "right"],
+                "name": "半Konami",
+                "effect": "half_power",
+                "message": "✨ 半Konami代码！获得中等加成！",
+                "reward": {"health": 50, "hunger": 50, "experience": 500}
+            },
+            # 三国主题
+            "three_kingdoms": {
+                "sequence": ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
+                "name": "三国九鼎",
+                "effect": "summon_generals",
+                "message": "⚔️ 九鼎归一！召唤三国武将！",
+                "reward": {"generals": ["刘备", "关羽", "张飞", "赵云", "诸葛亮"]}
+            },
+            # 神秘数字
+            "mystery_number": {
+                "sequence": ["7", "8", "9", "1", "1", "4", "5", "1", "4"],
+                "name": "神秘数字",
+                "effect": "mystery",
+                "message": "🔮 神秘数字序列！解锁隐藏彩蛋！",
+                "reward": {"eggs_unlocked": 10, "secret_items": ["神秘宝石", "远古遗物"]}
+            },
+            # 42宇宙答案
+            "universe_answer": {
+                "sequence": ["4", "2"],
+                "name": "宇宙答案",
+                "effect": "developer_mode",
+                "message": "🌌 42是宇宙的终极答案！开发者模式已激活！",
+                "reward": {"developer_mode": True, "secret_commands": True}
+            },
+            # MC风格
+            "minecraft_classic": {
+                "sequence": ["m", "c", "1", "2"],
+                "name": "MC经典",
+                "effect": "mc_mode",
+                "message": "⛏️ Minecraft经典模式激活！",
+                "reward": {"creative_mode": True, "all_blocks": True}
+            },
+            # 无敌模式
+            "god_mode": {
+                "sequence": ["g", "o", "d"],
+                "name": "上帝模式",
+                "effect": "invincible",
+                "message": "👑 上帝模式！你已无敌！",
+                "reward": {"invincible": True, "health": 9999}
+            },
+            # 超级速度
+            "speed_hack": {
+                "sequence": ["s", "p", "e", "e", "d"],
+                "name": "超级速度",
+                "effect": "super_speed",
+                "message": "⚡ 超级速度！你跑得比闪电还快！",
+                "reward": {"speed": 10.0, "fly_speed": 5.0}
+            },
+            # 彩蛋猎人
+            "egg_hunter": {
+                "sequence": ["e", "g", "g"],
+                "name": "彩蛋猎人",
+                "effect": "reveal_eggs",
+                "message": "🥚 彩蛋猎人模式！所有彩蛋位置已显示！",
+                "reward": {"egg_hints": True, "egg_count": 150}
+            },
+            # 隐藏彩蛋
+            "secret_egg": {
+                "sequence": ["s", "e", "c", "r", "e", "t"],
+                "name": "秘密彩蛋",
+                "effect": "unlock_secret",
+                "message": "🔐 你发现了隐藏的秘密彩蛋！",
+                "reward": {"secret_egg": True, "hidden_items": ["秘密钥匙", "神秘宝箱"]}
+            },
+            # 随机惊喜
+            "random_surprise": {
+                "sequence": ["r", "a", "n", "d", "o", "m"],
+                "name": "随机惊喜",
+                "effect": "random_gift",
+                "message": "🎲 随机惊喜！你获得了神秘礼物！",
+                "reward": {"random": True}
+            },
+            # 满背包
+            "full_inventory": {
+                "sequence": ["f", "u", "l", "l"],
+                "name": "满背包",
+                "effect": "fill_inventory",
+                "message": "📦 背包已填满所有物品！",
+                "reward": {"full_inventory": True}
+            },
+            # 天气控制
+            "weather_master": {
+                "sequence": ["w", "e", "a", "t", "h", "e", "r"],
+                "name": "天气大师",
+                "effect": "weather_control",
+                "message": "🌤️ 天气大师！你可以自由控制天气！",
+                "reward": {"weather_control": True}
+            },
+            # 时间大师
+            "time_master": {
+                "sequence": ["t", "i", "m", "e"],
+                "name": "时间大师",
+                "effect": "time_control",
+                "message": "⏰ 时间大师！你可以自由控制时间！",
+                "reward": {"time_control": True}
+            },
+            # 超级跳跃
+            "super_jump": {
+                "sequence": ["j", "u", "m", "p"],
+                "name": "超级跳跃",
+                "effect": "high_jump",
+                "message": "🦘 超级跳跃！你可以跳到云端！",
+                "reward": {"jump_power": 1.2}
+            },
+            # 飞行模式
+            "fly_mode": {
+                "sequence": ["f", "l", "y"],
+                "name": "飞行模式",
+                "effect": "enable_fly",
+                "message": "🦋 飞行模式已激活！自由翱翔！",
+                "reward": {"can_fly": True, "flying": True}
+            },
+            # 全解锁
+            "unlock_all": {
+                "sequence": ["u", "n", "l", "o", "c", "k"],
+                "name": "全解锁",
+                "effect": "unlock_everything",
+                "message": "🔓 全解锁！所有成就和彩蛋已解锁！",
+                "reward": {"all_achievements": True, "all_eggs": True}
+            },
+            # 彩虹模式
+            "rainbow": {
+                "sequence": ["r", "a", "i", "n", "b", "o", "w"],
+                "name": "彩虹模式",
+                "effect": "rainbow_effect",
+                "message": "🌈 彩虹模式！世界变得绚丽多彩！",
+                "reward": {"rainbow_blocks": True, "rainbow_particles": True}
+            },
+            # 爆炸模式
+            "explosion_master": {
+                "sequence": ["b", "o", "o", "m"],
+                "name": "爆炸大师",
+                "effect": "explosion_power",
+                "message": "💥 爆炸大师！你的攻击带有爆炸效果！",
+                "reward": {"explosion_power": True}
+            },
+            # 隐身模式
+            "invisible": {
+                "sequence": ["i", "n", "v", "i", "s"],
+                "name": "隐身模式",
+                "effect": "invisible",
+                "message": "👻 隐身模式！怪物看不到你了！",
+                "reward": {"invisible": True}
+            },
+            # 夜视模式
+            "night_vision": {
+                "sequence": ["n", "v"],
+                "name": "夜视模式",
+                "effect": "night_vision",
+                "message": "👁️ 夜视模式！黑夜如同白昼！",
+                "reward": {"night_vision": True}
+            },
+            # 传送大师
+            "teleport_master": {
+                "sequence": ["t", "p"],
+                "name": "传送大师",
+                "effect": "teleport_power",
+                "message": "🌀 传送大师！你可以瞬间移动！",
+                "reward": {"teleport_power": True}
+            },
+            # 创造模式快捷
+            "creative_quick": {
+                "sequence": ["c", "r", "e", "a", "t", "i", "v", "e"],
+                "name": "创造模式",
+                "effect": "creative_mode",
+                "message": "🎨 创造模式已激活！尽情建造！",
+                "reward": {"game_mode": "creative"}
+            },
+            # 生存模式快捷
+            "survival_quick": {
+                "sequence": ["s", "u", "r", "v", "i", "v", "e"],
+                "name": "生存模式",
+                "effect": "survival_mode",
+                "message": "⚔️ 生存模式已激活！开始冒险！",
+                "reward": {"game_mode": "survival"}
+            },
+            # 满级
+            "max_level": {
+                "sequence": ["l", "v", "9", "9"],
+                "name": "满级大师",
+                "effect": "max_level",
+                "message": "🏆 满级大师！你已达到最高等级！",
+                "reward": {"level": 99, "experience": 999999}
+            },
+            # 无限资源
+            "infinite_resources": {
+                "sequence": ["i", "n", "f", "i", "n", "i", "t", "y"],
+                "name": "无限资源",
+                "effect": "infinite_items",
+                "message": "♾️ 无限资源！物品永不耗尽！",
+                "reward": {"infinite_items": True}
+            },
+            # 召唤神兽
+            "summon_beast": {
+                "sequence": ["b", "e", "a", "s", "t"],
+                "name": "召唤神兽",
+                "effect": "spawn_pet",
+                "message": "🐉 神兽降临！你获得了一只神兽宠物！",
+                "reward": {"pet": "神兽"}
+            },
+            # 音乐模式
+            "music_mode": {
+                "sequence": ["m", "u", "s", "i", "c"],
+                "name": "音乐模式",
+                "effect": "play_music",
+                "message": "🎵 音乐模式！享受美妙旋律！",
+                "reward": {"music_enabled": True}
+            },
+            # 调试模式
+            "debug_mode": {
+                "sequence": ["d", "e", "b", "u", "g"],
+                "name": "调试模式",
+                "effect": "debug_info",
+                "message": "🔧 调试模式！显示所有调试信息！",
+                "reward": {"debug_mode": True}
+            },
+            # 粒子大师
+            "particle_master": {
+                "sequence": ["p", "a", "r", "t", "i", "c", "l", "e"],
+                "name": "粒子大师",
+                "effect": "particle_effects",
+                "message": "✨ 粒子大师！绚丽粒子效果已激活！",
+                "reward": {"particle_effects": True, "max_particles": 1000}
+            },
+            # 神秘代码（隐藏）
+            "hidden_cheat": {
+                "sequence": ["h", "i", "d", "d", "e", "n"],
+                "name": "隐藏代码",
+                "effect": "hidden_power",
+                "message": "🎭 你发现了隐藏的神秘代码！",
+                "reward": {"hidden_power": True, "secret_mode": True}
+            },
+            # 终极代码
+            "ultimate": {
+                "sequence": ["u", "l", "t", "i", "m", "a", "t", "e"],
+                "name": "终极力量",
+                "effect": "ultimate_power",
+                "message": "🌟 终极力量！你已成为游戏之神！",
+                "reward": {"ultimate": True, "all_power": True}
+            }
+        }
+        
+        # 📍 特定位置触发彩蛋
+        self.secret_locations = {
+            "mystery_cave": {"pos": (100, -10, 200), "radius": 5, "egg": "mysterious_cave", "message": "发现神秘洞穴！"},
+            "floating_island": {"pos": (500, 100, 300), "radius": 10, "egg": "floating_island", "message": "发现浮空岛！"},
+            "treasure_spot": {"pos": (-50, 0, 150), "radius": 3, "egg": "hidden_treasure", "message": "发现隐藏宝藏！"},
+            "developer_sign": {"pos": (0, 50, 0), "radius": 2, "egg": "developer", "message": "发现开发者签名！"},
+            "notch_statue": {"pos": (300, 20, 400), "radius": 5, "egg": "notch", "message": "发现Notch雕像！"},
+            "herobrine_shrine": {"pos": (-200, -20, -100), "radius": 3, "egg": "herobrine", "message": "⚠️ 发现Herobrine神殿..."},
+            "ancient_ruins": {"pos": (600, 0, -200), "radius": 8, "egg": "ancient_ruins", "message": "发现古代遗迹！"},
+            "secret_base": {"pos": (1000, -50, 500), "radius": 10, "egg": "secret_base", "message": "发现秘密基地！"}
+        }
+        
+        # 🎯 已激活的作弊效果
+        self.active_cheat_effects = {
+            "invincible": False,
+            "super_speed": False,
+            "high_jump": False,
+            "invisible": False,
+            "night_vision": False,
+            "weather_control": False,
+            "time_control": False,
+            "teleport_power": False,
+            "infinite_items": False,
+            "explosion_power": False,
+            "rainbow_blocks": False,
+            "rainbow_particles": False,
+            "particle_effects": False,
+            "egg_hints": False,
+            "developer_mode": False,
+            "debug_mode": False,
+            "hidden_power": False,
+            "ultimate": False,
+            "secret_mode": False,
+            "music_enabled": False
+        }
+        
+        # 📊 作弊码统计
+        self.cheat_stats = {
+            "codes_entered": 0,
+            "codes_successful": 0,
+            "last_code": None,
+            "total_rewards": 0
+        }
+        
+        # 海浪效果
+        self.wave_particles = []
+        self.wave_timer = 0
+        
+        # 天气系统
+        self.weather = "clear"  # clear, rain, snow, thunder
+        self.weather_timer = 0
+        self.rain_particles = []
+        self.snow_particles = []
+        self.thunder_timer = 0
+        self.is_thundering = False
+        
+        # 粒子效果系统
+        self.effect_particles = []  # 特效粒子（爆炸、附魔等）
+        self.dust_particles = []    # 尘埃粒子
+        
+        # 生物系统
+        self.entities = []  # 存储所有实体
+        self.monsters = []  # 怪物
+        self.animals = []   # 动物
+        self.spawn_timer = 0
+        
+        # 方块颜色定义 (MC 1.12.2风格)
+        self.block_colors = {
+            # 基础方块
+            "泥土": (0.6, 0.4, 0.2),
+            "石头": (0.5, 0.5, 0.5),
+            "圆石": (0.45, 0.45, 0.45),
+            "木头": (0.5, 0.35, 0.15),
+            "橡木": (0.6, 0.4, 0.2),
+            "木板": (0.65, 0.45, 0.25),
+            "草地": (0.3, 0.8, 0.2),
+            "树叶": (0.2, 0.6, 0.15),
+            "沙子": (0.9, 0.85, 0.6),
+            "砂砾": (0.5, 0.5, 0.5),
+            "水": (0.2, 0.4, 0.8, 0.7),
+            "岩浆": (1.0, 0.5, 0.0, 0.8),
+            "玻璃": (0.8, 0.9, 1.0, 0.4),
+            "玻璃面板": (0.85, 0.92, 1.0, 0.5),
+            "砖块": (0.8, 0.3, 0.2),
+            "砖块方块": (0.75, 0.25, 0.2),
+            "粘土": (0.7, 0.6, 0.5),
+            "陶瓦": (0.65, 0.55, 0.45),
+            "带釉陶瓦": (0.7, 0.6, 0.55),
+            "混凝土粉末": (0.55, 0.55, 0.55),
+            # 矿石
+            "铁矿石": (0.55, 0.5, 0.5),
+            "金矿石": (0.8, 0.7, 0.3),
+            "钻石矿石": (0.3, 0.9, 0.9),
+            "红石矿石": (1.0, 0.2, 0.2),
+            "绿宝石矿石": (0.3, 0.9, 0.3),
+            "煤炭": (0.2, 0.2, 0.2),
+            "青金石": (0.2, 0.2, 0.8),
+            "下界石英": (0.9, 0.9, 0.9),
+            # 下界方块
+            "黑曜石": (0.15, 0.15, 0.25),
+            "灵魂沙": (0.3, 0.25, 0.2),
+            "地狱岩": (0.5, 0.15, 0.15),
+            "下界疣": (0.6, 0.2, 0.2),
+            "石英块": (0.95, 0.95, 0.95),
+            "地狱砖块": (0.5, 0.2, 0.2),
+            # 末地方块
+            "末地石": (0.4, 0.4, 0.6),
+            "末地石砖": (0.35, 0.35, 0.5),
+            "末地烛": (0.95, 0.95, 0.95),
+            # 羊毛颜色
+            "白色羊毛": (0.95, 0.95, 0.95),
+            "橙色羊毛": (1.0, 0.5, 0.1),
+            "品红色羊毛": (0.85, 0.2, 0.85),
+            "淡蓝色羊毛": (0.5, 0.7, 1.0),
+            "黄色羊毛": (1.0, 1.0, 0.2),
+            "黄绿色羊毛": (0.6, 1.0, 0.2),
+            "粉色羊毛": (1.0, 0.5, 0.8),
+            "灰色羊毛": (0.5, 0.5, 0.5),
+            "淡灰色羊毛": (0.7, 0.7, 0.7),
+            "青色羊毛": (0.2, 0.8, 0.8),
+            "紫色羊毛": (0.5, 0.2, 0.8),
+            "蓝色羊毛": (0.2, 0.3, 0.8),
+            "棕色羊毛": (0.5, 0.35, 0.15),
+            "绿色羊毛": (0.3, 0.6, 0.2),
+            "红色羊毛": (0.8, 0.2, 0.2),
+            "黑色羊毛": (0.15, 0.15, 0.15),
+            # 建筑方块
+            "橡木台阶": (0.65, 0.45, 0.25),
+            "石台阶": (0.45, 0.45, 0.45),
+            "砖台阶": (0.75, 0.25, 0.2),
+            "楼梯": (0.65, 0.45, 0.25),
+            "石楼梯": (0.45, 0.45, 0.45),
+            "砖楼梯": (0.75, 0.25, 0.2),
+            "栅栏": (0.6, 0.4, 0.2),
+            "栅栏门": (0.65, 0.45, 0.25),
+            "梯子": (0.7, 0.7, 0.7),
+            "门": (0.65, 0.45, 0.25),
+            "压力板": (0.65, 0.45, 0.25),
+            "石压力板": (0.45, 0.45, 0.45),
+            "按钮": (0.45, 0.45, 0.45),
+            "橡木按钮": (0.65, 0.45, 0.25),
+            # 机械方块
+            "活塞": (0.6, 0.6, 0.6),
+            "粘性活塞": (0.6, 0.6, 0.8),
+            "红石中继器": (0.8, 0.6, 0.2),
+            "红石比较器": (0.7, 0.5, 0.3),
+            "红石火把": (1.0, 0.4, 0.1),
+            "红石灯": (1.0, 0.9, 0.5),
+            "发射器": (0.5, 0.5, 0.5),
+            "投掷器": (0.5, 0.5, 0.5),
+            "漏斗": (0.4, 0.4, 0.4),
+            "箱子": (0.7, 0.5, 0.3),
+            "陷阱箱": (0.5, 0.3, 0.5),
+            "木桶": (0.6, 0.4, 0.2),
+            "酿造台": (0.25, 0.25, 0.4),
+            "炼药锅": (0.5, 0.5, 0.5),
+            "铁砧": (0.7, 0.7, 0.7),
+            "砂轮": (0.5, 0.5, 0.5),
+            "织布机": (0.6, 0.4, 0.2),
+            "制图台": (0.6, 0.4, 0.2),
+            "烟熏炉": (0.4, 0.4, 0.4),
+            "高炉": (0.4, 0.4, 0.4),
+            "营火": (0.3, 0.2, 0.1),
+            "灵魂营火": (0.4, 0.3, 0.2),
+            # 装饰方块
+            "花盆": (0.75, 0.35, 0.2),
+            "灯笼": (0.9, 0.9, 0.8),
+            "灵魂灯笼": (0.8, 0.9, 0.9),
+            "钟": (0.7, 0.7, 0.7),
+            "测重压力板": (0.6, 0.6, 0.6),
+            # 特殊方块
+            "信标": (0.9, 0.95, 1.0),
+            "龙蛋": (0.5, 0.2, 0.7),
+            "命令方块": (0.2, 0.6, 1.0),
+            "结构方块": (0.8, 0.6, 0.2),
+            "调试棒": (0.3, 0.8, 0.3)
+        }
+        
     def initialize(self):
+        """初始化3D地图"""
+        global SCREEN_WIDTH, SCREEN_HEIGHT
         if not opengl_available:
-            print("错误: OpenGL不可用，无法启动3D地图")
+            logger.info("错误: OpenGL不可用，无法启动3D地图")
             return False
         
         try:
+            # 初始化pygame
             pygame.init()
+
+            # 跟随全局设置的分辨率（默认 600x500），避免固定 1024x768
+            try:
+                _res = data['settings']['graphics']['resolution']
+                _w, _h = map(int, _res.split('x'))
+                if _w > 0 and _h > 0:
+                    SCREEN_WIDTH, SCREEN_HEIGHT = _w, _h
+            except (ValueError, KeyError, AttributeError):
+                pass
+            
+            # 设置OpenGL显示模式
             pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.OPENGL | pygame.DOUBLEBUF)
             self.screen = pygame.display.get_surface()
             self.clock = pygame.time.Clock()
             
+            # 初始化OpenGL
             glEnable(GL_DEPTH_TEST)
             glEnable(GL_TEXTURE_2D)
             glEnable(GL_LIGHTING)
             glEnable(GL_LIGHT0)
-            glClearColor(0.1, 0.1, 0.2, 1.0)
+            glClearColor(0.5, 0.7, 1.0, 1.0)  # 天空蓝色
             
+            # 设置光源
             light_position = [1.0, 1.0, 1.0, 0.0]
             glLightfv(GL_LIGHT0, GL_POSITION, light_position)
             
+            # 加载字体
             font_name = get_system_font_name()
             try:
                 if font_name:
@@ -815,196 +1259,96 @@ class GameMap3D:
                 else:
                     self.font_main = pygame.font.Font(None, 40)
                     self.font_small = pygame.font.Font(None, 24)
-            except Exception:
+            except Exception as _e:
                 self.font_main = pygame.font.Font(None, 40)
                 self.font_small = pygame.font.Font(None, 24)
             
+            # 加载地图数据
             self.load_map_data()
-            self.load_owned_territories()
+            
+            # 加载MC世界存档数据
+            self.load_mc_world_data()
+            
+            # 显示内存和显卡占用提示
             self.show_performance_warning()
             
+            # 初始化玩家位置到第一个地点附近
             if self.locations:
                 first_loc = self.locations[0]
-                self.player_pos = [first_loc["x"] + 50, 2, first_loc["y"] + 50]
+                self.player_pos = [first_loc["x"] + 50, 0, first_loc["y"] + 50]
                 self.update_camera()
             
+            # 生成树木
             self.generate_trees()
-            self.generate_tech_blocks()
-            self.generate_large_structures()
-            self.generate_npcs()
-            self.cache_terrain()
             
             return True
         except Exception as e:
-            print(f"初始化错误: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.info(f"初始化错误: {e}")
             return False
     
     def show_performance_warning(self):
-        warning = "3D主城 - 按右键与NPC交互 | E进入地点 | R收集资源"
+        """显示性能警告"""
+        warning = "警告: 3D模式可能会增加内存和显卡占用"
         text_surf = self.font_main.render(warning, True, COLORS["accent_gold"])
         text_rect = text_surf.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2))
         
+        # 背景
         bg_rect = pygame.Rect(text_rect.x-20, text_rect.y-10, text_rect.width+40, text_rect.height+20)
         pygame.draw.rect(self.screen, (30, 30, 55, 200), bg_rect, border_radius=10)
         pygame.draw.rect(self.screen, COLORS["accent_gold"], bg_rect, 2, border_radius=10)
         
         self.screen.blit(text_surf, text_rect)
         pygame.display.flip()
-        pygame.time.wait(2000)
+        pygame.time.wait(3000)
     
     def load_map_data(self):
+        """加载地图数据"""
         try:
+            # 验证用户名和密码
             username = data.get("username", "")
             password = data.get("password", "")
             if not username or not password:
-                print("错误: 未登录，无法加载地图数据")
+                logger.info("错误: 未登录，无法加载地图数据")
                 return
             
             map_path = self.get_map_data_path()
             if not os.path.exists(map_path):
-                print("地图数据文件不存在，将生成新地图")
+                logger.info("地图数据文件不存在，将生成新地图")
                 self.locations = self.generate_locations(MAX_LOCATIONS)
                 self.save_map_data(self.locations)
             else:
                 with open(map_path, 'r', encoding='utf-8') as f:
                     map_data = json.load(f)
                 
+                # 验证用户名
                 if map_data.get("username") != username:
-                    print("错误: 地图数据与当前用户不匹配")
-                    self.locations = self.generate_locations(MAX_LOCATIONS)
-                    self.save_map_data(self.locations)
+                    logger.info("错误: 地图数据与当前用户不匹配")
                     return
                 
-                version = map_data.get("version", "0.0")
-                if version == "1.0":
-                    blocks = map_data.get("blocks", [])
-                    self.locations = []
-                    for block in blocks:
-                        loc = {
-                            "x": block["x"],
-                            "y": block["y"],
-                            "type": block["type"],
-                            "level": block.get("level", 1),
-                            "power": block.get("power", 0),
-                            "owner": block.get("owner", "neutral"),
-                            "color": block.get("color", (0.5, 0.5, 0.5)),
-                            "height": block.get("height", 8),
-                            "rotation_id": block.get("rotation_id", 0),
-                            "facing_id": block.get("facing_id", 0)
-                        }
-                        self.locations.append(loc)
-                    
-                    self.trees = []
-                    for tree_data in map_data.get("trees", []):
-                        self.trees.append((
-                            tree_data["x"],
-                            tree_data["y"],
-                            tree_data.get("scale", 1.0)
-                        ))
-                    
-                    self.large_structures = []
-                    for struct_data in map_data.get("structures", []):
-                        self.large_structures.append({
-                            "x": struct_data["x"],
-                            "z": struct_data["y"],
-                            "name": struct_data["type"],
-                            "size": struct_data.get("size", 20),
-                            "height": struct_data.get("height", 15),
-                            "color": (0.6, 0.5, 0.4)
-                        })
-                    
-                    if map_data.get("player_pos"):
-                        self.player_pos = map_data.get("player_pos", self.player_pos)
-                    
-                    if map_data.get("player_inventory"):
-                        data["resources"] = map_data.get("player_inventory", {})
-                    
-                    print(f"成功加载地图数据v{version}，包含 {len(self.locations)} 个地点")
-                else:
-                    self.locations = map_data.get("locations", [])
-                    print(f"成功加载地图数据v{version}，包含 {len(self.locations)} 个地点")
+                self.locations = map_data.get("locations", [])
+                logger.info(f"成功加载地图数据，包含 {len(self.locations)} 个地点")
         except Exception as e:
-            print(f"加载地图数据失败: {e}")
+            logger.info(f"加载地图数据失败: {e}")
             self.locations = self.generate_locations(MAX_LOCATIONS)
             self.save_map_data(self.locations)
     
-    def load_owned_territories(self):
-        try:
-            self.owned_territories = data.get('territory', {}).get('owned_territories', [])
-            print(f"已加载 {len(self.owned_territories)} 个占领地点")
-        except Exception as e:
-            print(f"加载占领数据失败: {e}")
-            self.owned_territories = []
-    
     def get_map_data_path(self):
+        """获取地图数据路径"""
         username = data.get("username", "")
         safe_username = username.replace('\\', '_').replace('/', '_').replace(':', '_')
         return f"map_data_{safe_username}.json"
     
     def save_map_data(self, locations):
+        """保存地图数据"""
         try:
             username = data.get("username", "")
             if not username:
                 return False
             
-            blocks = []
-            for loc in locations:
-                block = {
-                    "id": len(blocks) + 1,
-                    "type": loc["type"],
-                    "x": loc["x"],
-                    "y": loc["y"],
-                    "z": 0,
-                    "level": loc.get("level", 1),
-                    "power": loc.get("power", 0),
-                    "owner": loc.get("owner", "neutral"),
-                    "rotation_id": random.randint(0, 3),
-                    "facing_id": self.calculate_facing_id(loc),
-                    "color": loc.get("color", (0.5, 0.5, 0.5)),
-                    "height": loc.get("height", 8)
-                }
-                blocks.append(block)
-            
-            trees = []
-            for tree in self.trees:
-                tree_block = {
-                    "id": len(trees) + 1000,
-                    "type": "tree",
-                    "x": tree[0],
-                    "y": tree[1],
-                    "z": 0,
-                    "scale": tree[2],
-                    "rotation_id": random.randint(0, 3),
-                    "facing_id": 0
-                }
-                trees.append(tree_block)
-            
-            structures = []
-            for struct in self.large_structures:
-                struct_block = {
-                    "id": len(structures) + 2000,
-                    "type": struct["name"],
-                    "x": struct["x"],
-                    "y": struct["z"],
-                    "z": 0,
-                    "size": struct["size"],
-                    "height": struct["height"],
-                    "rotation_id": random.randint(0, 3),
-                    "facing_id": 0
-                }
-                structures.append(struct_block)
-            
             map_data = {
-                "version": "1.0",
                 "username": username,
-                "timestamp": time.time(),
-                "blocks": blocks,
-                "trees": trees,
-                "structures": structures,
-                "player_pos": self.player_pos,
-                "player_inventory": data.get("resources", {})
+                "locations": locations,
+                "timestamp": time.time()
             }
             
             map_path = self.get_map_data_path()
@@ -1013,35 +1357,80 @@ class GameMap3D:
             
             return True
         except Exception as e:
-            print(f"保存地图数据失败: {e}")
+            logger.info(f"保存地图数据失败: {e}")
             return False
     
-    def calculate_facing_id(self, loc):
-        camera_yaw = self.camera["yaw"]
-        angle = math.atan2(
-            loc["y"] - self.player_pos[2],
-            loc["x"] - self.player_pos[0]
-        )
-        angle_deg = math.degrees(angle) - camera_yaw
-        angle_deg = (angle_deg + 180) % 360 - 180
-        
-        if -45 <= angle_deg < 45:
-            return 0
-        elif 45 <= angle_deg < 135:
-            return 1
-        elif -135 <= angle_deg < -45:
-            return 2
-        else:
-            return 3
+    def load_mc_world_data(self):
+        """加载MC世界存档数据"""
+        try:
+            mc_world = data.get(MC_WORLD_KEY, {})
+            
+            if mc_world:
+                self.placed_blocks = mc_world.get("placed_blocks", [])
+                self.hotbar = mc_world.get("hotbar", [None] * 9)
+                self.hotbar_selected = mc_world.get("hotbar_selected", 0)
+                
+                saved_pos = mc_world.get("player_pos", [0, 0, 0])
+                if saved_pos and saved_pos != [0, 0, 0]:
+                    self.player_pos = saved_pos
+                
+                self.camera["yaw"] = mc_world.get("camera_yaw", 0)
+                self.camera["pitch"] = mc_world.get("camera_pitch", -20)
+                self.camera["mode"] = mc_world.get("camera_mode", "first")
+                
+                self.inventory = mc_world.get("inventory", [])
+                self.world_seed = mc_world.get("world_seed", 0)
+                
+                self.health = mc_world.get("health", 20)
+                self.hunger = mc_world.get("hunger", 20)
+                self.oxygen = mc_world.get("oxygen", 10)
+                self.experience = mc_world.get("experience", 0)
+                self.level = mc_world.get("level", 0)
+                self.armor = mc_world.get("armor", 0)
+                
+                self.update_camera()
+                self.validate_all()
+                logger.info(f"[调试] 加载MC世界数据成功: {len(self.placed_blocks)} 个方块, 位置: {self.player_pos}")
+        except Exception as e:
+            logger.info(f"[错误] 加载MC世界数据失败: {e}")
+            self.validate_all()
+    
+    def save_mc_world_data(self):
+        """保存MC世界存档数据"""
+        try:
+            mc_world = {
+                "placed_blocks": self.placed_blocks,
+                "hotbar": self.hotbar,
+                "hotbar_selected": self.hotbar_selected,
+                "player_pos": self.player_pos,
+                "camera_yaw": self.camera["yaw"],
+                "camera_pitch": self.camera["pitch"],
+                "camera_mode": self.camera["mode"],
+                "inventory": getattr(self, 'inventory', []),
+                "world_seed": getattr(self, 'world_seed', 0),
+                "health": self.health,
+                "hunger": self.hunger,
+                "oxygen": self.oxygen,
+                "experience": self.experience,
+                "level": self.level,
+                "armor": self.armor
+            }
+            
+            data[MC_WORLD_KEY] = mc_world
+            save()
+            logger.info(f"[调试] 保存MC世界数据成功: {len(self.placed_blocks)} 个方块, 位置: {self.player_pos}")
+        except Exception as e:
+            logger.info(f"[错误] 保存MC世界数据失败: {e}")
     
     def generate_locations(self, count):
+        """生成地图地点"""
         locations = []
         LOCATION_TYPES = {
-            "矿产": {"power": 80, "color": (0.7, 0.7, 0.75), "height": 8},
-            "农田": {"power": 50, "color": (0.4, 0.8, 0.4), "height": 5},
-            "煤矿": {"power": 70, "color": (0.3, 0.3, 0.35), "height": 6},
-            "水井": {"power": 40, "color": (0.3, 0.6, 0.9), "height": 4},
-            "敌对单位": {"power": 120, "color": (0.9, 0.3, 0.3), "height": 10}
+            "关隘": {"icon": "🏯", "power": 100},
+            "军营": {"icon": "⚔️", "power": 150},
+            "村庄": {"icon": "🏠", "power": 50},
+            "矿山": {"icon": "⛏️", "power": 80},
+            "港口": {"icon": "🚢", "power": 90}
         }
         
         for i in range(count):
@@ -1049,6 +1438,7 @@ class GameMap3D:
                 x = random.randint(100, MAP_SIZE[0] - 100)
                 y = random.randint(100, MAP_SIZE[1] - 100)
                 
+                # 检查与其他地点的距离
                 valid = True
                 for loc in locations:
                     distance = math.hypot(x - loc["x"], y - loc["y"])
@@ -1058,28 +1448,26 @@ class GameMap3D:
                 if valid:
                     break
             
-            loc_type = random.choice(list(LOCATION_TYPES.keys()))
+            loc_type = random.choice(["关隘", "军营", "村庄", "矿山", "港口"])
             level = random.randint(1, 10)
             power = int(LOCATION_TYPES[loc_type]["power"] * (0.5 + level * 0.1))
-            
-            is_owned = loc_type != "敌对单位" and random.random() < 0.2
             
             locations.append({
                 "x": x,
                 "y": y,
                 "type": loc_type,
                 "level": level,
+                "desc": LOCATION_TYPES[loc_type]["icon"],
                 "power": power,
-                "owner": "player" if is_owned else "enemy" if loc_type == "敌对单位" else "neutral",
-                "color": LOCATION_TYPES[loc_type]["color"],
-                "height": LOCATION_TYPES[loc_type]["height"]
+                "owner": "enemy" if loc_type == "军营" else "neutral"
             })
         
         return locations
     
     def generate_trees(self):
+        """生成树木"""
         self.trees = []
-        tree_count = 300
+        tree_count = 200
         
         for _ in range(tree_count):
             x = random.randint(-1800, 1800)
@@ -1087,201 +1475,67 @@ class GameMap3D:
             
             too_close = False
             for loc in self.locations:
-                if math.hypot(x - loc["x"], z - loc["y"]) < 40:
+                if math.hypot(x - loc["x"], z - loc["y"]) < 30:
                     too_close = True
                     break
             for tree in self.trees:
-                if math.hypot(x - tree[0], z - tree[1]) < 8:
+                if math.hypot(x - tree[0], z - tree[1]) < 5:
                     too_close = True
                     break
             
             if not too_close:
-                self.trees.append((x, z, random.uniform(0.8, 1.5)))
-    
-    def generate_tech_blocks(self):
-        self.tech_blocks = []
-        tech_block_names = [
-            "tech_machine_frame", "tech_energy_core", "tech_generator",
-            "tech_solar_panel", "tech_quantum_storage", "tech_nano_assembler",
-            "tech_circuit_board", "tech_fusion_core", "tech_autominer",
-            "tech_fabricator", "tech_energy_cable", "tech_laser_node"
-        ]
-        
-        for _ in range(40):
-            while True:
-                x = random.randint(-1200, 1200)
-                z = random.randint(-1200, 1200)
-                
-                too_close = False
-                for loc in self.locations:
-                    if math.hypot(x - loc["x"], z - loc["y"]) < 60:
-                        too_close = True
-                        break
-                for tb in self.tech_blocks:
-                    if math.hypot(x - tb["x"], z - tb["z"]) < 30:
-                        too_close = True
-                        break
-                
-                if not too_close:
-                    break
-            
-            tech_type = random.choice(tech_block_names)
-            self.tech_blocks.append({
-                "x": x,
-                "z": z,
-                "type": tech_type,
-                "rotation": random.randint(0, 3),
-                "active": random.random() < 0.7,
-                "energy": random.randint(50, 200)
-            })
-    
-    def generate_large_structures(self):
-        self.large_structures = []
-        
-        STRUCTURE_TYPES = [
-            {"name": "皇宫", "size": 30, "height": 25, "color": (0.8, 0.7, 0.2), "icon": "🏛️"},
-            {"name": "城墙", "size": 60, "height": 12, "color": (0.5, 0.5, 0.5), "icon": "🧱"},
-            {"name": "塔楼", "size": 15, "height": 30, "color": (0.6, 0.5, 0.4), "icon": "🗼"},
-            {"name": "神庙", "size": 20, "height": 18, "color": (0.7, 0.6, 0.5), "icon": "⛩️"},
-            {"name": "仓库", "size": 25, "height": 10, "color": (0.6, 0.4, 0.3), "icon": "🏭"}
-        ]
-        
-        for _ in range(8):
-            while True:
-                x = random.randint(-1500, 1500)
-                z = random.randint(-1500, 1500)
-                
-                too_close = False
-                for struct in self.large_structures:
-                    if math.hypot(x - struct["x"], z - struct["z"]) < 200:
-                        too_close = True
-                        break
-                if not too_close:
-                    break
-            
-            struct_type = random.choice(STRUCTURE_TYPES)
-            self.large_structures.append({
-                "x": x,
-                "z": z,
-                **struct_type
-            })
-    
-    def generate_npcs(self):
-        self.npcs = []
-        
-        NPC_TYPES = [
-            {"name": "武将招募官", "dialogue": "欢迎来到主城！需要招募武将吗？", "action": "hero_recruit", "module": "hero_recruitment.py", "color": (0.2, 0.6, 0.8)},
-            {"name": "商人", "dialogue": "欢迎光临！我这里有各种珍贵物品。", "action": "shop", "module": "shop_system.py", "color": (0.8, 0.6, 0.2)},
-            {"name": "任务发布者", "dialogue": "勇士，我有一个危险的任务...", "action": "quest", "module": "quest_system.py", "color": (0.6, 0.3, 0.8)},
-            {"name": "铁匠", "dialogue": "需要打造或强化装备吗？", "action": "equipment", "module": "equipment_system.py", "color": (0.5, 0.5, 0.5)},
-            {"name": "药师", "dialogue": "我可以帮你炼制药剂。", "action": "alchemy", "module": "alchemy_system.py", "color": (0.3, 0.7, 0.3)},
-            {"name": "史官", "dialogue": "想听三国的故事吗？", "action": "story", "module": "background_story.py", "color": (0.7, 0.5, 0.3)},
-            {"name": "军需官", "dialogue": "需要补给吗？金元宝、时间卡应有尽有！", "action": "resources", "module": "shop_system.py", "color": (0.2, 0.5, 0.8)},
-            {"name": "竞技场管理员", "dialogue": "想参加PVP竞技吗？", "action": "pvp", "module": "pvp_p2p.py", "color": (0.8, 0.3, 0.3)}
-        ]
-        
-        for npc_type in NPC_TYPES:
-            while True:
-                x = random.randint(-500, 500)
-                z = random.randint(-500, 500)
-                
-                too_close = False
-                for npc in self.npcs:
-                    if math.hypot(x - npc["x"], z - npc["z"]) < 50:
-                        too_close = True
-                        break
-                if not too_close:
-                    break
-            
-            self.npcs.append({
-                "x": x,
-                "z": z,
-                "y": 0,
-                **npc_type,
-                "animation_offset": random.uniform(0, math.pi * 2),
-                "move_dir": random.uniform(0, math.pi * 2),
-                "move_speed": random.uniform(0.3, 0.8),
-                "original_x": x,
-                "original_z": z,
-                "wander_range": 15
-            })
-    
-    def cache_terrain(self):
-        self.render_cache = {
-            "trees": [],
-            "locations": [],
-            "structures": [],
-            "npcs": []
-        }
-        
-        for tree in self.trees:
-            x, z, scale = tree
-            self.render_cache["trees"].append({
-                "x": x,
-                "z": z,
-                "scale": scale
-            })
-        
-        for loc in self.locations:
-            self.render_cache["locations"].append({
-                "x": loc["x"],
-                "y": loc["y"],
-                "type": loc["type"],
-                "color": loc["color"],
-                "owner": loc["owner"],
-                "level": loc["level"]
-            })
-        
-        for struct in self.large_structures:
-            self.render_cache["structures"].append({
-                "x": struct["x"],
-                "z": struct["z"],
-                "size": struct["size"],
-                "height": struct["height"],
-                "color": struct["color"],
-                "name": struct["name"]
-            })
-        
-        self.cache_valid = True
-        print("地形缓存已生成")
+                self.trees.append((x, z))
     
     def handle_input(self):
+        """处理输入"""
         keys = pygame.key.get_pressed()
         
-        move_speed = self.camera["speed"] * (0.4 if keys[pygame.K_LSHIFT] else 1.0)
-        
+        # 相机移动
         if keys[pygame.K_w]:
-            self.move_forward(move_speed)
+            self.move_forward()
         if keys[pygame.K_s]:
-            self.move_backward(move_speed)
+            self.move_backward()
         if keys[pygame.K_a]:
-            self.move_left(move_speed)
+            self.move_left()
         if keys[pygame.K_d]:
-            self.move_right(move_speed)
+            self.move_right()
         if keys[pygame.K_SPACE]:
-            if self.player_pos[1] <= 0.5:
-                self.velocity[1] = 6.0
+            if self.on_ground:  # 只有踩在地形表面时才能起跳
+                self.velocity[1] = self.jump_speed
+        if keys[pygame.K_LSHIFT]:
+            self.camera["speed"] = 0.3  # 减速
+        else:
+            self.camera["speed"] = 0.6  # 正常速度
         
+        # 事件处理
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
             elif event.type == pygame.KEYDOWN:
+                # 🎮 作弊码按键序列检测
+                self.check_cheat_code_sequence(event.key)
+                
                 if event.key == pygame.K_ESCAPE:
-                    if self.is_mouse_locked:
+                    self.is_paused = not self.is_paused
+                    if self.is_paused:
                         self.is_mouse_locked = False
                         pygame.mouse.set_visible(True)
                         pygame.event.set_grab(False)
                     else:
-                        return False
+                        self.is_mouse_locked = True
+                        pygame.mouse.set_visible(False)
+                        pygame.event.set_grab(True)
                 elif event.key == pygame.K_TAB:
                     self.is_mouse_locked = not self.is_mouse_locked
                     pygame.mouse.set_visible(not self.is_mouse_locked)
                     pygame.event.set_grab(self.is_mouse_locked)
                 elif event.key == pygame.K_f:
+                    # 跟随模式
                     if self.follow_target:
                         self.follow_target = None
                         self.message = "取消跟随"
                     else:
+                        # 找到最近的地点作为跟随目标
                         if self.locations:
                             closest_loc = min(self.locations, key=lambda loc: math.hypot(loc["x"] - self.player_pos[0], loc["y"] - self.player_pos[2]))
                             self.follow_target = closest_loc
@@ -1290,1860 +1544,196 @@ class GameMap3D:
                             self.message = "没有可跟随的地点"
                     self.message_timer = 2000
                 elif event.key == pygame.K_F5:
-                    self.camera["mode"] = "third" if self.camera["mode"] == "first" else "first"
-                    self.message = f"切换到{'第三人称' if self.camera['mode'] == 'third' else '第一人称'}视角"
+                    if self.camera["mode"] == "first":
+                        self.camera["mode"] = "third_back"
+                        self.message = "切换到第三人称视角（背部）"
+                    elif self.camera["mode"] == "third_back":
+                        self.camera["mode"] = "third_front"
+                        self.message = "切换到第三人称视角（正面）"
+                    else:
+                        self.camera["mode"] = "first"
+                        self.message = "切换到第一人称视角"
                     self.message_timer = 2000
-                elif event.key == pygame.K_m:
-                    self.minimap_enabled = not self.minimap_enabled
-                    self.message = f"小地图: {'开启' if self.minimap_enabled else '关闭'}"
-                    self.message_timer = 2000
-                elif event.key == pygame.K_i:
-                    self.inventory_open = not self.inventory_open
-                    if self.inventory_open:
-                        self.is_mouse_locked = False
-                        pygame.mouse.set_visible(True)
-                        pygame.event.set_grab(False)
-                    elif not self.inventory_open:
-                        self.is_mouse_locked = True
-                        pygame.mouse.set_visible(False)
-                        pygame.event.set_grab(True)
-                elif self.inventory_open:
-                    if event.key == pygame.K_1:
-                        self.selected_slot = 0
-                    elif event.key == pygame.K_2:
-                        self.selected_slot = 1
-                    elif event.key == pygame.K_3:
-                        self.selected_slot = 2
-                    elif event.key == pygame.K_4:
-                        self.selected_slot = 3
-                    elif event.key == pygame.K_5:
-                        self.selected_slot = 4
-                    elif event.key == pygame.K_6:
-                        self.selected_slot = 5
-                    elif event.key == pygame.K_7:
-                        self.selected_slot = 6
-                    elif event.key == pygame.K_8:
-                        self.selected_slot = 7
-                    elif event.key == pygame.K_9:
-                        self.selected_slot = 8
+                elif event.key in [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9]:
+                    slot = event.key - pygame.K_1
+                    self.hotbar_selected = slot
+                    if slot < len(self.block_types):
+                        self.hotbar[slot] = self.block_types[slot]
+                        self.message = f"选择: {self.block_types[slot]}"
+                        self.message_timer = 1000
                 elif event.key == pygame.K_e:
-                    self.check_location_interaction()
-                elif event.key == pygame.K_r:
-                    selected_item = self.inventory[self.selected_slot]
-                    if selected_item and selected_item["item"].startswith("gun_"):
-                        self.reload_gun()
-                    else:
-                        self.collect_nearby_resources()
-                elif event.key == pygame.K_q:
-                    if not self.equip_general_weapon():
-                        self.message = "附近没有可装备武器的武将"
-                        self.message_timer = 2000
-                elif event.key == pygame.K_f:
-                    selected_item = self.inventory[self.selected_slot]
-                    if selected_item and selected_item["item"].startswith("gun_"):
-                        self.toggle_aim()
-                    else:
-                        self.toggle_follow()
-                elif event.key == pygame.K_t:
-                    self.marketplace_open = not self.marketplace_open
-                    if self.marketplace_open:
-                        if not self.marketplace:
-                            self.refresh_marketplace()
+                    self.show_inventory = not self.show_inventory
+                    if self.show_inventory:
                         self.is_mouse_locked = False
                         pygame.mouse.set_visible(True)
                         pygame.event.set_grab(False)
-                    else:
-                        self.is_mouse_locked = True
-                        pygame.mouse.set_visible(False)
-                        pygame.event.set_grab(True)
+                elif event.key == pygame.K_c:
+                    self.show_crafting = not self.show_crafting
+                    if self.show_crafting:
+                        self.is_mouse_locked = False
+                        pygame.mouse.set_visible(True)
+                        pygame.event.set_grab(False)
+                elif event.key == pygame.K_SLASH:
+                    self.show_command = True
+                    self.command_input = ""
+                    self.is_mouse_locked = False
+                    pygame.mouse.set_visible(True)
+                    pygame.event.set_grab(False)
+                elif event.key == pygame.K_g and pygame.key.get_mods() & pygame.KMOD_CTRL:
+                    self.toggle_gamemode()
+                elif event.key == pygame.K_RETURN and self.show_command:
+                    if self.command_input.strip():
+                        self.execute_command(self.command_input)
+                        self.command_history.append(self.command_input)
+                        if len(self.command_history) > 10:
+                            self.command_history.pop(0)
+                    self.show_command = False
+                    self.command_input = ""
+                    self.is_mouse_locked = True
+                    pygame.mouse.set_visible(False)
+                    pygame.event.set_grab(True)
+                elif event.key == pygame.K_BACKSPACE and self.show_command:
+                    self.command_input = self.command_input[:-1]
+                elif self.show_command:
+                    if event.unicode:
+                        self.command_input += event.unicode
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
-                    if self.inventory_open:
-                        mouse_pos = pygame.mouse.get_pos()
-                        self.handle_inventory_click(mouse_pos)
-                    elif not self.is_mouse_locked:
+                    if not self.is_mouse_locked:
                         self.is_mouse_locked = True
                         pygame.mouse.set_visible(False)
                         pygame.event.set_grab(True)
                         self.message = "鼠标已锁定，按Tab键解锁"
                         self.message_timer = 3000
                     else:
-                        if pygame.key.get_pressed()[pygame.K_LSHIFT]:
-                            self.try_place_block()
-                        else:
-                            self.try_mine_block()
+                        self.place_block()
                 elif event.button == 3:
-                    if not self.inventory_open:
-                        selected_item = self.inventory[self.selected_slot]
-                        if selected_item and selected_item["item"].startswith("gun_"):
-                            self.start_auto_fire()
-                        elif selected_item and self.can_use_item(selected_item["item"]):
-                            self.use_item(selected_item)
-                        elif not self.check_tech_interaction():
-                            if not self.check_npc_interaction():
-                                self.try_interact_block()
-                elif event.button == 4:
-                    self.selected_slot = (self.selected_slot - 1) % 9
-                elif event.button == 5:
-                    self.selected_slot = (self.selected_slot + 1) % 9
-            elif event.type == pygame.MOUSEBUTTONUP:
-                if event.button == 3:
-                    self.stop_auto_fire()
+                    if self.is_mouse_locked:
+                        self.break_block()
             elif event.type == pygame.MOUSEMOTION:
+                # 鼠标控制
                 if self.is_mouse_locked:
                     rel_x, rel_y = event.rel
-                    self.camera["yaw"] += rel_x * self.mouse_sensitivity
-                    self.camera["pitch"] -= rel_y * self.mouse_sensitivity
+                    # 修正鼠标方向：左右翻转，上下翻转
+                    self.camera["yaw"] += rel_x * self.mouse_sensitivity  # 左右方向正确
+                    self.camera["pitch"] -= rel_y * self.mouse_sensitivity  # 上下方向翻转
+                    
+                    # 限制俯仰角
                     self.camera["pitch"] = max(-89, min(89, self.camera["pitch"]))
         
         return True
     
-    def can_use_item(self, item_name):
-        weapon_items = ["bow", "crossbow", "trident"]
-        gun_items = ["gun_ak47", "gun_m4a1", "gun_awp", "gun_mp5", "gun_m1911", "gun_glock",
-                    "gun_scarh", "gun_p90", "gun_uzi", "gun_deserteagle", "gun_barrett", "gun_rpg"]
-        food_items = [
-            "apple", "bread", "cooked_beef", "raw_beef", "cooked_chicken", "raw_chicken",
-            "cooked_mutton", "raw_mutton", "cooked_porkchop", "raw_porkchop",
-            "cooked_rabbit", "raw_rabbit", "cooked_cod", "raw_cod", "cooked_salmon", "raw_salmon",
-            "pumpkin_pie", "cake", "cookie", "melon_slice", "carrot", "golden_carrot",
-            "potato", "baked_potato", "beetroot", "sweet_berries", "glow_berries",
-            "chorus_fruit", "rabbit_stew", "mushroom_stew", "beetroot_soup", "suspicious_stew"
-        ]
-        pet_items = ["oak_boat", "saddle", "horse_armor_leather", "horse_armor_iron", 
-                    "horse_armor_gold", "horse_armor_diamond"]
-        potion_items = ["enchanted_golden_apple", "golden_apple"]
-        
-        if item_name in weapon_items:
-            return True
-        if item_name in gun_items:
-            return True
-        if item_name in food_items:
-            return True
-        if item_name in pet_items:
-            return True
-        if item_name in potion_items:
-            return True
-        if item_name.startswith("pet_"):
-            return True
-        if item_name.startswith("武将卡_") or item_name.startswith("general_"):
-            return True
-        if item_name in ["diamond_sword", "iron_sword", "stone_sword", "wooden_sword", "netherite_sword"]:
-            return True
-        if item_name.startswith("attachment_"):
-            return True
-        
-        return False
+    def move_forward(self):
+        """向前移动"""
+        yaw_rad = math.radians(self.camera["yaw"])
+        self.player_pos[0] += math.cos(yaw_rad) * self.camera["speed"]
+        self.player_pos[2] += math.sin(yaw_rad) * self.camera["speed"]
+        self.update_camera()
     
-    def use_item(self, item):
-        item_name = item["item"]
-        
-        weapon_items = ["bow", "crossbow", "trident"]
-        gun_items = ["gun_ak47", "gun_m4a1", "gun_awp", "gun_mp5", "gun_m1911", "gun_glock",
-                    "gun_scarh", "gun_p90", "gun_uzi", "gun_deserteagle", "gun_barrett", "gun_rpg"]
-        
-        if item_name in weapon_items:
-            self.shoot_projectile(item_name)
-            return
-        
-        if item_name in gun_items:
-            self.shoot_gun(item_name)
-            return
-        
-        if item_name.startswith("attachment_"):
-            self.attach_attachment(item_name)
-            return
-        
-        food_items = [
-            "apple", "bread", "cooked_beef", "raw_beef", "cooked_chicken", "raw_chicken",
-            "cooked_mutton", "raw_mutton", "cooked_porkchop", "raw_porkchop",
-            "cooked_rabbit", "raw_rabbit", "cooked_cod", "raw_cod", "cooked_salmon", "raw_salmon",
-            "pumpkin_pie", "cake", "cookie", "melon_slice", "carrot", "golden_carrot",
-            "potato", "baked_potato", "beetroot", "sweet_berries", "glow_berries",
-            "chorus_fruit", "rabbit_stew", "mushroom_stew", "beetroot_soup", "suspicious_stew"
-        ]
-        if item_name in food_items:
-            self.eat_food(item)
-            return
-        
-        potion_items = ["enchanted_golden_apple", "golden_apple"]
-        if item_name in potion_items:
-            self.drink_potion(item)
-            return
-        
-        if item_name.startswith("pet_"):
-            self.summon_pet(item_name)
-            return
-        
-        if item_name.startswith("武将卡_") or item_name.startswith("general_"):
-            self.summon_general(item_name)
-            return
-        
-        if item_name in ["diamond_sword", "iron_sword", "stone_sword", "wooden_sword", "netherite_sword"]:
-            self.swing_sword(item)
-            return
-        
-        if item_name == "saddle":
-            self.equip_saddle()
-            return
+    def move_backward(self):
+        """向后移动"""
+        yaw_rad = math.radians(self.camera["yaw"])
+        self.player_pos[0] -= math.cos(yaw_rad) * self.camera["speed"]
+        self.player_pos[2] -= math.sin(yaw_rad) * self.camera["speed"]
+        self.update_camera()
     
-    def shoot_projectile(self, weapon_type):
-        if not hasattr(self, 'last_shot_time'):
-            self.last_shot_time = 0
-        
-        current_time = time.time()
-        if current_time - self.last_shot_time < 0.5:
-            return
-        
-        self.last_shot_time = current_time
-        
+    def move_left(self):
+        """向左移动"""
+        yaw_rad = math.radians(self.camera["yaw"])
+        self.player_pos[0] -= math.sin(yaw_rad) * self.camera["speed"]
+        self.player_pos[2] += math.cos(yaw_rad) * self.camera["speed"]
+        self.update_camera()
+    
+    def move_right(self):
+        """向右移动"""
+        yaw_rad = math.radians(self.camera["yaw"])
+        self.player_pos[0] += math.sin(yaw_rad) * self.camera["speed"]
+        self.player_pos[2] -= math.cos(yaw_rad) * self.camera["speed"]
+        self.update_camera()
+    
+    def place_block(self):
+        """放置方块（类似MC左键）"""
         yaw_rad = math.radians(self.camera["yaw"])
         pitch_rad = math.radians(self.camera["pitch"])
         
-        if weapon_type == "bow":
-            projectile = {
-                "type": "arrow",
-                "x": self.player_pos[0],
-                "y": self.player_pos[1] + 1.5,
-                "z": self.player_pos[2],
-                "velocity": [
-                    math.cos(yaw_rad) * math.cos(pitch_rad) * 1.5,
-                    math.sin(pitch_rad) * 1.5,
-                    math.sin(yaw_rad) * math.cos(pitch_rad) * 1.5
-                ],
-                "lifetime": 200
-            }
-            self.message = "🏹 射出一支箭！"
-        elif weapon_type == "crossbow":
-            projectile = {
-                "type": "bolt",
-                "x": self.player_pos[0],
-                "y": self.player_pos[1] + 1.5,
-                "z": self.player_pos[2],
-                "velocity": [
-                    math.cos(yaw_rad) * math.cos(pitch_rad) * 2.0,
-                    math.sin(pitch_rad) * 2.0,
-                    math.sin(yaw_rad) * math.cos(pitch_rad) * 2.0
-                ],
-                "lifetime": 150
-            }
-            self.message = "⚔️ 射出一支弩箭！"
-        elif weapon_type == "trident":
-            projectile = {
-                "type": "trident",
-                "x": self.player_pos[0],
-                "y": self.player_pos[1] + 1.5,
-                "z": self.player_pos[2],
-                "velocity": [
-                    math.cos(yaw_rad) * math.cos(pitch_rad) * 1.8,
-                    math.sin(pitch_rad) * 1.8,
-                    math.sin(yaw_rad) * math.cos(pitch_rad) * 1.8
-                ],
-                "lifetime": 180
-            }
-            self.message = "🔱 投出三叉戟！"
-        
-        self.projectiles.append(projectile)
-        self.message_timer = 2000
-    
-    def shoot_gun(self, gun_type):
-        if not hasattr(self, 'last_gun_shot_time'):
-            self.last_gun_shot_time = 0
-        
-        current_time = time.time()
-        gun_data = MC_BLOCKS.get(gun_type, {})
-        fire_rate = gun_data.get("fire_rate", 0.2)
-        
-        if current_time - self.last_gun_shot_time < fire_rate:
-            return
-        
-        self.last_gun_shot_time = current_time
-        
-        ammo_type = gun_data.get("ammo_type", "ammo_9mm")
-        damage = gun_data.get("damage", 15)
-        
-        has_ammo = False
-        for i, inv_item in enumerate(self.inventory):
-            if inv_item and inv_item["item"] == ammo_type:
-                has_ammo = True
-                if inv_item["count"] > 1:
-                    self.inventory[i]["count"] -= 1
-                else:
-                    self.inventory[i] = None
-                break
-        
-        if not has_ammo:
-            self.message = "⚠️ 没有弹药！需要 " + ammo_type
-            self.message_timer = 2000
-            return
-        
-        yaw_rad = math.radians(self.camera["yaw"])
-        pitch_rad = math.radians(self.camera["pitch"])
-        
-        speed = 3.0
-        if gun_type in ["gun_awp", "gun_barrett"]:
-            speed = 5.0
-        elif gun_type in ["gun_mp5", "gun_p90", "gun_uzi"]:
-            speed = 2.5
-        
-        projectile = {
-            "type": "bullet",
-            "x": self.player_pos[0],
-            "y": self.player_pos[1] + 1.5,
-            "z": self.player_pos[2],
-            "velocity": [
-                math.cos(yaw_rad) * math.cos(pitch_rad) * speed,
-                math.sin(pitch_rad) * speed,
-                math.sin(yaw_rad) * math.cos(pitch_rad) * speed
-            ],
-            "lifetime": 100,
-            "damage": damage
-        }
-        
-        self.projectiles.append(projectile)
-        
-        gun_names = {
-            "gun_ak47": "AK-47", "gun_m4a1": "M4A1", "gun_awp": "AWP",
-            "gun_mp5": "MP5", "gun_m1911": "M1911", "gun_glock": "Glock",
-            "gun_scarh": "SCAR-H", "gun_p90": "P90", "gun_uzi": "Uzi",
-            "gun_deserteagle": "沙漠之鹰", "gun_barrett": "巴雷特", "gun_rpg": "RPG"
-        }
-        gun_name = gun_names.get(gun_type, gun_type)
-        self.message = f"🔫 {gun_name} 开火！伤害:{damage}"
-        self.message_timer = 1500
-        
-        self.apply_recoil(gun_type)
-    
-    def apply_recoil(self, gun_type):
-        recoil_values = {
-            "gun_ak47": [2.0, 0.5], "gun_m4a1": [1.5, 0.3], "gun_awp": [5.0, 0.1],
-            "gun_mp5": [1.0, 0.4], "gun_m1911": [2.5, 0.3], "gun_glock": [1.5, 0.3],
-            "gun_scarh": [2.0, 0.4], "gun_p90": [0.8, 0.5], "gun_uzi": [0.5, 0.6],
-            "gun_deserteagle": [4.0, 0.2], "gun_barrett": [8.0, 0.1], "gun_rpg": [10.0, 0.1]
-        }
-        
-        recoil = recoil_values.get(gun_type, [1.0, 0.3])
-        self.recoil[0] += recoil[0] * (0.5 + random.uniform(-0.2, 0.2))
-        self.recoil[1] += recoil[1] * (0.5 + random.uniform(-0.3, 0.3))
-        
-        if self.is_aiming:
-            self.recoil[0] *= 0.5
-            self.recoil[1] *= 0.5
-    
-    def start_auto_fire(self):
-        selected_item = self.inventory[self.selected_slot]
-        if not selected_item or not selected_item["item"].startswith("gun_"):
-            return
-        
-        self.auto_firing = True
-        self.current_gun = selected_item["item"]
-        
-        gun_data = MC_BLOCKS.get(self.current_gun, {})
-        self.max_ammo = gun_data.get("mag_size", 30)
-        
-        ammo_type = gun_data.get("ammo_type", "ammo_9mm")
-        for item in self.inventory:
-            if item and item["item"] == ammo_type:
-                self.current_ammo = min(item["count"], self.max_ammo)
-                break
-        
-        self.message = f"🔫 开始射击！弹药: {self.current_ammo}/{self.max_ammo}"
-        self.message_timer = 2000
-    
-    def stop_auto_fire(self):
-        self.auto_firing = False
-        self.current_gun = None
-    
-    def update_auto_fire(self):
-        if not self.auto_firing or not self.current_gun:
-            return
-        
-        if self.current_ammo <= 0:
-            self.stop_auto_fire()
-            self.message = "🔫 弹药耗尽！"
-            self.message_timer = 2000
-            return
-        
-        gun_data = MC_BLOCKS.get(self.current_gun, {})
-        fire_rate = gun_data.get("fire_rate", 0.2)
-        
-        if not hasattr(self, 'last_gun_shot_time'):
-            self.last_gun_shot_time = 0
-        
-        current_time = time.time()
-        if current_time - self.last_gun_shot_time >= fire_rate:
-            self.last_gun_shot_time = current_time
-            self.current_ammo -= 1
-            
-            ammo_type = gun_data.get("ammo_type", "ammo_9mm")
-            for i, item in enumerate(self.inventory):
-                if item and item["item"] == ammo_type and item["count"] > 0:
-                    item["count"] -= 1
-                    if item["count"] <= 0:
-                        self.inventory[i] = None
-                    break
-            
-            yaw_rad = math.radians(self.camera["yaw"] + self.recoil[0])
-            pitch_rad = math.radians(self.camera["pitch"] + self.recoil[1])
-            
-            speed = 3.0
-            if self.current_gun in ["gun_awp", "gun_barrett"]:
-                speed = 5.0
-            elif self.current_gun in ["gun_mp5", "gun_p90", "gun_uzi"]:
-                speed = 2.5
-            
-            projectile = {
-                "type": "bullet",
-                "x": self.player_pos[0],
-                "y": self.player_pos[1] + 1.5,
-                "z": self.player_pos[2],
-                "velocity": [
-                    math.cos(yaw_rad) * math.cos(pitch_rad) * speed,
-                    math.sin(pitch_rad) * speed,
-                    math.sin(yaw_rad) * math.cos(pitch_rad) * speed
-                ],
-                "lifetime": 100,
-                "damage": gun_data.get("damage", 15)
-            }
-            
-            self.projectiles.append(projectile)
-            self.apply_recoil(self.current_gun)
-    
-    def reload_gun(self):
-        selected_item = self.inventory[self.selected_slot]
-        if not selected_item or not selected_item["item"].startswith("gun_"):
-            return
-        
-        gun_data = MC_BLOCKS.get(selected_item["item"], {})
-        ammo_type = gun_data.get("ammo_type", "ammo_9mm")
-        max_ammo = gun_data.get("mag_size", 30)
-        
-        ammo_count = 0
-        ammo_index = -1
-        for i, item in enumerate(self.inventory):
-            if item and item["item"] == ammo_type:
-                ammo_count = item["count"]
-                ammo_index = i
-                break
-        
-        if ammo_count <= 0:
-            self.message = "⚠️ 没有弹药！"
-            self.message_timer = 2000
-            return
-        
-        needed = max_ammo - self.current_ammo
-        if needed <= 0:
-            self.message = "✅ 弹匣已满！"
-            self.message_timer = 2000
-            return
-        
-        reload_amount = min(needed, ammo_count)
-        self.current_ammo += reload_amount
-        
-        if ammo_index >= 0:
-            self.inventory[ammo_index]["count"] -= reload_amount
-            if self.inventory[ammo_index]["count"] <= 0:
-                self.inventory[ammo_index] = None
-        
-        self.message = f"🔄 换弹完成！弹药: {self.current_ammo}/{max_ammo}"
-        self.message_timer = 2000
-    
-    def toggle_aim(self):
-        selected_item = self.inventory[self.selected_slot]
-        if not selected_item or not selected_item["item"].startswith("gun_"):
-            return
-        
-        self.is_aiming = not self.is_aiming
-        
-        if self.is_aiming:
-            attachments = selected_item.get("attachments", [])
-            zoom = 1.0
-            for att in attachments:
-                if att.get("type") == "scope":
-                    zoom = att.get("zoom", 1.0)
-                    break
-            self.sight_zoom = zoom
-            self.message = f"🎯 开镜！倍率: {zoom}x"
-        else:
-            self.sight_zoom = 1.0
-            self.message = "🔭 关镜"
-        
-        self.message_timer = 1500
-    
-    def add_hit_marker(self, x, z):
-        self.hit_markers.append({
-            "x": x,
-            "z": z,
-            "alpha": 1.0,
-            "lifetime": 60
-        })
-    
-    def add_damage_number(self, x, z, damage):
-        self.damage_numbers.append({
-            "x": x,
-            "z": z,
-            "y": 2.0,
-            "damage": damage,
-            "alpha": 1.0,
-            "lifetime": 120
-        })
-    
-    def update_hit_markers(self):
-        for marker in self.hit_markers[:]:
-            marker["alpha"] -= 0.02
-            marker["lifetime"] -= 1
-            if marker["lifetime"] <= 0:
-                self.hit_markers.remove(marker)
-    
-    def update_damage_numbers(self):
-        for num in self.damage_numbers[:]:
-            num["alpha"] -= 0.01
-            num["y"] += 0.02
-            num["lifetime"] -= 1
-            if num["lifetime"] <= 0:
-                self.damage_numbers.remove(num)
-    
-    def update_recoil(self):
-        self.recoil[0] *= 0.9
-        self.recoil[1] *= 0.9
-        if abs(self.recoil[0]) < 0.1:
-            self.recoil[0] = 0
-        if abs(self.recoil[1]) < 0.1:
-            self.recoil[1] = 0
-    
-    def attach_attachment(self, attachment_type):
-        selected_item = self.inventory[self.selected_slot]
-        if not selected_item:
-            self.message = "⚠️ 请先选择一把枪械"
-            self.message_timer = 2000
-            return
-        
-        gun_items = ["gun_ak47", "gun_m4a1", "gun_awp", "gun_mp5", "gun_m1911", "gun_glock",
-                    "gun_scarh", "gun_p90", "gun_uzi", "gun_deserteagle", "gun_barrett", "gun_rpg"]
-        
-        if selected_item["item"] not in gun_items:
-            self.message = "⚠️ 只能给枪械装备配件"
-            self.message_timer = 2000
-            return
-        
-        if "attachments" not in selected_item:
-            selected_item["attachments"] = []
-        
-        attachment_data = MC_BLOCKS.get(attachment_type, {})
-        attachment_type_str = attachment_data.get("type", "unknown")
-        
-        for existing in selected_item["attachments"]:
-            if existing.get("type") == attachment_type_str:
-                self.message = f"⚠️ 已经装备了{attachment_type_str}类型配件"
-                self.message_timer = 2000
-                return
-        
-        selected_item["attachments"].append({
-            "item": attachment_type,
-            "type": attachment_type_str,
-            "zoom": attachment_data.get("zoom", 0),
-            "bonus": attachment_data.get("bonus", 0)
-        })
-        
-        for i, inv_item in enumerate(self.inventory):
-            if inv_item and inv_item["item"] == attachment_type:
-                if inv_item["count"] > 1:
-                    self.inventory[i]["count"] -= 1
-                else:
-                    self.inventory[i] = None
-                break
-        
-        attachment_names = {
-            "attachment_scope_4x": "4倍镜", "attachment_scope_8x": "8倍镜",
-            "attachment_scope_red_dot": "红点瞄准镜", "attachment_silencer": "消音器",
-            "attachment_extended_mag": "扩容弹匣", "attachment_grip": "握把",
-            "attachment_laser": "激光瞄准器", "attachment_flashlight": "战术手电",
-            "attachment_bipod": "两脚架", "attachment_stock": "枪托"
-        }
-        att_name = attachment_names.get(attachment_type, attachment_type)
-        self.message = f"🔧 已装备配件: {att_name}"
-        self.message_timer = 2000
-    
-    def eat_food(self, item):
-        food_values = {
-            "apple": 4, "bread": 5, "cooked_beef": 8, "raw_beef": 3,
-            "cooked_chicken": 6, "raw_chicken": 2, "cooked_mutton": 8, "raw_mutton": 2,
-            "cooked_porkchop": 8, "raw_porkchop": 3, "cooked_rabbit": 5, "raw_rabbit": 3,
-            "cooked_cod": 5, "raw_cod": 2, "cooked_salmon": 6, "raw_salmon": 2,
-            "pumpkin_pie": 8, "cake": 14, "cookie": 2, "melon_slice": 2,
-            "carrot": 4, "golden_carrot": 10, "potato": 1, "baked_potato": 5,
-            "beetroot": 2, "sweet_berries": 2, "glow_berries": 4,
-            "chorus_fruit": 4, "rabbit_stew": 10, "mushroom_stew": 6,
-            "beetroot_soup": 6, "suspicious_stew": 6
-        }
-        
-        food_value = food_values.get(item["item"], 2)
-        
-        if not hasattr(self, 'player_health'):
-            self.player_health = 20
-        if not hasattr(self, 'player_max_health'):
-            self.player_max_health = 20
-        
-        self.player_health = min(self.player_health + food_value, self.player_max_health)
-        
-        if item["count"] > 1:
-            self.inventory[self.selected_slot]["count"] -= 1
-        else:
-            self.inventory[self.selected_slot] = None
-        
-        food_names = {
-            "apple": "苹果", "bread": "面包", "cooked_beef": "熟牛肉", "cooked_chicken": "熟鸡肉",
-            "pumpkin_pie": "南瓜派", "cake": "蛋糕", "golden_carrot": "金胡萝卜",
-            "baked_potato": "烤土豆"
-        }
-        food_name = food_names.get(item["item"], item["item"])
-        self.message = f"🍖 食用{food_name}，恢复{food_value}点生命！"
-        self.message_timer = 2000
-    
-    def drink_potion(self, item):
-        if item["item"] == "golden_apple":
-            heal_amount = 4
-            self.message = "🍎 食用金苹果，附有微弱治疗效果！"
-        else:
-            heal_amount = 8
-            self.message = "✨ 食用附魔金苹果，获得生命恢复效果！"
-        
-        if not hasattr(self, 'player_health'):
-            self.player_health = 20
-        if not hasattr(self, 'player_max_health'):
-            self.player_max_health = 20
-        
-        self.player_health = min(self.player_health + heal_amount, self.player_max_health)
-        
-        if item["count"] > 1:
-            self.inventory[self.selected_slot]["count"] -= 1
-        else:
-            self.inventory[self.selected_slot] = None
-        self.message_timer = 2000
-    
-    def equip_general_weapon(self):
-        selected_item = self.inventory[self.selected_slot]
-        if not selected_item:
-            return False
-        
-        item_name = selected_item["item"]
-        weapon_types = ["bow", "crossbow", "trident", "diamond_sword", "iron_sword", "stone_sword", "wooden_sword", "netherite_sword"]
-        
-        if item_name not in weapon_types:
-            return False
-        
-        for general in self.generals:
-            distance = math.hypot(
-                general["x"] - self.player_pos[0],
-                general["z"] - self.player_pos[2]
-            )
-            if distance < 5:
-                general["weapon"] = item_name
-                
-                if selected_item["count"] > 1:
-                    self.inventory[self.selected_slot]["count"] -= 1
-                else:
-                    self.inventory[self.selected_slot] = None
-                
-                weapon_names = {
-                    "bow": "弓", "crossbow": "弩", "trident": "三叉戟",
-                    "diamond_sword": "钻石剑", "iron_sword": "铁剑",
-                    "stone_sword": "石剑", "wooden_sword": "木剑", "netherite_sword": "下界合金剑"
-                }
-                weapon_name = weapon_names.get(item_name, item_name)
-                self.message = f"⚔️ {general['name']} 装备了{weapon_name}！"
-                self.message_timer = 3000
-                return True
-        
-        return False
-    
-    def swing_sword(self, item):
-        self.message = "⚔️ 挥剑攻击！"
-        self.message_timer = 1500
-        
-        sword_range = 4.0
-        hit_entities = []
-        
-        for npc in self.npcs[:]:
-            distance = math.hypot(
-                npc["x"] - self.player_pos[0],
-                npc["z"] - self.player_pos[2]
-            )
-            if distance <= sword_range:
-                hit_entities.append(("npc", npc))
-        
-        for general in self.generals[:]:
-            distance = math.hypot(
-                general["x"] - self.player_pos[0],
-                general["z"] - self.player_pos[2]
-            )
-            if distance <= sword_range:
-                hit_entities.append(("general", general))
-        
-        for enemy in self.enemies[:]:
-            distance = math.hypot(
-                enemy["x"] - self.player_pos[0],
-                enemy["z"] - self.player_pos[2]
-            )
-            if distance <= sword_range:
-                hit_entities.append(("enemy", enemy))
-        
-        for entity_type, entity in hit_entities:
-            if entity_type == "npc":
-                entity["health"] = entity.get("health", 20) - 5
-            elif entity_type == "general":
-                entity["hp"] = entity.get("hp", 100) - 5
-            elif entity_type == "enemy":
-                entity["health"] = entity.get("health", 20) - 10
-                if entity["health"] <= 0:
-                    self.enemies.remove(entity)
-                    self.spawn_loot(entity["x"], entity["z"])
-    
-    def summon_pet(self, pet_type):
-        yaw_rad = math.radians(self.camera["yaw"])
-        spawn_distance = 2.0
-        spawn_x = self.player_pos[0] + math.cos(yaw_rad) * spawn_distance
-        spawn_z = self.player_pos[2] + math.sin(yaw_rad) * spawn_distance
-        
-        pet_data = self.get_pet_data(pet_type)
-        pet = {
-            "type": "pet",
-            "name": pet_data["name"],
-            "x": spawn_x,
-            "y": 0,
-            "z": spawn_z,
-            "health": pet_data["health"],
-            "max_health": pet_data["health"],
-            "damage": pet_data["damage"],
-            "color": pet_data["color"],
-            "size": pet_data["size"],
-            "following": True
-        }
-        
-        self.pets.append(pet)
-        
-        if self.inventory[self.selected_slot]["count"] > 1:
-            self.inventory[self.selected_slot]["count"] -= 1
-        else:
-            self.inventory[self.selected_slot] = None
-        
-        self.message = f"🐾 召唤宠物: {pet_data['name']}！"
-        self.message_timer = 3000
-    
-    def get_pet_data(self, pet_type):
-        pet_database = {
-            "pet_wolf": {"name": "狼", "health": 20, "damage": 5, "color": (0.5, 0.5, 0.5), "size": 1.2},
-            "pet_cat": {"name": "猫", "health": 10, "damage": 2, "color": (0.8, 0.6, 0.4), "size": 0.8},
-            "pet_horse": {"name": "马", "health": 30, "damage": 3, "color": (0.6, 0.4, 0.2), "size": 1.5},
-            "pet_pig": {"name": "猪", "health": 10, "damage": 1, "color": (0.9, 0.7, 0.7), "size": 1.0},
-            "pet_cow": {"name": "牛", "health": 20, "damage": 2, "color": (0.4, 0.3, 0.3), "size": 1.3},
-            "pet_sheep": {"name": "羊", "health": 10, "damage": 1, "color": (0.9, 0.9, 0.9), "size": 1.1},
-            "pet_chicken": {"name": "鸡", "health": 4, "damage": 0, "color": (0.9, 0.8, 0.6), "size": 0.6},
-            "pet_rabbit": {"name": "兔子", "health": 3, "damage": 0, "color": (0.8, 0.7, 0.6), "size": 0.5}
-        }
-        return pet_database.get(pet_type, {"name": "未知宠物", "health": 10, "damage": 2, "color": (0.5, 0.5, 0.5), "size": 1.0})
-    
-    def equip_saddle(self):
-        self.has_saddle = True
-        if self.inventory[self.selected_slot]["count"] > 1:
-            self.inventory[self.selected_slot]["count"] -= 1
-        else:
-            self.inventory[self.selected_slot] = None
-        self.message = "🫏 装备马鞍成功！可以骑乘马匹了！"
-        self.message_timer = 2000
-    
-    def try_mine_block(self):
-        selected_item = self.inventory[self.selected_slot]
-        if not selected_item:
-            return
-        
-        item_name = selected_item["item"]
-        
-        if item_name in ["wooden_pickaxe", "stone_pickaxe", "iron_pickaxe", "diamond_pickaxe", "netherite_pickaxe"]:
-            self.mine_with_pickaxe(selected_item)
-        elif item_name in ["wooden_shovel", "stone_shovel", "iron_shovel", "diamond_shovel", "netherite_shovel"]:
-            self.mine_with_shovel(selected_item)
-        elif item_name in ["wooden_axe", "stone_axe", "iron_axe", "diamond_axe", "netherite_axe"]:
-            self.mine_with_axe(selected_item)
-        else:
-            self.mine_with_hand(selected_item)
-    
-    def mine_with_hand(self, item):
-        self.message = "空手无法破坏方块"
-        self.message_timer = 1500
-    
-    def mine_with_pickaxe(self, item):
-        self.message = "⛏️ 正在挖掘..."
-        self.message_timer = 1000
-        tool_tiers = {
-            "wooden_pickaxe": 1.0,
-            "stone_pickaxe": 1.5,
-            "iron_pickaxe": 2.0,
-            "diamond_pickaxe": 2.5,
-            "netherite_pickaxe": 3.0
-        }
-        efficiency = tool_tiers.get(item["item"], 1.0)
-        self.message = f"⛏️ 效率 {efficiency}x"
-    
-    def mine_with_shovel(self, item):
-        self.message = "🔨 正在铲..."
-        self.message_timer = 1000
-    
-    def mine_with_axe(self, item):
-        self.message = "🪓 正在砍..."
-        self.message_timer = 1000
-    
-    def try_place_block(self):
-        selected_item = self.inventory[self.selected_slot]
-        if not selected_item:
-            return
-        
-        item_name = selected_item["item"]
-        
-        if item_name in MC_BLOCKS:
-            block_data = MC_BLOCKS[item_name]
-            if block_data.get("solid", True):
-                yaw_rad = math.radians(self.camera["yaw"])
-                place_distance = 4.0
-                place_x = self.player_pos[0] + math.cos(yaw_rad) * place_distance
-                place_z = self.player_pos[2] + math.sin(yaw_rad) * place_distance
-                place_y = self.player_pos[1] - 1.0
-                
-                if self.inventory[self.selected_slot]["count"] > 1:
-                    self.inventory[self.selected_slot]["count"] -= 1
-                else:
-                    self.inventory[self.selected_slot] = None
-                
-                self.spawn_pickup(item_name, place_x, place_z, 1)
-                self.message = f"放置: {item_name}"
-                self.message_timer = 1500
-            else:
-                self.message = "无法放置透明方块"
-                self.message_timer = 1500
-        else:
-                if item_name.startswith("武将卡_") or item_name.startswith("general_"):
-                    self.summon_general(item_name)
-                else:
-                    self.message = "无法放置该物品"
-                    self.message_timer = 1500
-    
-    def try_interact_block(self):
-        yaw_rad = math.radians(self.camera["yaw"])
-        interact_distance = 5.0
-        target_x = self.player_pos[0] + math.cos(yaw_rad) * interact_distance
-        target_z = self.player_pos[2] + math.sin(yaw_rad) * interact_distance
-        
-        for tech_block in self.tech_blocks:
-            if math.hypot(tech_block["x"] - target_x, tech_block["z"] - target_z) < 3:
-                self.check_tech_interaction()
-                return
-        
-        self.try_pickup_item()
-    
-    def summon_general(self, card_name):
-        general_data = self.get_general_from_card(card_name)
-        if not general_data:
-            self.message = "无效的武将卡"
-            self.message_timer = 2000
-            return
-        
-        yaw_rad = math.radians(self.camera["yaw"])
-        spawn_distance = 3.0
-        spawn_x = self.player_pos[0] + math.cos(yaw_rad) * spawn_distance
-        spawn_z = self.player_pos[2] + math.sin(yaw_rad) * spawn_distance
-        
-        general = {
-            "type": "general",
-            "name": general_data["name"],
-            "x": spawn_x,
-            "z": spawn_z,
-            "level": general_data.get("level", 1),
-            "power": general_data.get("power", 100),
-            "hp": general_data.get("hp", 100),
-            "max_hp": general_data.get("hp", 100),
-            "equipment": general_data.get("equipment", {}),
-            "skills": general_data.get("skills", []),
-            "color": (0.8, 0.6, 0.2)
-        }
-        
-        self.generals.append(general)
-        
-        self.inventory[self.selected_slot] = None
-        
-        self.message = f"⚔️ 召唤武将: {general_data['name']}"
-        self.message_timer = 3000
-    
-    def get_general_from_card(self, card_name):
-        generals_db = data.get("generals", {})
-        
-        if card_name.startswith("武将卡_"):
-            general_id = card_name.replace("武将卡_", "")
-        else:
-            general_id = card_name.replace("general_", "")
-        
-        for general_id_key, general_data in generals_db.items():
-            if general_id_key == general_id or general_data.get("name", "").replace(" ", "_") == general_id:
-                return general_data
-        
-        return {
-            "name": general_id.replace("_", " ").title(),
-            "level": 1,
-            "power": 100,
-            "hp": 100,
-            "equipment": {},
-            "skills": ["攻击", "防御"]
-        }
-    
-    def check_tech_interaction(self):
-        current_time = time.time()
-        if current_time - self.last_tech_interact < 0.5:
-            return False
-        
-        for tech_block in self.tech_blocks:
-            distance = math.hypot(
-                tech_block["x"] - self.player_pos[0],
-                tech_block["z"] - self.player_pos[2]
-            )
-            if distance < 5:
-                self.last_tech_interact = current_time
-                tech_type = tech_block["type"]
-                tech_block["active"] = not tech_block.get("active", True)
-                
-                messages = {
-                    "tech_energy_core": "⚡ 能量核心已" + ("激活" if tech_block["active"] else "关闭"),
-                    "tech_generator": "🔋 发电机已" + ("启动" if tech_block["active"] else "停止"),
-                    "tech_matter_transporter": "🌀 物质传输器已" + ("激活" if tech_block["active"] else "关闭"),
-                    "tech_laser_node": "💥 激光节点已" + ("激活" if tech_block["active"] else "关闭"),
-                    "tech_quantum_storage": "💎 量子存储已" + ("激活" if tech_block["active"] else "关闭"),
-                    "tech_fusion_core": "☀️ 聚变核心已" + ("激活" if tech_block["active"] else "关闭"),
-                    "tech_teleporter": "🌟 传送门已" + ("激活" if tech_block["active"] else "关闭"),
-                    "tech_hologram_projector": "🎭 全息投影仪已" + ("激活" if tech_block["active"] else "关闭"),
-                }
-                
-                self.message = messages.get(tech_type, "✨ 科技方块已" + ("激活" if tech_block["active"] else "关闭"))
-                self.message_timer = 2000
-                
-                if tech_block["active"] and random.random() < 0.4:
-                    drop_items = ["gold_ingot", "iron_ingot", "diamond", "tech_advanced_chip", "tech_circuit_board"]
-                    drop_item = random.choice(drop_items)
-                    self.spawn_pickup(drop_item, tech_block["x"], tech_block["z"], 1)
-                
-                if tech_type == "tech_teleporter" and tech_block["active"]:
-                    if self.teleporter_targets:
-                        target = random.choice(self.teleporter_targets)
-                        self.player_pos = [target["x"], 2, target["z"]]
-                        self.message = "✨ 传送完成！"
-                    else:
-                        self.teleporter_targets.append({
-                            "x": tech_block["x"],
-                            "z": tech_block["z"]
-                        })
-                        self.message = "🎯 传送目标已设置！"
-                
-                return True
-        return False
-    
-    def try_pickup_item(self):
-        for pickup in self.pickups[:]:
-            distance = math.hypot(
-                pickup["x"] - self.player_pos[0],
-                pickup["y"] - self.player_pos[2]
-            )
-            if distance <= MAX_PICKUP_DISTANCE:
-                self.pickup_item(pickup)
-                self.pickups.remove(pickup)
-                return
-        self.message = "附近没有可拾取的物品"
-        self.message_timer = 2000
-    
-    def pickup_item(self, pickup):
-        item = pickup["item"]
-        stack_size = pickup.get("count", 1)
-        
-        for i in range(INVENTORY_SLOTS):
-            if self.inventory[i] and self.inventory[i]["item"] == item:
-                self.inventory[i]["count"] += stack_size
-                self.message = f"拾取: {item} x{stack_size}"
-                self.message_timer = 2000
-                save()
-                return
-        
-        for i in range(INVENTORY_SLOTS):
-            if self.inventory[i] is None:
-                self.inventory[i] = {"item": item, "count": stack_size}
-                self.message = f"拾取: {item} x{stack_size}"
-                self.message_timer = 2000
-                save()
-                return
-        
-        self.message = "背包已满！"
-        self.message_timer = 2000
-    
-    def handle_inventory_click(self, mouse_pos):
-        slot_size = 50
-        slot_spacing = 5
-        start_x = SCREEN_WIDTH // 2 - (9 * slot_size + 8 * slot_spacing) // 2
-        start_y = SCREEN_HEIGHT // 2 - 2 * (slot_size + slot_spacing)
-        
-        for i in range(INVENTORY_SLOTS):
-            slot_x = start_x + (i % 9) * (slot_size + slot_spacing)
-            slot_y = start_y + (i // 9) * (slot_size + slot_spacing)
-            slot_rect = pygame.Rect(slot_x, slot_y, slot_size, slot_size)
-            
-            if slot_rect.collidepoint(mouse_pos):
-                if i == self.selected_slot:
-                    pass
-                elif self.inventory[i]:
-                    temp = self.inventory[i]
-                    self.inventory[i] = self.inventory[self.selected_slot]
-                    self.inventory[self.selected_slot] = temp
-                elif self.inventory[self.selected_slot]:
-                    self.inventory[i] = self.inventory[self.selected_slot]
-                    self.inventory[self.selected_slot] = None
-    
-    def spawn_pickup(self, item, x, y, count=1):
-        pickup = {
-            "item": item,
-            "x": x,
-            "y": y,
-            "count": count,
-            "lifetime": 300
-        }
-        self.pickups.append(pickup)
-    
-    def spawn_enemy(self):
-        if len(self.enemies) >= 15:
-            return
-        
-        enemy_types = [
-            {"name": "僵尸", "health": 20, "damage": 5, "color": (0.4, 0.6, 0.3), "speed": 0.3},
-            {"name": "骷髅", "health": 15, "damage": 4, "color": (0.9, 0.9, 0.8), "speed": 0.4},
-            {"name": "蜘蛛", "health": 12, "damage": 3, "color": (0.2, 0.2, 0.2), "speed": 0.5},
-            {"name": "苦力怕", "health": 18, "damage": 10, "color": (0.5, 0.9, 0.4), "speed": 0.35}
-        ]
-        
-        enemy_type = random.choice(enemy_types)
-        angle = random.uniform(0, 2 * math.pi)
-        distance = random.uniform(50, 100)
-        
-        enemy = {
-            "type": enemy_type["name"],
-            "x": self.player_pos[0] + math.cos(angle) * distance,
-            "z": self.player_pos[2] + math.sin(angle) * distance,
-            "health": enemy_type["health"],
-            "max_health": enemy_type["health"],
-            "damage": enemy_type["damage"],
-            "color": enemy_type["color"],
-            "speed": enemy_type["speed"],
-            "attack_cooldown": 0
-        }
-        
-        self.enemies.append(enemy)
-    
-    def update_enemies(self):
-        if random.random() < 0.005 and len(self.enemies) < 10:
-            self.spawn_enemy()
-        
-        for enemy in self.enemies[:]:
-            dx = self.player_pos[0] - enemy["x"]
-            dz = self.player_pos[2] - enemy["z"]
-            distance = math.hypot(dx, dz)
-            
-            if distance > 1:
-                enemy["x"] += (dx / distance) * enemy["speed"]
-                enemy["z"] += (dz / distance) * enemy["speed"]
-            
-            if enemy.get("attack_cooldown", 0) > 0:
-                enemy["attack_cooldown"] -= 1
-            
-            if distance < 2 and enemy["attack_cooldown"] <= 0:
-                self.player_health -= enemy["damage"]
-                enemy["attack_cooldown"] = 60
-                self.message = f"💀 {enemy['type']} 攻击了你！-{enemy['damage']}生命"
-                self.message_timer = 2000
-            
-            for general in self.generals[:]:
-                gx = general["x"] - enemy["x"]
-                gz = general["z"] - enemy["z"]
-                g_dist = math.hypot(gx, gz)
-                
-                if g_dist > 1:
-                    general["x"] += (gx / g_dist) * enemy["speed"] * 0.8
-                    general["z"] += (gz / g_dist) * enemy["speed"] * 0.8
-                
-                if g_dist < 2 and general.get("attack_cooldown", 0) <= 0:
-                    enemy["health"] -= 5
-                    general["attack_cooldown"] = 40
-                    if enemy["health"] <= 0:
-                        self.enemies.remove(enemy)
-                        self.spawn_loot(enemy["x"], enemy["z"])
-                        self.message = f"⚔️ {general['name']} 击败了{enemy['type']}！"
-                        self.message_timer = 2000
-    
-    def refresh_marketplace(self):
-        self.marketplace = []
-        
-        gun_items = ["gun_ak47", "gun_m4a1", "gun_awp", "gun_mp5", "gun_m1911", "gun_glock",
-                    "gun_scarh", "gun_p90", "gun_uzi", "gun_deserteagle", "gun_barrett", "gun_rpg"]
-        ammo_items = ["ammo_762", "ammo_556", "ammo_9mm", "ammo_45acp", "ammo_50ae", "ammo_50bmg", "ammo_57mm", "ammo_rpg"]
-        attachment_items = ["attachment_scope_4x", "attachment_scope_8x", "attachment_scope_red_dot",
-                          "attachment_silencer", "attachment_extended_mag", "attachment_grip",
-                          "attachment_laser", "attachment_flashlight", "attachment_bipod", "attachment_stock"]
-        rare_items = ["diamond", "emerald", "netherite_ingot", "golden_apple", "enchanted_golden_apple",
-                     "tech_advanced_chip", "tech_fusion_core"]
-        
-        all_items = gun_items + ammo_items + attachment_items + rare_items
-        
-        for _ in range(10):
-            item = random.choice(all_items)
-            base_price = 50
-            
-            if item.startswith("gun_"):
-                gun_data = MC_BLOCKS.get(item, {})
-                damage = gun_data.get("damage", 15)
-                base_price = damage * 5
-            elif item.startswith("ammo_"):
-                base_price = random.randint(10, 30)
-            elif item.startswith("attachment_"):
-                base_price = random.randint(30, 100)
-            elif item in rare_items:
-                base_price = random.randint(100, 500)
-            
-            price_variation = random.uniform(0.8, 1.5)
-            final_price = int(base_price * price_variation)
-            
-            self.marketplace.append({
-                "item": item,
-                "price": final_price,
-                "count": random.randint(1, 10),
-                "seller": random.choice(["系统商人", "玩家A", "玩家B", "神秘商人"])
+        distance = 5.0
+        target_x = self.player_pos[0] + math.cos(yaw_rad) * math.cos(pitch_rad) * distance
+        target_y = self.player_pos[1] + 1.5 + math.sin(pitch_rad) * distance
+        target_z = self.player_pos[2] + math.sin(yaw_rad) * math.cos(pitch_rad) * distance
+        
+        block_x = int(target_x)
+        block_y = int(target_y)
+        block_z = int(target_z)
+        
+        selected_block = self.hotbar[self.hotbar_selected]
+        if selected_block:
+            self.placed_blocks.append({
+                "x": block_x,
+                "y": block_y,
+                "z": block_z,
+                "type": selected_block
             })
-        
-        self.message = "🏪 交易行已刷新！新商品上架"
-        self.message_timer = 3000
+            self.message = f"放置 {selected_block} 在 ({block_x}, {block_y}, {block_z})"
+            self.message_timer = 1000
     
-    def buy_from_marketplace(self, index):
-        if index < 0 or index >= len(self.marketplace):
-            return
+    def break_block(self):
+        """破坏方块（类似MC右键）"""
+        yaw_rad = math.radians(self.camera["yaw"])
+        pitch_rad = math.radians(self.camera["pitch"])
         
-        item_data = self.marketplace[index]
-        price = item_data["price"]
-        item_name = item_data["item"]
-        count = item_data["count"]
+        distance = 5.0
+        target_x = self.player_pos[0] + math.cos(yaw_rad) * math.cos(pitch_rad) * distance
+        target_y = self.player_pos[1] + 1.5 + math.sin(pitch_rad) * distance
+        target_z = self.player_pos[2] + math.sin(yaw_rad) * math.cos(pitch_rad) * distance
         
-        resources = data.get('resources', {})
-        gold = resources.get('金元宝', 0)
+        block_x = int(target_x)
+        block_y = int(target_y)
+        block_z = int(target_z)
         
-        if gold < price:
-            self.message = f"⚠️ 金元宝不足！需要{price}，当前{gold}"
-            self.message_timer = 2000
-            return
-        
-        resources['金元宝'] = gold - price
-        data['resources'] = resources
-        save()
-        
-        for i, inv_item in enumerate(self.inventory):
-            if inv_item and inv_item["item"] == item_name:
-                self.inventory[i]["count"] += count
-                self.marketplace.remove(item_data)
-                self.message = f"✅ 购买成功: {item_name} x{count}"
-                self.message_timer = 2000
+        for i, block in enumerate(self.placed_blocks):
+            if block["x"] == block_x and block["y"] == block_y and block["z"] == block_z:
+                removed_block = self.placed_blocks.pop(i)
+                self.message = f"破坏 {removed_block['type']}"
+                self.message_timer = 1000
                 return
         
-        for i, inv_item in enumerate(self.inventory):
-            if inv_item is None:
-                self.inventory[i] = {"item": item_name, "count": count}
-                self.marketplace.remove(item_data)
-                self.message = f"✅ 购买成功: {item_name} x{count}"
-                self.message_timer = 2000
-                return
-        
-        self.message = "⚠️ 背包已满！"
-        self.message_timer = 2000
-    
-    def update_marketplace(self):
-        self.marketplace_timer += 1
-        if self.marketplace_timer >= self.marketplace_refresh_interval:
-            self.marketplace_timer = 0
-            self.refresh_marketplace()
-    
-    def update_projectiles(self):
-        for projectile in self.projectiles[:]:
-            projectile["x"] += projectile["velocity"][0]
-            projectile["y"] += projectile["velocity"][1]
-            projectile["z"] += projectile["velocity"][2]
-            projectile["velocity"][1] -= 0.02
-            projectile["lifetime"] -= 1
-            
-            if projectile["lifetime"] <= 0 or projectile["y"] < 0:
-                self.projectiles.remove(projectile)
-                continue
-            
-            for enemy in self.enemies[:]:
-                distance = math.hypot(
-                    enemy["x"] - projectile["x"],
-                    enemy["z"] - projectile["z"]
-                )
-                if distance < 2:
-                    damage = projectile.get("damage", 15)
-                    enemy["health"] = enemy.get("health", 20) - damage
-                    self.projectiles.remove(projectile)
-                    
-                    self.add_hit_marker(enemy["x"], enemy["z"])
-                    self.add_damage_number(enemy["x"], enemy["z"], damage)
-                    
-                    if enemy["health"] <= 0:
-                        self.enemies.remove(enemy)
-                        self.spawn_loot(enemy["x"], enemy["z"])
-                    break
-    
-    def update_pickups(self):
-        if random.random() < 0.005 and len(self.pickups) < 30:
-            common_drops = [
-                "dirt", "grass", "stone", "cobblestone", "oak_log", "oak_planks",
-                "iron_ingot", "coal", "sand", "gravel", "clay",
-                "wooden_sword", "stone_sword", "iron_sword", "diamond_sword",
-                "wooden_pickaxe", "stone_pickaxe", "iron_pickaxe", "diamond_pickaxe",
-                "apple", "bread", "cooked_beef", "cooked_chicken",
-                "carrot", "potato", "baked_potato", "beetroot"
-            ]
-            rare_drops = [
-                "gold_ingot", "diamond", "emerald", "lapis_lazuli", "redstone",
-                "tech_advanced_chip", "tech_circuit_board", "netherite_ingot",
-                "golden_apple", "enchanted_golden_apple", "diamond_sword",
-                "netherite_sword", "bow", "crossbow", "trident",
-                "iron_helmet", "iron_chestplate", "iron_leggings", "iron_boots",
-                "diamond_helmet", "diamond_chestplate", "diamond_leggings", "diamond_boots"
-            ]
-            
-            if random.random() < 0.15:
-                item = random.choice(rare_drops)
-            else:
-                item = random.choice(common_drops)
-            
-            x = self.player_pos[0] + random.randint(-30, 30)
-            z = self.player_pos[2] + random.randint(-30, 30)
-            self.spawn_pickup(item, x, z, random.randint(1, 3))
-        
-        for pickup in self.pickups[:]:
-            pickup["lifetime"] -= 1
-            
-            if "bob_offset" not in pickup:
-                pickup["bob_offset"] = random.uniform(0, math.pi * 2)
-            if "rotation" not in pickup:
-                pickup["rotation"] = 0
-            if "target_x" not in pickup:
-                pickup["target_x"] = None
-                pickup["target_z"] = None
-            if "speed" not in pickup:
-                pickup["speed"] = 0
-            
-            pickup["rotation"] += 0.05
-            pickup["bob_offset"] += 0.1
-            
-            distance = math.hypot(
-                pickup["x"] - self.player_pos[0],
-                pickup["y"] - self.player_pos[2]
-            )
-            
-            if distance <= MAX_PICKUP_DISTANCE and not self.inventory_open:
-                dx = self.player_pos[0] - pickup["x"]
-                dz = self.player_pos[2] - pickup["y"]
-                pickup["speed"] = min(pickup["speed"] + 0.3, 1.5)
-                pickup["x"] += dx / distance * pickup["speed"]
-                pickup["y"] += dz / distance * pickup["speed"]
-                
-                if distance < 1.0:
-                    self.pickup_item(pickup)
-                    self.pickups.remove(pickup)
-                    continue
-            
-            if pickup["lifetime"] <= 0:
-                self.pickups.remove(pickup)
-    
-    def draw_minimap(self):
-        if not self.minimap_enabled:
-            return
-        
-        minimap_size = MINIMAP_SIZE
-        minimap_surface = pygame.Surface((minimap_size, minimap_size), pygame.SRCALPHA)
-        
-        pygame.draw.rect(minimap_surface, (20, 20, 40, 180), (0, 0, minimap_size, minimap_size), border_radius=10)
-        pygame.draw.rect(minimap_surface, COLORS["accent_gold"], (0, 0, minimap_size, minimap_size), 2, border_radius=10)
-        
-        scale = minimap_size / 400
-        center_x = minimap_size // 2
-        center_y = minimap_size // 2
-        
-        for loc in self.locations:
-            rel_x = (loc["x"] - self.player_pos[0]) * scale
-            rel_y = (loc["y"] - self.player_pos[2]) * scale
-            
-            if -minimap_size//2 <= rel_x <= minimap_size//2 and -minimap_size//2 <= rel_y <= minimap_size//2:
-                map_x = int(center_x + rel_x)
-                map_y = int(center_y + rel_y)
-                
-                if loc.get("owner") == "player":
-                    color = (50, 205, 50)
-                elif loc.get("owner") == "enemy":
-                    color = (255, 69, 0)
-                else:
-                    color = (150, 150, 150)
-                
-                pygame.draw.circle(minimap_surface, color, (map_x, map_y), 3)
-        
-        for pickup in self.pickups:
-            rel_x = (pickup["x"] - self.player_pos[0]) * scale
-            rel_y = (pickup["y"] - self.player_pos[2]) * scale
-            
-            if -minimap_size//2 <= rel_x <= minimap_size//2 and -minimap_size//2 <= rel_y <= minimap_size//2:
-                map_x = int(center_x + rel_x)
-                map_y = int(center_y + rel_y)
-                pygame.draw.circle(minimap_surface, (255, 255, 100), (map_x, map_y), 2)
-        
-        player_arrow_x = center_x
-        player_arrow_y = center_y
-        
-        yaw_rad = math.radians(self.camera["yaw"])
-        arrow_length = 8
-        arrow_end_x = int(player_arrow_x + math.sin(yaw_rad) * arrow_length)
-        arrow_end_y = int(player_arrow_y - math.cos(yaw_rad) * arrow_length)
-        
-        pygame.draw.circle(minimap_surface, (255, 255, 255), (player_arrow_x, player_arrow_y), 3)
-        pygame.draw.line(minimap_surface, (255, 255, 255), (player_arrow_x, player_arrow_y), (arrow_end_x, arrow_end_y), 2)
-        
-        self.screen.blit(minimap_surface, (10, 10))
-        
-        label_surf = self.font_small.render("小地图 M", True, (200, 200, 200))
-        self.screen.blit(label_surf, (10, MINIMAP_SIZE + 15))
-    
-    def draw_inventory(self):
-        if not self.inventory_open:
-            return
-        
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 100))
-        self.screen.blit(overlay, (0, 0))
-        
-        slot_size = 50
-        slot_spacing = 5
-        inventory_width = 9 * slot_size + 8 * slot_spacing + 40
-        inventory_height = 4 * (slot_size + slot_spacing) + 80
-        
-        inventory_x = SCREEN_WIDTH // 2 - inventory_width // 2
-        inventory_y = SCREEN_HEIGHT // 2 - inventory_height // 2
-        
-        inventory_surf = pygame.Surface((inventory_width, inventory_height), pygame.SRCALPHA)
-        pygame.draw.rect(inventory_surf, (40, 40, 60, 230), (0, 0, inventory_width, inventory_height), border_radius=15)
-        pygame.draw.rect(inventory_surf, COLORS["accent_gold"], (0, 0, inventory_width, inventory_height), 3, border_radius=15)
-        
-        title_surf = self.font_main.render("背包 I", True, COLORS["accent_gold"])
-        inventory_surf.blit(title_surf, (20, 15))
-        
-        start_x = 20
-        start_y = 50
-        
-        hotbar_labels = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
-        
-        for i in range(INVENTORY_SLOTS):
-            slot_x = start_x + (i % 9) * (slot_size + slot_spacing)
-            slot_y = start_y + (i // 9) * (slot_size + slot_spacing)
-            
-            if i == self.selected_slot:
-                pygame.draw.rect(inventory_surf, (100, 100, 150), (slot_x - 3, slot_y - 3, slot_size + 6, slot_size + 6), border_radius=8)
-                pygame.draw.rect(inventory_surf, COLORS["accent_blue"], (slot_x - 3, slot_y - 3, slot_size + 6, slot_size + 6), 3, border_radius=8)
-            else:
-                pygame.draw.rect(inventory_surf, (60, 60, 80), (slot_x, slot_y, slot_size, slot_size), border_radius=6)
-                pygame.draw.rect(inventory_surf, (100, 100, 120), (slot_x, slot_y, slot_size, slot_size), 2, border_radius=6)
-            
-            if i < 9:
-                label_surf = self.font_small.render(hotbar_labels[i], True, (150, 150, 150))
-                inventory_surf.blit(label_surf, (slot_x + 3, slot_y + 3))
-            
-            if self.inventory[i]:
-                item = self.inventory[i]
-                item_name = item["item"]
-                item_count = item["count"]
-                
-                block_data = MC_BLOCKS.get(item_name, MC_BLOCKS.get("stone", {}))
-                color = block_data.get("color", (128, 128, 128))
-                if len(color) == 4:
-                    item_surf = pygame.Surface((slot_size - 10, slot_size - 10), pygame.SRCALPHA)
-                    pygame.draw.rect(item_surf, color, (0, 0, slot_size - 10, slot_size - 10), border_radius=4)
-                else:
-                    item_surf = pygame.Surface((slot_size - 10, slot_size - 10))
-                    pygame.draw.rect(item_surf, color, (0, 0, slot_size - 10, slot_size - 10), border_radius=4)
-                
-                inventory_surf.blit(item_surf, (slot_x + 5, slot_y + 5))
-                
-                if item_count > 1:
-                    count_surf = self.font_small.render(str(item_count), True, (255, 255, 255))
-                    inventory_surf.blit(count_surf, (slot_x + slot_size - 25, slot_y + slot_size - 20))
-        
-        hint_surf = self.font_small.render("点击交换物品 | 数字键选择快捷栏 | I键关闭", True, (150, 150, 150))
-        inventory_surf.blit(hint_surf, (20, inventory_height - 30))
-        
-        self.screen.blit(inventory_surf, (inventory_x, inventory_y))
-    
-    def draw_hotbar(self):
-        if self.inventory_open:
-            return
-        
-        slot_size = 40
-        slot_spacing = 3
-        hotbar_width = 9 * slot_size + 8 * slot_spacing + 20
-        hotbar_height = slot_size + 15
-        hotbar_x = SCREEN_WIDTH // 2 - hotbar_width // 2
-        hotbar_y = SCREEN_HEIGHT - hotbar_height - 10
-        
-        hotbar_surf = pygame.Surface((hotbar_width, hotbar_height), pygame.SRCALPHA)
-        pygame.draw.rect(hotbar_surf, (30, 30, 50, 200), (0, 0, hotbar_width, hotbar_height), border_radius=10)
-        pygame.draw.rect(hotbar_surf, (80, 80, 100), (0, 0, hotbar_width, hotbar_height), 2, border_radius=10)
-        
-        start_x = 10
-        start_y = 8
-        
-        for i in range(9):
-            slot_x = start_x + i * (slot_size + slot_spacing)
-            
-            if i == self.selected_slot:
-                pygame.draw.rect(hotbar_surf, (80, 80, 120), (slot_x - 2, start_y - 2, slot_size + 4, slot_size + 4), border_radius=6)
-                pygame.draw.rect(hotbar_surf, COLORS["accent_blue"], (slot_x - 2, start_y - 2, slot_size + 4, slot_size + 4), 2, border_radius=6)
-            else:
-                pygame.draw.rect(hotbar_surf, (50, 50, 70), (slot_x, start_y, slot_size, slot_size), border_radius=4)
-            
-            if self.inventory[i]:
-                item = self.inventory[i]
-                block_data = MC_BLOCKS.get(item["item"], MC_BLOCKS.get("stone", {}))
-                color = block_data.get("color", (128, 128, 128))
-                
-                item_surf = pygame.Surface((slot_size - 6, slot_size - 6))
-                if len(color) == 4:
-                    item_surf.fill((0, 0, 0, 0))
-                    pygame.draw.rect(item_surf, color[:3], (0, 0, slot_size - 6, slot_size - 6), border_radius=3)
-                else:
-                    pygame.draw.rect(item_surf, color, (0, 0, slot_size - 6, slot_size - 6), border_radius=3)
-                
-                hotbar_surf.blit(item_surf, (slot_x + 3, start_y + 3))
-                
-                if item["count"] > 1:
-                    count_surf = self.font_small.render(str(item["count"]), True, (255, 255, 255))
-                    hotbar_surf.blit(count_surf, (slot_x + slot_size - 18, start_y + slot_size - 16))
-        
-        self.screen.blit(hotbar_surf, (hotbar_x, hotbar_y))
-    
-    def check_npc_interaction(self):
-        for npc in self.npcs:
-            distance = math.hypot(
-                npc["x"] - self.player_pos[0],
-                npc["z"] - self.player_pos[2]
-            )
-            if distance <= self.npc_interaction_distance:
-                self.selected_npc = npc
-                self.message = f"右键NPC: {npc['name']}"
-                self.message_timer = 3000
-                self.show_npc_dialog(npc)
-                return
-        
-        self.selected_npc = None
-        self.message = "附近没有NPC"
-        self.message_timer = 2000
-    
-    def show_npc_dialog(self, npc):
-        self.npc_dialog_active = True
-        self.selected_option = 0
-        
-        options = [
-            {"text": f"进入{npc['name']}功能", "action": "enter"},
-            {"text": "继续探索", "action": "cancel"}
-        ]
-        
-        while self.npc_dialog_active:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.npc_dialog_active = False
-                    return
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_UP:
-                        self.selected_option = (self.selected_option - 1) % len(options)
-                    elif event.key == pygame.K_DOWN:
-                        self.selected_option = (self.selected_option + 1) % len(options)
-                    elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
-                        if options[self.selected_option]["action"] == "enter":
-                            self.npc_dialog_active = False
-                            self.execute_npc_action(npc)
-                            return
-                        else:
-                            self.npc_dialog_active = False
-                            return
-                    elif event.key == pygame.K_ESCAPE:
-                        self.npc_dialog_active = False
-                        return
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1:
-                        mouse_pos = pygame.mouse.get_pos()
-                        for i, option in enumerate(options):
-                            option_rect = pygame.Rect(SCREEN_WIDTH//2 - 150, SCREEN_HEIGHT - 180 + i * 40, 300, 35)
-                            if option_rect.collidepoint(mouse_pos):
-                                if option["action"] == "enter":
-                                    self.npc_dialog_active = False
-                                    self.execute_npc_action(npc)
-                                    return
-                                else:
-                                    self.npc_dialog_active = False
-                                    return
-            
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-            self.draw_3d_scene()
-            
-            dialog_width = 400
-            dialog_height = 200
-            dialog_x = SCREEN_WIDTH // 2 - dialog_width // 2
-            dialog_y = SCREEN_HEIGHT - 250
-            
-            dialog_surf = pygame.Surface((dialog_width, dialog_height), pygame.SRCALPHA)
-            pygame.draw.rect(dialog_surf, (20, 20, 40, 230), (0, 0, dialog_width, dialog_height), border_radius=15)
-            pygame.draw.rect(dialog_surf, COLORS["accent_gold"], (0, 0, dialog_width, dialog_height), 3, border_radius=15)
-            
-            name_surf = self.font_main.render(npc["name"], True, COLORS["accent_gold"])
-            dialog_surf.blit(name_surf, (20, 15))
-            
-            dialogue_surf = self.font_small.render(npc["dialogue"], True, COLORS["text_white"])
-            dialog_surf.blit(dialogue_surf, (20, 55))
-            
-            pygame.draw.line(dialog_surf, COLORS["accent_gold"], (20, 90), (dialog_width - 20, 90), 1)
-            
-            for i, option in enumerate(options):
-                option_y = 100 + i * 40
-                option_rect = pygame.Rect(20, option_y, dialog_width - 40, 35)
-                
-                if i == self.selected_option:
-                    pygame.draw.rect(dialog_surf, (60, 60, 100), option_rect, border_radius=8)
-                    pygame.draw.rect(dialog_surf, COLORS["accent_gold"], option_rect, 2, border_radius=8)
-                    option_color = COLORS["accent_gold"]
-                else:
-                    pygame.draw.rect(dialog_surf, (40, 40, 70), option_rect, border_radius=8)
-                    option_color = COLORS["text_white"]
-                
-                option_surf = self.font_small.render(option["text"], True, option_color)
-                dialog_surf.blit(option_surf, (option_rect.x + 15, option_rect.y + 8))
-            
-            self.screen.blit(dialog_surf, (dialog_x, dialog_y))
-            
-            hint_surf = self.font_small.render("↑↓选择 | 回车确认 | ESC取消", True, (150, 150, 150))
-            self.screen.blit(hint_surf, (SCREEN_WIDTH//2 - 120, SCREEN_HEIGHT - 40))
-            
-            pygame.display.flip()
-            self.clock.tick(60)
-    
-    def execute_npc_action(self, npc):
-        module_file = npc.get("module", "")
-        if module_file:
-            self.message = f"正在打开: {npc['name']}"
-            self.message_timer = 2000
-            
-            pygame.time.wait(500)
-            
-            try:
-                if module_file == "hero_recruitment.py":
-                    from ASSET.hero_recruitment import main as hero_main
-                    hero_main()
-                elif module_file == "shop_system.py":
-                    from ASSET.shop_system import main as shop_main
-                    shop_main()
-                elif module_file == "quest_system.py":
-                    from ASSET.quest_system import main as quest_main
-                    quest_main()
-                elif module_file == "equipment_system.py":
-                    from ASSET.equipment_system import main as equipment_main
-                    equipment_main()
-                elif module_file == "alchemy_system.py":
-                    from ASSET.alchemy_system import main as alchemy_main
-                    alchemy_main()
-                elif module_file == "background_story.py":
-                    from ASSET.background_story import main as story_main
-                    story_main()
-                elif module_file == "pvp_p2p.py":
-                    from ASSET.pvp_p2p import main as pvp_main
-                    pvp_main()
-                else:
-                    self.message = f"功能模块 {module_file} 尚未实现"
-                    self.message_timer = 2000
-            except Exception as e:
-                self.message = f"打开功能失败: {str(e)[:20]}"
-                self.message_timer = 2000
-            
-            pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.OPENGL | pygame.DOUBLEBUF)
-            self.screen = pygame.display.get_surface()
-    
-    def check_location_interaction(self):
-        interaction_distance = 25
-        closest_location = None
-        closest_distance = float('inf')
-        
-        for loc in self.locations:
-            distance = math.hypot(
-                loc["x"] - self.player_pos[0],
-                loc["y"] - self.player_pos[2]
-            )
-            if distance < closest_distance:
-                closest_distance = distance
-                closest_location = loc
-        
-        if closest_location and closest_distance <= interaction_distance:
-            self.show_location_dialog(closest_location)
-        else:
-            self.message = "附近没有可进入的地点"
-            self.message_timer = 2000
-    
-    def show_location_dialog(self, loc):
-        self.location_dialog_active = True
-        self.selected_option = 0
-        
-        loc_type = loc.get("type", "地点")
-        owner = loc.get("owner", "neutral")
-        level = loc.get("level", 1)
-        power = loc.get("power", 0)
-        
-        if owner == "player":
-            options = [
-                {"text": "进入地点", "action": "enter"},
-                {"text": "查看详情", "action": "info"},
-                {"text": "离开", "action": "cancel"}
-            ]
-        elif owner == "enemy":
-            options = [
-                {"text": "挑战占领", "action": "battle"},
-                {"text": "查看详情", "action": "info"},
-                {"text": "离开", "action": "cancel"}
-            ]
-        else:
-            options = [
-                {"text": "尝试占领", "action": "capture"},
-                {"text": "查看详情", "action": "info"},
-                {"text": "离开", "action": "cancel"}
-            ]
-        
-        while self.location_dialog_active:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.location_dialog_active = False
-                    return
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_UP:
-                        self.selected_option = (self.selected_option - 1) % len(options)
-                    elif event.key == pygame.K_DOWN:
-                        self.selected_option = (self.selected_option + 1) % len(options)
-                    elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
-                        action = options[self.selected_option]["action"]
-                        self.location_dialog_active = False
-                        self.handle_location_action(loc, action)
-                        return
-                    elif event.key == pygame.K_ESCAPE:
-                        self.location_dialog_active = False
-                        return
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1:
-                        mouse_pos = pygame.mouse.get_pos()
-                        for i, option in enumerate(options):
-                            option_rect = pygame.Rect(SCREEN_WIDTH//2 - 150, SCREEN_HEIGHT - 220 + i * 40, 300, 35)
-                            if option_rect.collidepoint(mouse_pos):
-                                action = option["action"]
-                                self.location_dialog_active = False
-                                self.handle_location_action(loc, action)
-                                return
-            
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-            self.draw_3d_scene()
-            
-            dialog_width = 400
-            dialog_height = 280
-            dialog_x = SCREEN_WIDTH // 2 - dialog_width // 2
-            dialog_y = SCREEN_HEIGHT - 330
-            
-            dialog_surf = pygame.Surface((dialog_width, dialog_height), pygame.SRCALPHA)
-            pygame.draw.rect(dialog_surf, (20, 20, 40, 230), (0, 0, dialog_width, dialog_height), border_radius=15)
-            pygame.draw.rect(dialog_surf, COLORS["accent_gold"], (0, 0, dialog_width, dialog_height), 3, border_radius=15)
-            
-            name_surf = self.font_main.render(loc_type, True, COLORS["accent_gold"])
-            dialog_surf.blit(name_surf, (20, 15))
-            
-            owner_text = f"归属: {'已占领' if owner == 'player' else '敌方' if owner == 'enemy' else '中立'}"
-            owner_color = COLORS["accent_green"] if owner == "player" else COLORS["accent_red"] if owner == "enemy" else COLORS["text_white"]
-            owner_surf = self.font_small.render(owner_text, True, owner_color)
-            dialog_surf.blit(owner_surf, (20, 55))
-            
-            level_surf = self.font_small.render(f"等级: {level}", True, COLORS["text_white"])
-            dialog_surf.blit(level_surf, (20, 80))
-            
-            power_surf = self.font_small.render(f"战力: {power}", True, COLORS["text_white"])
-            dialog_surf.blit(power_surf, (20, 105))
-            
-            pygame.draw.line(dialog_surf, COLORS["accent_gold"], (20, 135), (dialog_width - 20, 135), 1)
-            
-            for i, option in enumerate(options):
-                option_y = 145 + i * 40
-                option_rect = pygame.Rect(20, option_y, dialog_width - 40, 35)
-                
-                if i == self.selected_option:
-                    pygame.draw.rect(dialog_surf, (60, 60, 100), option_rect, border_radius=8)
-                    pygame.draw.rect(dialog_surf, COLORS["accent_gold"], option_rect, 2, border_radius=8)
-                    option_color = COLORS["accent_gold"]
-                else:
-                    pygame.draw.rect(dialog_surf, (40, 40, 70), option_rect, border_radius=8)
-                    option_color = COLORS["text_white"]
-                
-                option_surf = self.font_small.render(option["text"], True, option_color)
-                dialog_surf.blit(option_surf, (option_rect.x + 15, option_rect.y + 8))
-            
-            self.screen.blit(dialog_surf, (dialog_x, dialog_y))
-            
-            hint_surf = self.font_small.render("↑↓选择 | 回车确认 | ESC取消", True, (150, 150, 150))
-            self.screen.blit(hint_surf, (SCREEN_WIDTH//2 - 120, SCREEN_HEIGHT - 40))
-            
-            pygame.display.flip()
-            self.clock.tick(60)
-    
-    def handle_location_action(self, loc, action):
-        if action == "enter":
-            self.message = f"进入 {loc['type']}..."
-            self.message_timer = 2000
-            try:
-                from ASSET.game_map_pygame import main as map_main
-                map_main()
-                pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.OPENGL | pygame.DOUBLEBUF)
-                self.screen = pygame.display.get_surface()
-            except Exception as e:
-                self.message = f"进入失败: {str(e)[:20]}"
-                self.message_timer = 2000
-        elif action == "battle":
-            self.message = f"开始挑战 {loc['type']}..."
-            self.message_timer = 2000
-            try:
-                from ASSET.battle_system import main as battle_main
-                battle_main()
-                pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.OPENGL | pygame.DOUBLEBUF)
-                self.screen = pygame.display.get_surface()
-                self.message = f"战斗结束!"
-                self.message_timer = 3000
-            except Exception as e:
-                self.message = f"挑战失败: {str(e)[:20]}"
-                self.message_timer = 2000
-        elif action == "capture":
-            self.message = f"尝试占领 {loc['type']}..."
-            self.message_timer = 2000
-            loc["owner"] = "player"
-            self.message = f"成功占领 {loc['type']}!"
-            self.message_timer = 3000
-        elif action == "info":
-            info_text = f"{loc['type']} - 等级{loc.get('level', 1)} - 战力{loc.get('power', 0)}"
-            self.message = info_text
-            self.message_timer = 3000
-    
-    def collect_nearby_resources(self):
-        collect_distance = 30
-        collected = {"金元宝": 0, "煤炭": 0, "食物": 0, "水": 0}
-        
-        for loc in self.locations:
-            if loc.get("owner") == "player":
-                distance = math.hypot(
-                    loc["x"] - self.player_pos[0],
-                    loc["y"] - self.player_pos[2]
-                )
-                if distance <= collect_distance:
-                    loc_type = loc.get("type", "")
-                    level = loc.get("level", 1)
-                    
-                    if loc_type == "矿产":
-                        gold_bonus = level * 5
-                        collected["金元宝"] += gold_bonus
-                    elif loc_type == "煤矿":
-                        coal_bonus = level * 10
-                        collected["煤炭"] += coal_bonus
-                    elif loc_type == "农田":
-                        food_bonus = level * 15
-                        water_bonus = level * 5
-                        collected["食物"] += food_bonus
-                        collected["水"] += water_bonus
-                    elif loc_type == "水井":
-                        water_bonus = level * 12
-                        collected["水"] += water_bonus
-        
-        total_collected = sum(collected.values())
-        if total_collected > 0:
-            resources = data.get('resources', {})
-            for resource, amount in collected.items():
-                if amount > 0:
-                    resources[resource] = resources.get(resource, 0) + amount
-            data['resources'] = resources
-            save()
-            
-            msg_parts = []
-            if collected["金元宝"] > 0:
-                msg_parts.append(f"金元宝+{collected['金元宝']}")
-            if collected["煤炭"] > 0:
-                msg_parts.append(f"煤炭+{collected['煤炭']}")
-            if collected["食物"] > 0:
-                msg_parts.append(f"食物+{collected['食物']}")
-            if collected["水"] > 0:
-                msg_parts.append(f"水+{collected['水']}")
-            
-            self.message = "收集: " + " ".join(msg_parts)
-            self.message_timer = 3000
-        else:
-            self.message = "附近没有可收集的资源"
-            self.message_timer = 2000
-    
-    def move_forward(self, speed):
-        yaw_rad = math.radians(self.camera["yaw"])
-        self.velocity[0] += math.cos(yaw_rad) * speed
-        self.velocity[2] += math.sin(yaw_rad) * speed
-        self.update_camera()
-    
-    def move_backward(self, speed):
-        yaw_rad = math.radians(self.camera["yaw"])
-        self.velocity[0] -= math.cos(yaw_rad) * speed
-        self.velocity[2] -= math.sin(yaw_rad) * speed
-        self.update_camera()
-    
-    def move_left(self, speed):
-        yaw_rad = math.radians(self.camera["yaw"])
-        self.velocity[0] -= math.sin(yaw_rad) * speed
-        self.velocity[2] += math.cos(yaw_rad) * speed
-        self.update_camera()
-    
-    def move_right(self, speed):
-        yaw_rad = math.radians(self.camera["yaw"])
-        self.velocity[0] += math.sin(yaw_rad) * speed
-        self.velocity[2] -= math.cos(yaw_rad) * speed
-        self.update_camera()
+        self.message = "没有可破坏的方块"
+        self.message_timer = 1000
     
     def update_camera(self):
+        """更新相机位置（MC风格三种视角）"""
         yaw_rad = math.radians(self.camera["yaw"])
         pitch_rad = math.radians(self.camera["pitch"])
+        distance = 5.0
         
         if self.camera["mode"] == "first":
+            # 第一人称视角：相机位置与玩家位置相同
             distance = 0.5
             self.camera["x"] = self.player_pos[0] + math.cos(yaw_rad) * math.cos(pitch_rad) * distance
-            self.camera["y"] = self.player_pos[1] + 1.8 + math.sin(pitch_rad) * distance
+            self.camera["y"] = self.player_pos[1] + 1.5 + math.sin(pitch_rad) * distance
+            self.camera["z"] = self.player_pos[2] + math.sin(yaw_rad) * math.cos(pitch_rad) * distance
+        elif self.camera["mode"] == "third_front":
+            # 第三人称正面视角：相机位于玩家前方
+            self.camera["x"] = self.player_pos[0] + math.cos(yaw_rad) * math.cos(pitch_rad) * distance
+            self.camera["y"] = self.player_pos[1] + 2.0 - math.sin(pitch_rad) * distance
             self.camera["z"] = self.player_pos[2] + math.sin(yaw_rad) * math.cos(pitch_rad) * distance
         else:
-            distance = 6.0
+            # 第三人称背面视角：相机位于玩家背后（默认）
             self.camera["x"] = self.player_pos[0] - math.cos(yaw_rad) * math.cos(pitch_rad) * distance
-            self.camera["y"] = self.player_pos[1] + 2.5 - math.sin(pitch_rad) * distance
+            self.camera["y"] = self.player_pos[1] + 2.0 - math.sin(pitch_rad) * distance
             self.camera["z"] = self.player_pos[2] - math.sin(yaw_rad) * math.cos(pitch_rad) * distance
     
     def move_to_mouse(self):
+        """移动到鼠标点击位置"""
+        # 这里需要实现射线检测，简化处理
         mx, my = pygame.mouse.get_pos()
-        self.follow_target = {
-            "x": self.player_pos[0] + (mx - SCREEN_WIDTH//2) * 0.15,
-            "y": self.player_pos[2] + (my - SCREEN_HEIGHT//2) * 0.15
-        }
+        # 简单的直线移动
+        self.follow_target = {"x": self.player_pos[0] + (mx - SCREEN_WIDTH//2) * 0.1, "y": self.player_pos[2] + (my - SCREEN_HEIGHT//2) * 0.1}
         self.message = "移动到指定位置"
         self.message_timer = 2000
     
     def update_followers(self):
+        """更新跟随者"""
         if self.follow_target:
             for follower in self.followers:
                 dx = self.follow_target["x"] - follower["x"]
@@ -3153,31 +1743,35 @@ class GameMap3D:
                     follower["x"] += dx / distance * 0.3
                     follower["z"] += dz / distance * 0.3
     
-    def update_npcs(self):
-        for npc in self.npcs:
-            npc["animation_offset"] += 0.02
-            
-            wander_angle = npc["move_dir"] + time.time() * npc["move_speed"]
-            npc["x"] = npc["original_x"] + math.sin(wander_angle) * npc["wander_range"]
-            npc["z"] = npc["original_z"] + math.cos(wander_angle) * npc["wander_range"]
-    
     def draw_3d_scene(self):
+        """绘制3D场景"""
+        if cpp_renderer_available:
+            self.draw_3d_scene_cpp()
+        else:
+            self.draw_3d_scene_python()
+    
+    def draw_3d_scene_cpp(self):
+        """使用C++渲染器绘制3D场景（地形/树/建筑/方块/粒子全走C++，老处理器也能流畅运行）"""
         try:
+            # 天空颜色（与 Python 版一致）
+            sky_color = self.get_sky_color()
+            glClearColor(sky_color[0], sky_color[1], sky_color[2], 1.0)
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+            
+            glDisable(GL_LIGHTING)
             
             glMatrixMode(GL_PROJECTION)
             glLoadIdentity()
-            gluPerspective(60, SCREEN_WIDTH / SCREEN_HEIGHT, 0.1, 5000.0)
+            gluPerspective(60, SCREEN_WIDTH / SCREEN_HEIGHT, 0.1, 1000.0)
             
             glMatrixMode(GL_MODELVIEW)
             glLoadIdentity()
-            
             yaw_rad = math.radians(self.camera["yaw"])
             pitch_rad = math.radians(self.camera["pitch"])
             
             look_distance = 10
             look_x = self.player_pos[0] + math.cos(yaw_rad) * math.cos(pitch_rad) * look_distance
-            look_y = self.player_pos[1] + 1.8 + math.sin(pitch_rad) * look_distance
+            look_y = self.player_pos[1] + 1.5 + math.sin(pitch_rad) * look_distance
             look_z = self.player_pos[2] + math.sin(yaw_rad) * math.cos(pitch_rad) * look_distance
             
             gluLookAt(
@@ -3186,30 +1780,134 @@ class GameMap3D:
                 0, 1, 0
             )
             
+            # 地形：改用 Python 显示列表渲染（与碰撞共用 terrain_height，起伏贴合、脚踩实地；
+            # 每帧 glCallList 开销极低，仅在玩家移动超过阈值时重建）
             self.draw_terrain()
+            glDisable(GL_LIGHTING)
+            
+            # 玩家放置的方块（C++ 六面体渲染）
+            if hasattr(self, 'placed_blocks') and self.placed_blocks:
+                block_data = []
+                for block in self.placed_blocks:
+                    bx = block.get("x", 0)
+                    by = block.get("y", 0)
+                    bz = block.get("z", 0)
+                    btype = block.get("type", "泥土")
+                    color = self.block_colors.get(btype, (0.5, 0.5, 0.5))
+                    r, g, b = color[0], color[1], color[2]
+                    a = color[3] if len(color) > 3 else 1.0
+                    block_data.append(BlockData(x=bx, y=by, z=bz, r=r, g=g, b=b, a=a, type=0))
+                if block_data:
+                    renderer.render_placed_blocks(block_data)
             
             if hasattr(self, 'trees'):
-                for tree in self.trees:
-                    x, z, scale = tree
-                    self.draw_tree(x, z, scale)
+                tree_data = []
+                for tree_x, tree_z in self.trees:
+                    tree_data.append(TreeData(x=tree_x, z=tree_z,
+                                              base_height=self.terrain_height(tree_x, tree_z),
+                                              height=4, width=2))
+                renderer.render_trees(tree_data)
             
-            for struct in self.large_structures:
-                self.draw_large_structure(struct)
+            loc_data = []
+            for loc in self.locations:
+                r, g, b = 1.0, 0.8, 0.2
+                loc_data.append(LocationData(x=loc["x"], z=loc["y"], r=r, g=g, b=b, type=0))
+            renderer.render_locations(loc_data)
+            
+            if self.camera["mode"] == "third":
+                player = PlayerData(
+                    x=self.player_pos[0], y=self.player_pos[1], z=self.player_pos[2],
+                    r=0.3, g=0.5, b=0.8, rotation=self.camera["yaw"]
+                )
+                renderer.render_player(player)
+            
+            follower_data = []
+            for follower in self.followers:
+                follower_data.append(FollowerData(
+                    x=follower["x"], y=follower["y"], z=follower["z"],
+                    r=0.4, g=0.6, b=0.3, type=0
+                ))
+            renderer.render_followers(follower_data)
+            
+            # 生物实体（动物/怪物/Herobrine，数量少，Python 兜底）
+            self.draw_entities()
+            
+            # 特效/尘埃粒子（C++ 批量）
+            self.render_particles_cpp()
+            
+            # 海浪、太阳月亮、天气（低开销效果）
+            self.draw_waves()
+            self.draw_sun_moon()
+            self.draw_weather()
+            
+            glEnable(GL_LIGHTING)
+            pygame.display.flip()
+        except Exception as e:
+            logger.info(f"C++渲染错误: {e}")
+            self.draw_3d_scene_python()
+    
+    def render_particles_cpp(self):
+        """把 Python 粒子数据批量转给 C++ 渲染器（特效/尘埃）"""
+        try:
+            data = []
+            for p in self.effect_particles:
+                alpha = p["life"] / max(p["max_life"], 0.001)
+                data.append(ParticleData(
+                    x=p["x"], y=p["y"], z=p["z"],
+                    r=p["color"][0], g=p["color"][1], b=p["color"][2],
+                    alpha=alpha, size=3.0
+                ))
+            for p in self.dust_particles:
+                alpha = (p["life"] / max(p["max_life"], 0.001)) * 0.5
+                data.append(ParticleData(
+                    x=p["x"], y=p["y"], z=p["z"],
+                    r=0.8, g=0.7, b=0.6, alpha=alpha, size=2.0
+                ))
+            if data:
+                renderer.render_particles(data)
+        except Exception as e:
+            logger.info(f"C++粒子渲染错误: {e}")
+    
+    def draw_3d_scene_python(self):
+        """使用Python绘制3D场景"""
+        try:
+            sky_color = self.get_sky_color()
+            glClearColor(sky_color[0], sky_color[1], sky_color[2], 1.0)
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+            
+            glMatrixMode(GL_PROJECTION)
+            glLoadIdentity()
+            gluPerspective(60, SCREEN_WIDTH / SCREEN_HEIGHT, 0.1, 1000.0)
+            
+            glMatrixMode(GL_MODELVIEW)
+            glLoadIdentity()
+            yaw_rad = math.radians(self.camera["yaw"])
+            pitch_rad = math.radians(self.camera["pitch"])
+            
+            look_distance = 10
+            look_x = self.player_pos[0] + math.cos(yaw_rad) * math.cos(pitch_rad) * look_distance
+            look_y = self.player_pos[1] + 1.5 + math.sin(pitch_rad) * look_distance
+            look_z = self.player_pos[2] + math.sin(yaw_rad) * math.cos(pitch_rad) * look_distance
+            
+            gluLookAt(
+                self.camera["x"], self.camera["y"], self.camera["z"],
+                look_x, look_y, look_z,
+                0, 1, 0
+            )
+            
+            self.draw_sun_moon()
+            
+            self.draw_terrain()
+            self.draw_placed_blocks()
+            
+            if hasattr(self, 'trees'):
+                for tree_x, tree_z in self.trees:
+                    self.draw_tree(tree_x, tree_z)
             
             for loc in self.locations:
                 self.draw_location(loc)
             
-            for npc in self.npcs:
-                self.draw_npc(npc)
-            
-            for enemy in self.enemies:
-                self.draw_enemy(enemy)
-            
-            for general in self.generals:
-                self.draw_general(general)
-            
-            for pet in self.pets:
-                self.draw_pet(pet)
+            self.draw_entities()
             
             if self.camera["mode"] == "third":
                 self.draw_player()
@@ -3217,272 +1915,727 @@ class GameMap3D:
             for follower in self.followers:
                 self.draw_follower(follower)
             
-            for tech_block in self.tech_blocks:
-                self.draw_tech_block(tech_block)
+            # 绘制粒子效果
+            self.draw_effect_particles()
+            self.draw_dust_particles()
             
-            self.draw_projectiles()
-            self.draw_pickups()
+            # 绘制海浪和天气
+            self.draw_waves()
+            self.draw_weather()
             
             pygame.display.flip()
         except Exception as e:
-            print(f"渲染错误: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.info(f"Python渲染错误: {e}")
     
+    def terrain_height(self, x, z):
+        """地形高度函数（渲染与碰撞共用，保证角色踩在地面上）"""
+        try:
+            x = float(x)
+            z = float(z)
+            n = (math.sin(x * 0.03) * math.cos(z * 0.03) * 1.1
+                 + math.sin(x * 0.011 + 2.0) * 0.7
+                 + math.cos(z * 0.013 - 1.0) * 0.7)
+            return max(0, int(round(1.0 + n)))
+        except Exception:
+            return 0
+
+    def _build_terrain_list(self, cx, cz):
+        """把地形编译进显示列表，仅在玩家移动超过阈值时重建。
+
+        旧实现每帧在 ±2000 范围内遍历两次，约生成上百万个面；
+        这里改为玩家周围 radius 范围、单次生成 + 侧壁剔除，并用显示列表缓存。
+        """
+        if getattr(self, "_terrain_list", None) is not None:
+            try:
+                glDeleteLists(self._terrain_list, 1)
+            except Exception as _e:
+                pass
+
+        self._terrain_list = glGenLists(1)
+        bs = 2          # 方块边长
+        radius = 72     # 渲染半径（以玩家为中心）
+        start_x = (int(cx) // bs) * bs - radius
+        start_z = (int(cz) // bs) * bs - radius
+        end_x = start_x + radius * 2
+        end_z = start_z + radius * 2
+
+        cols = []
+        for x in range(start_x, end_x, bs):
+            for z in range(start_z, end_z, bs):
+                cols.append((x, z, self.terrain_height(x, z)))
+
+        glNewList(self._terrain_list, GL_COMPILE)
+
+        # 顶面（草地）
+        glBegin(GL_QUADS)
+        for x, z, h in cols:
+            shade = 0.9 + 0.08 * ((x // bs + z // bs) % 3)
+            glColor3f(0.20 * shade, 0.55 * shade, 0.20 * shade)
+            glVertex3f(x, h, z)
+            glVertex3f(x + bs, h, z)
+            glVertex3f(x + bs, h, z + bs)
+            glVertex3f(x, h, z + bs)
+        glEnd()
+
+        # 侧面（泥土，仅在与邻格存在高差时绘制，剔除内部面）
+        glBegin(GL_QUADS)
+        for x, z, h in cols:
+            bottom = h - 4
+            if self.terrain_height(x - bs, z) < h:
+                glColor3f(0.36, 0.24, 0.14)
+                glVertex3f(x, bottom, z)
+                glVertex3f(x, h, z)
+                glVertex3f(x, h, z + bs)
+                glVertex3f(x, bottom, z + bs)
+            if self.terrain_height(x + bs, z) < h:
+                glColor3f(0.36, 0.24, 0.14)
+                glVertex3f(x + bs, bottom, z)
+                glVertex3f(x + bs, h, z)
+                glVertex3f(x + bs, h, z + bs)
+                glVertex3f(x + bs, bottom, z + bs)
+            if self.terrain_height(x, z - bs) < h:
+                glColor3f(0.36, 0.24, 0.14)
+                glVertex3f(x, bottom, z)
+                glVertex3f(x + bs, bottom, z)
+                glVertex3f(x + bs, h, z)
+                glVertex3f(x, h, z)
+            if self.terrain_height(x, z + bs) < h:
+                glColor3f(0.36, 0.24, 0.14)
+                glVertex3f(x, bottom, z + bs)
+                glVertex3f(x + bs, bottom, z + bs)
+                glVertex3f(x + bs, h, z + bs)
+                glVertex3f(x, h, z + bs)
+        glEnd()
+
+        glEndList()
+        self._terrain_origin = (int(cx), int(cz))
+
     def draw_terrain(self):
+        """绘制像素化地形 - 类似我的世界风格（显示列表缓存）"""
         try:
             glDisable(GL_LIGHTING)
-            
-            block_size = 5
-            height = -2
-            
-            visible_range = 200
-            
-            start_x = int((self.player_pos[0] - visible_range) / block_size) * block_size
-            end_x = int((self.player_pos[0] + visible_range) / block_size) * block_size
-            start_z = int((self.player_pos[2] - visible_range) / block_size) * block_size
-            end_z = int((self.player_pos[2] + visible_range) / block_size) * block_size
-            
-            for x in range(start_x, end_x, block_size):
-                for z in range(start_z, end_z, block_size):
-                    noise = math.sin(x * 0.008) * math.cos(z * 0.008) * 3 + \
-                            math.sin(x * 0.015) * math.sin(z * 0.015) * 2
-                    block_y = height + noise
-                    
-                    if block_y < self.player_pos[1] - 30:
-                        continue
-                    
-                    grass_color_intensity = 0.2 + noise * 0.05
-                    glColor3f(0.2 + grass_color_intensity, 0.5 + grass_color_intensity, 0.2 + grass_color_intensity)
-                    
-                    glBegin(GL_QUADS)
-                    glVertex3f(x, block_y, z)
-                    glVertex3f(x + block_size, block_y, z)
-                    glVertex3f(x + block_size, block_y, z + block_size)
-                    glVertex3f(x, block_y, z + block_size)
-                    glEnd()
-            
+
+            cx, cz = self.player_pos[0], self.player_pos[2]
+            origin = self._terrain_origin
+            if (self._terrain_list is None or origin is None
+                    or abs(cx - origin[0]) > 16 or abs(cz - origin[1]) > 16):
+                self._build_terrain_list(cx, cz)
+
+            if self._terrain_list is not None:
+                glCallList(self._terrain_list)
+
             glEnable(GL_LIGHTING)
         except Exception as e:
-            print(f"绘制地形错误: {e}")
+            logger.info(f"绘制地形错误: {e}")
     
-    def spawn_loot(self, x, z):
-        loot_items = ["iron_ingot", "gold_ingot", "diamond", "coal", "bread", "arrow"]
-        for _ in range(random.randint(1, 4)):
-            item = random.choice(loot_items)
-            offset_x = random.uniform(-2, 2)
-            offset_z = random.uniform(-2, 2)
-            self.spawn_pickup(item, x + offset_x, z + offset_z, 1)
-    
-    def draw_projectiles(self):
+    def draw_placed_blocks(self):
+        """绘制玩家放置的方块 - MC风格"""
         try:
             glDisable(GL_LIGHTING)
             
-            for projectile in self.projectiles:
-                x, y, z = projectile["x"], projectile["y"], projectile["z"]
-                proj_type = projectile["type"]
+            block_size = 1
+            
+            for block in self.placed_blocks:
+                x = block.get("x", 0)
+                y = block.get("y", 0)
+                z = block.get("z", 0)
+                block_type = block.get("type", "泥土")
+                
+                color = self.block_colors.get(block_type, (0.5, 0.5, 0.5))
                 
                 glPushMatrix()
                 glTranslatef(x, y, z)
                 
-                if proj_type == "arrow":
-                    glColor3f(0.6, 0.4, 0.2)
-                    glBegin(GL_LINES)
-                    glVertex3f(0, 0, 0)
-                    glVertex3f(0, 0.5, 0)
-                    glEnd()
-                    
-                    glColor3f(0.9, 0.9, 0.9)
-                    glBegin(GL_LINES)
-                    glVertex3f(0, 0.5, 0)
-                    glVertex3f(0, 0.8, 0)
-                    glEnd()
-                
-                elif proj_type == "bolt":
-                    glColor3f(0.5, 0.5, 0.5)
-                    glBegin(GL_LINES)
-                    glVertex3f(0, 0, 0)
-                    glVertex3f(0, 0.6, 0)
-                    glEnd()
-                    
-                    glColor3f(0.3, 0.3, 0.3)
-                    glBegin(GL_LINES)
-                    glVertex3f(-0.1, 0.1, 0)
-                    glVertex3f(0.1, 0.1, 0)
-                    glEnd()
-                
-                elif proj_type == "trident":
-                    glColor3f(0.3, 0.5, 0.8)
-                    glBegin(GL_LINES)
-                    glVertex3f(0, 0, 0)
-                    glVertex3f(0, 1.0, 0)
-                    glEnd()
-                    
-                    glColor3f(0.2, 0.4, 0.7)
-                    glBegin(GL_LINES)
-                    glVertex3f(-0.15, 0.2, 0)
-                    glVertex3f(0, 0.5, 0)
-                    glEnd()
-                    glBegin(GL_LINES)
-                    glVertex3f(0.15, 0.2, 0)
-                    glVertex3f(0, 0.5, 0)
-                    glEnd()
-                
-                glPopMatrix()
-            
-            glEnable(GL_LIGHTING)
-        except Exception as e:
-            print(f"绘制投射物错误: {e}")
-    
-    def draw_pickups(self):
-        try:
-            glDisable(GL_LIGHTING)
-            
-            for pickup in self.pickups:
-                x = pickup["x"]
-                z = pickup["y"]
-                bob_y = math.sin(pickup.get("bob_offset", 0)) * 0.15 + 0.3
-                rotation = pickup.get("rotation", 0)
-                
-                item_name = pickup["item"]
-                block_data = MC_BLOCKS.get(item_name, MC_BLOCKS.get("stone", {}))
-                color = block_data.get("color", (128, 128, 128))
-                
                 if len(color) == 4:
-                    r, g, b, a = color
+                    glColor4f(*color)
+                    if color[3] < 1.0:
+                        glEnable(GL_BLEND)
+                        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
                 else:
-                    r, g, b = color
-                    a = 1.0
+                    glColor3f(*color)
                 
-                glColor4f(r/255, g/255, b/255, a)
-                
-                glPushMatrix()
-                glTranslatef(x, bob_y, z)
-                glRotatef(math.degrees(rotation), 0, 1, 0)
-                
-                size = 0.35
+                # 绘制方块六个面
+                # 顶面
                 glBegin(GL_QUADS)
+                glVertex3f(0, block_size, 0)
+                glVertex3f(block_size, block_size, 0)
+                glVertex3f(block_size, block_size, block_size)
+                glVertex3f(0, block_size, block_size)
+                glEnd()
                 
-                glVertex3f(-size, -size, -size)
-                glVertex3f(size, -size, -size)
-                glVertex3f(size, size, -size)
-                glVertex3f(-size, size, -size)
+                # 底面
+                glBegin(GL_QUADS)
+                glVertex3f(0, 0, 0)
+                glVertex3f(0, 0, block_size)
+                glVertex3f(block_size, 0, block_size)
+                glVertex3f(block_size, 0, 0)
+                glEnd()
                 
-                glVertex3f(size, -size, -size)
-                glVertex3f(size, -size, size)
-                glVertex3f(size, size, size)
-                glVertex3f(size, size, -size)
+                # 前面
+                glBegin(GL_QUADS)
+                glVertex3f(0, 0, block_size)
+                glVertex3f(0, block_size, block_size)
+                glVertex3f(block_size, block_size, block_size)
+                glVertex3f(block_size, 0, block_size)
+                glEnd()
                 
-                glVertex3f(size, -size, size)
-                glVertex3f(-size, -size, size)
-                glVertex3f(-size, size, size)
-                glVertex3f(size, size, size)
+                # 后面
+                glBegin(GL_QUADS)
+                glVertex3f(0, 0, 0)
+                glVertex3f(block_size, 0, 0)
+                glVertex3f(block_size, block_size, 0)
+                glVertex3f(0, block_size, 0)
+                glEnd()
                 
-                glVertex3f(-size, -size, size)
-                glVertex3f(-size, -size, -size)
-                glVertex3f(-size, size, -size)
-                glVertex3f(-size, size, size)
+                # 左面
+                glBegin(GL_QUADS)
+                glVertex3f(0, 0, 0)
+                glVertex3f(0, block_size, 0)
+                glVertex3f(0, block_size, block_size)
+                glVertex3f(0, 0, block_size)
+                glEnd()
                 
-                glVertex3f(-size, size, -size)
-                glVertex3f(size, size, -size)
-                glVertex3f(size, size, size)
-                glVertex3f(-size, size, size)
-                
-                glVertex3f(-size, -size, size)
-                glVertex3f(size, -size, size)
-                glVertex3f(size, -size, -size)
-                glVertex3f(-size, -size, -size)
-                
+                # 右面
+                glBegin(GL_QUADS)
+                glVertex3f(block_size, 0, 0)
+                glVertex3f(block_size, 0, block_size)
+                glVertex3f(block_size, block_size, block_size)
+                glVertex3f(block_size, block_size, 0)
                 glEnd()
                 
                 glPopMatrix()
+                
+                if len(color) == 4 and color[3] < 1.0:
+                    glDisable(GL_BLEND)
             
             glEnable(GL_LIGHTING)
         except Exception as e:
-            print(f"绘制掉落物错误: {e}")
+            logger.info(f"绘制放置方块错误: {e}")
     
-    def draw_tech_block(self, tech_block):
+    def update_day_night(self):
+        """更新昼夜系统"""
+        self.day_time += self.day_speed
+        if self.day_time >= 24000:
+            self.day_time = 0
+        
+        self.is_day = self.day_time < 12000
+        
+        if self.is_day:
+            self.sun_angle = (self.day_time / 12000) * math.pi - math.pi/2
+            self.moon_angle = -math.pi/2
+        else:
+            self.sun_angle = -math.pi/2
+            self.moon_angle = ((self.day_time - 12000) / 12000) * math.pi - math.pi/2
+    
+    def get_time_of_day(self):
+        """获取当前时间段"""
+        if self.day_time < 2000:
+            return "日出"
+        elif self.day_time < 6000:
+            return "上午"
+        elif self.day_time < 10000:
+            return "中午"
+        elif self.day_time < 12000:
+            return "日落"
+        elif self.day_time < 14000:
+            return "黄昏"
+        elif self.day_time < 22000:
+            return "夜晚"
+        else:
+            return "午夜"
+    
+    def get_sky_color(self):
+        """根据时间获取天空颜色"""
+        try:
+            if self.is_day:
+                t = self.day_time / 12000
+                if t < 0.2:
+                    return (0.3 + t * 0.5, 0.4 + t * 0.4, 0.8 + t * 0.2)
+                elif t > 0.8:
+                    t2 = (t - 0.8) * 5
+                    return (0.8 - t2 * 0.5, 0.8 - t2 * 0.4, 1.0 - t2 * 0.2)
+                else:
+                    return (0.8, 0.8, 1.0)
+            else:
+                t = (self.day_time - 12000) / 12000
+                if t < 0.2:
+                    return (0.2 - t * 0.15, 0.25 - t * 0.15, 0.4 - t * 0.2)
+                elif t > 0.8:
+                    t2 = (t - 0.8) * 5
+                    return (0.05 + t2 * 0.25, 0.1 + t2 * 0.15, 0.2 + t2 * 0.2)
+                else:
+                    return (0.05, 0.1, 0.2)
+        except Exception as e:
+            logger.info(f"[错误] 获取天空颜色失败: {e}")
+            return (0.5, 0.7, 1.0)  # 默认天空颜色
+    
+    def draw_sun_moon(self):
+        """绘制太阳和月亮"""
         try:
             glDisable(GL_LIGHTING)
-            
-            x, z = tech_block["x"], tech_block["z"]
-            tech_type = tech_block["type"]
-            active = tech_block.get("active", False)
-            rotation = tech_block.get("rotation", 0)
-            
-            block_data = MC_BLOCKS.get(tech_type, MC_BLOCKS.get("stone", {}))
-            color = block_data.get("color", (100, 100, 110))
-            
-            if len(color) == 4:
-                r, g, b, a = color
-                glColor4f(r/255, g/255, b/255, a)
-            else:
-                r, g, b = color
-                glColor3f(r/255, g/255, b/255)
-            
             glPushMatrix()
-            glTranslatef(x, 0.5, z)
-            glRotatef(rotation * 90, 0, 1, 0)
             
-            block_size = 1.5
+            sun_radius = 50
+            moon_radius = 45
             
-            glBegin(GL_QUADS)
-            
-            glVertex3f(-block_size/2, 0, -block_size/2)
-            glVertex3f(block_size/2, 0, -block_size/2)
-            glVertex3f(block_size/2, block_size, -block_size/2)
-            glVertex3f(-block_size/2, block_size, -block_size/2)
-            
-            glVertex3f(block_size/2, 0, -block_size/2)
-            glVertex3f(block_size/2, 0, block_size/2)
-            glVertex3f(block_size/2, block_size, block_size/2)
-            glVertex3f(block_size/2, block_size, -block_size/2)
-            
-            glVertex3f(block_size/2, 0, block_size/2)
-            glVertex3f(-block_size/2, 0, block_size/2)
-            glVertex3f(-block_size/2, block_size, block_size/2)
-            glVertex3f(block_size/2, block_size, block_size/2)
-            
-            glVertex3f(-block_size/2, 0, block_size/2)
-            glVertex3f(-block_size/2, 0, -block_size/2)
-            glVertex3f(-block_size/2, block_size, -block_size/2)
-            glVertex3f(-block_size/2, block_size, block_size/2)
-            
-            glVertex3f(-block_size/2, block_size, -block_size/2)
-            glVertex3f(block_size/2, block_size, -block_size/2)
-            glVertex3f(block_size/2, block_size, block_size/2)
-            glVertex3f(-block_size/2, block_size, block_size/2)
-            
-            glVertex3f(-block_size/2, 0, block_size/2)
-            glVertex3f(block_size/2, 0, block_size/2)
-            glVertex3f(block_size/2, 0, -block_size/2)
-            glVertex3f(-block_size/2, 0, -block_size/2)
-            
-            glEnd()
-            
-            if block_data.get("emissive", False) and active:
-                pulse = math.sin(time.time() * 3) * 0.2 + 0.8
-                glColor4f(r/255*pulse*1.5, g/255*pulse*1.5, b/255*pulse*1.5, 0.5)
+            if self.is_day:
+                glColor3f(1.0, 1.0, 0.8)
+                x = math.cos(self.sun_angle) * 500
+                y = math.sin(self.sun_angle) * 300 + 100
+                z = 0
+                
+                glTranslatef(self.player_pos[0] + x, y, self.player_pos[2] + z)
                 glBegin(GL_QUADS)
-                offset = 0.1
-                glVertex3f(-block_size/2 - offset, -offset, -block_size/2 - offset)
-                glVertex3f(block_size/2 + offset, -offset, -block_size/2 - offset)
-                glVertex3f(block_size/2 + offset, block_size + offset, -block_size/2 - offset)
-                glVertex3f(-block_size/2 - offset, block_size + offset, -block_size/2 - offset)
+                for i in range(36):
+                    angle = i * 10 * math.pi / 180
+                    glVertex3f(sun_radius * math.cos(angle), sun_radius * math.sin(angle), 0)
+                    glVertex3f(sun_radius * math.cos((i+1)*10*math.pi/180), sun_radius * math.sin((i+1)*10*math.pi/180), 0)
+                glEnd()
+            else:
+                glColor3f(0.9, 0.9, 1.0)
+                x = math.cos(self.moon_angle) * 500
+                y = math.sin(self.moon_angle) * 300 + 100
+                z = 0
+                
+                glTranslatef(self.player_pos[0] + x, y, self.player_pos[2] + z)
+                glBegin(GL_QUADS)
+                for i in range(36):
+                    angle = i * 10 * math.pi / 180
+                    glVertex3f(moon_radius * math.cos(angle), moon_radius * math.sin(angle), 0)
+                    glVertex3f(moon_radius * math.cos((i+1)*10*math.pi/180), moon_radius * math.sin((i+1)*10*math.pi/180), 0)
                 glEnd()
             
             glPopMatrix()
             glEnable(GL_LIGHTING)
         except Exception as e:
-            print(f"绘制科技方块错误: {e}")
+            logger.info(f"绘制太阳月亮错误: {e}")
     
-    def draw_tree(self, x, z, scale=1.0):
+    def update_weather(self):
+        """更新天气系统"""
+        try:
+            self.weather_timer += 1
+            
+            if self.weather_timer > 3000:
+                self.weather_timer = 0
+                rand = random.random()
+                if rand < 0.2:
+                    self.weather = "rain"
+                elif rand < 0.3:
+                    self.weather = "snow"
+                elif rand < 0.35:
+                    self.weather = "thunder"
+                else:
+                    self.weather = "clear"
+            
+            # 雷暴闪电
+            if self.weather == "thunder":
+                self.thunder_timer += 1
+                if self.thunder_timer > 200:
+                    self.is_thundering = random.random() < 0.3
+                    self.thunder_timer = 0
+                    if self.is_thundering:
+                        self.add_chat_message("⚡ 闪电！")
+            
+            if self.weather == "rain":
+                for _ in range(5):
+                    if len(self.rain_particles) < 500:
+                        particle = {
+                            "x": random.uniform(self.player_pos[0] - 100, self.player_pos[0] + 100),
+                            "y": 50 + random.uniform(0, 20),
+                            "z": random.uniform(self.player_pos[2] - 100, self.player_pos[2] + 100),
+                            "speed": random.uniform(8, 12)
+                        }
+                        self.rain_particles.append(particle)
+                
+                self.rain_particles = [p for p in self.rain_particles if p.get("y", -10) > -5]
+                for p in self.rain_particles:
+                    p["y"] = p.get("y", 0) - p.get("speed", 10) * 0.1
+                    p["x"] = p.get("x", 0) + 0.5
+            
+            elif self.weather == "snow":
+                for _ in range(3):
+                    if len(self.snow_particles) < 300:
+                        particle = {
+                            "x": random.uniform(self.player_pos[0] - 100, self.player_pos[0] + 100),
+                            "y": 50 + random.uniform(0, 20),
+                            "z": random.uniform(self.player_pos[2] - 100, self.player_pos[2] + 100),
+                            "speed": random.uniform(2, 4),
+                            "drift_x": random.uniform(-1, 1),
+                            "drift_z": random.uniform(-1, 1)
+                        }
+                        self.snow_particles.append(particle)
+                
+                self.snow_particles = [p for p in self.snow_particles if p.get("y", -10) > -5]
+                for p in self.snow_particles:
+                    p["y"] = p.get("y", 0) - p.get("speed", 3) * 0.05
+                    p["x"] = p.get("x", 0) + p.get("drift_x", 0) * 0.1
+                    p["z"] = p.get("z", 0) + p.get("drift_z", 0) * 0.1
+        except Exception as e:
+            logger.info(f"更新天气错误: {e}")
+    
+    def draw_weather(self):
+        """绘制天气效果"""
+        try:
+            glDisable(GL_LIGHTING)
+            
+            if self.weather == "rain":
+                glColor4f(0.6, 0.7, 0.8, 0.5)
+                glBegin(GL_LINES)
+                for p in self.rain_particles:
+                    glVertex3f(p["x"], p["y"], p["z"])
+                    glVertex3f(p["x"] + 2, p["y"] - 10, p["z"])
+                glEnd()
+            
+            elif self.weather == "snow":
+                glColor4f(1.0, 1.0, 1.0, 0.8)
+                glBegin(GL_QUADS)
+                for p in self.snow_particles:
+                    size = 3
+                    glVertex3f(p["x"] - size, p["y"], p["z"] - size)
+                    glVertex3f(p["x"] + size, p["y"], p["z"] - size)
+                    glVertex3f(p["x"] + size, p["y"], p["z"] + size)
+                    glVertex3f(p["x"] - size, p["y"], p["z"] + size)
+                glEnd()
+            
+            glEnable(GL_LIGHTING)
+        except Exception as e:
+            logger.info(f"绘制天气错误: {e}")
+    
+    def spawn_effect_particle(self, x, y, z, effect_type="explosion"):
+        """生成特效粒子"""
+        try:
+            colors = {
+                "explosion": [(1.0, 0.5, 0.0), (1.0, 0.2, 0.0), (1.0, 1.0, 0.0)],
+                "enchant": [(0.5, 0.0, 1.0), (0.0, 0.5, 1.0), (1.0, 0.0, 1.0)],
+                "heal": [(0.0, 1.0, 0.0), (0.5, 1.0, 0.5), (0.0, 0.8, 0.0)],
+                "magic": [(0.8, 0.0, 0.8), (0.0, 0.8, 0.8), (0.8, 0.8, 0.0)],
+                "fire": [(1.0, 0.3, 0.0), (1.0, 0.5, 0.0), (0.8, 0.0, 0.0)]
+            }
+            
+            color = random.choice(colors.get(effect_type, colors["explosion"]))
+            
+            for _ in range(20):
+                particle = {
+                    "x": x + random.uniform(-1, 1),
+                    "y": y + random.uniform(0, 2),
+                    "z": z + random.uniform(-1, 1),
+                    "vx": random.uniform(-0.5, 0.5),
+                    "vy": random.uniform(0.5, 2.0),
+                    "vz": random.uniform(-0.5, 0.5),
+                    "life": 60,
+                    "max_life": 60,
+                    "color": color,
+                    "size": random.uniform(0.1, 0.3)
+                }
+                self.effect_particles.append(particle)
+        except Exception as e:
+            logger.info(f"[错误] 生成特效粒子失败: {e}")
+    
+    def spawn_dust_particle(self, x, y, z):
+        """生成尘埃粒子"""
+        try:
+            for _ in range(10):
+                particle = {
+                    "x": x + random.uniform(-0.5, 0.5),
+                    "y": y + random.uniform(0, 1),
+                    "z": z + random.uniform(-0.5, 0.5),
+                    "vx": random.uniform(-0.1, 0.1),
+                    "vy": random.uniform(0.1, 0.3),
+                    "vz": random.uniform(-0.1, 0.1),
+                    "life": 30,
+                    "max_life": 30,
+                    "size": random.uniform(0.05, 0.15)
+                }
+                self.dust_particles.append(particle)
+        except Exception as e:
+            logger.info(f"[错误] 生成尘埃粒子失败: {e}")
+    
+    def update_effect_particles(self):
+        """更新特效粒子"""
+        try:
+            for particle in self.effect_particles:
+                particle["x"] += particle["vx"]
+                particle["y"] += particle["vy"]
+                particle["z"] += particle["vz"]
+                particle["vy"] -= 0.05  # 重力
+                particle["life"] -= 1
+            self.effect_particles[:] = [particle for particle in self.effect_particles if particle["life"] > 0]
+        except Exception as e:
+            logger.info(f"[错误] 更新特效粒子失败: {e}")
+    
+    def update_dust_particles(self):
+        """更新尘埃粒子"""
+        try:
+            for particle in self.dust_particles:
+                particle["x"] += particle["vx"]
+                particle["y"] += particle["vy"]
+                particle["z"] += particle["vz"]
+                particle["life"] -= 1
+            self.dust_particles[:] = [particle for particle in self.dust_particles if particle["life"] > 0]
+        except Exception as e:
+            logger.info(f"[错误] 更新尘埃粒子失败: {e}")
+    
+    def draw_effect_particles(self):
+        """绘制特效粒子"""
+        try:
+            glDisable(GL_LIGHTING)
+            glPointSize(3.0)
+            
+            glBegin(GL_POINTS)
+            for particle in self.effect_particles:
+                alpha = particle["life"] / particle["max_life"]
+                glColor4f(particle["color"][0], particle["color"][1], particle["color"][2], alpha)
+                glVertex3f(particle["x"], particle["y"], particle["z"])
+            glEnd()
+            
+            glEnable(GL_LIGHTING)
+        except Exception as e:
+            logger.info(f"[错误] 绘制特效粒子失败: {e}")
+    
+    def draw_dust_particles(self):
+        """绘制尘埃粒子"""
+        try:
+            glDisable(GL_LIGHTING)
+            glPointSize(2.0)
+            
+            glBegin(GL_POINTS)
+            for particle in self.dust_particles:
+                alpha = particle["life"] / particle["max_life"]
+                glColor4f(0.8, 0.7, 0.6, alpha * 0.5)
+                glVertex3f(particle["x"], particle["y"], particle["z"])
+            glEnd()
+            
+            glEnable(GL_LIGHTING)
+        except Exception as e:
+            logger.info(f"[错误] 绘制尘埃粒子失败: {e}")
+    
+    def spawn_entity(self):
+        """生成生物"""
+        self.spawn_timer += 1
+        
+        if self.spawn_timer > 30:
+            self.spawn_timer = 0
+            
+            # 白天40%概率刷动物，夜晚50%概率刷怪物
+            spawn_chance = 0.4 if self.is_day else 0.5
+            if random.random() < spawn_chance:
+                entity_type = random.choice(["猪", "牛", "羊", "鸡"]) if self.is_day else random.choice(["僵尸", "骷髅", "苦力怕"])
+                spawn_x = self.player_pos[0] + random.uniform(-80, 80)
+                spawn_z = self.player_pos[2] + random.uniform(-80, 80)
+                
+                entity = {
+                    "type": entity_type,
+                    "x": spawn_x,
+                    "y": self.terrain_height(spawn_x, spawn_z),
+                    "z": spawn_z,
+                    "health": 20,
+                    "max_health": 20,
+                    "speed": random.uniform(0.1, 0.3),
+                    "direction": random.uniform(0, 360),
+                    "texture": entity_type
+                }
+                
+                if entity_type in ["僵尸", "骷髅", "苦力怕"]:
+                    self.monsters.append(entity)
+                else:
+                    self.animals.append(entity)
+    
+    def update_entities(self):
+        """更新生物位置"""
+        for animal in self.animals:
+            animal["direction"] += random.uniform(-5, 5)
+            animal["x"] += math.cos(math.radians(animal["direction"])) * animal["speed"]
+            animal["z"] += math.sin(math.radians(animal["direction"])) * animal["speed"]
+        self.animals[:] = [a for a in self.animals
+                           if self.player_pos[0] - 120 <= a["x"] <= self.player_pos[0] + 120
+                           and self.player_pos[2] - 120 <= a["z"] <= self.player_pos[2] + 120]
+        
+        for monster in self.monsters:
+            dx = self.player_pos[0] - monster["x"]
+            dz = self.player_pos[2] - monster["z"]
+            monster["direction"] = math.degrees(math.atan2(dz, dx))
+            monster["x"] += math.cos(math.radians(monster["direction"])) * monster["speed"]
+            monster["z"] += math.sin(math.radians(monster["direction"])) * monster["speed"]
+        self.monsters[:] = [m for m in self.monsters
+                            if self.player_pos[0] - 120 <= m["x"] <= self.player_pos[0] + 120
+                            and self.player_pos[2] - 120 <= m["z"] <= self.player_pos[2] + 120]
+    
+    def draw_entities(self):
+        """绘制生物"""
+        try:
+            glDisable(GL_LIGHTING)
+            
+            for animal in self.animals:
+                glPushMatrix()
+                glTranslatef(animal["x"], animal["y"], animal["z"])
+                
+                color = {"猪": (0.9, 0.6, 0.6), "牛": (0.6, 0.4, 0.2), "羊": (0.9, 0.9, 0.9), "鸡": (0.9, 0.8, 0.6)}[animal["type"]]
+                glColor3f(*color)
+                
+                size = 0.8
+                glBegin(GL_QUADS)
+                glVertex3f(-size, 0, -size)
+                glVertex3f(size, 0, -size)
+                glVertex3f(size, size * 1.5, -size)
+                glVertex3f(-size, size * 1.5, -size)
+                glEnd()
+                
+                glPopMatrix()
+            
+            for monster in self.monsters:
+                glPushMatrix()
+                glTranslatef(monster["x"], monster["y"], monster["z"])
+                
+                color = {"僵尸": (0.3, 0.6, 0.3), "骷髅": (0.8, 0.8, 0.8), "苦力怕": (0.2, 0.8, 0.2)}[monster["type"]]
+                glColor3f(*color)
+                
+                size = 0.8
+                glBegin(GL_QUADS)
+                glVertex3f(-size, 0, -size)
+                glVertex3f(size, 0, -size)
+                glVertex3f(size, size * 2, -size)
+                glVertex3f(-size, size * 2, -size)
+                glEnd()
+                
+                glPopMatrix()
+            
+            if self.herobrine_active and self.herobrine_pos:
+                self.draw_herobrine()
+            
+            glEnable(GL_LIGHTING)
+        except Exception as e:
+            logger.info(f"绘制实体错误: {e}")
+    
+    def draw_herobrine(self):
+        """绘制Herobrine（彩蛋）"""
+        if not self.herobrine_active or not self.herobrine_pos:
+            return
+        
+        glPushMatrix()
+        glTranslatef(self.herobrine_pos[0], self.herobrine_pos[1], self.herobrine_pos[2])
+        
+        glColor3f(1.0, 1.0, 1.0)
+        
+        size = 0.6
+        glBegin(GL_QUADS)
+        
+        glVertex3f(-size, 0, -size)
+        glVertex3f(size, 0, -size)
+        glVertex3f(size, size * 2.5, -size)
+        glVertex3f(-size, size * 2.5, -size)
+        glEnd()
+        
+        glColor3f(0.8, 0.8, 0.8)
+        glBegin(GL_QUADS)
+        glVertex3f(-size * 0.8, size * 1.8, -size * 0.6)
+        glVertex3f(size * 0.8, size * 1.8, -size * 0.6)
+        glVertex3f(size * 0.8, size * 2.5, -size * 0.6)
+        glVertex3f(-size * 0.8, size * 2.5, -size * 0.6)
+        glEnd()
+        
+        glColor3f(0.2, 0.2, 0.2)
+        glBegin(GL_QUADS)
+        glVertex3f(-size * 0.3, size * 2.1, -size * 0.55)
+        glVertex3f(-size * 0.1, size * 2.1, -size * 0.55)
+        glVertex3f(-size * 0.1, size * 2.3, -size * 0.55)
+        glVertex3f(-size * 0.3, size * 2.3, -size * 0.55)
+        glEnd()
+        
+        glBegin(GL_QUADS)
+        glVertex3f(size * 0.1, size * 2.1, -size * 0.55)
+        glVertex3f(size * 0.3, size * 2.1, -size * 0.55)
+        glVertex3f(size * 0.3, size * 2.3, -size * 0.55)
+        glVertex3f(size * 0.1, size * 2.3, -size * 0.55)
+        glEnd()
+        
+        glPopMatrix()
+    
+    def update_herobrine(self):
+        """更新Herobrine行为（彩蛋）"""
+        if not self.herobrine_active or not self.herobrine_pos:
+            return
+        
+        self.herobrine_timer += 1
+        
+        if self.herobrine_timer > 300:
+            self.herobrine_active = False
+            self.herobrine_pos = None
+            self.herobrine_timer = 0
+            self.add_chat_message("Herobrine消失了...")
+            return
+        
+        dx = self.player_pos[0] - self.herobrine_pos[0]
+        dz = self.player_pos[2] - self.herobrine_pos[2]
+        distance = math.hypot(dx, dz)
+        
+        if distance < 3:
+            self.health -= 1
+            if self.health <= 0:
+                self.add_chat_message("你被Herobrine杀死了!")
+        
+        if random.random() < 0.02:
+            self.herobrine_pos[0] += (random.random() - 0.5) * 2
+            self.herobrine_pos[2] += (random.random() - 0.5) * 2
+    
+    def update_waves(self):
+        """更新海浪效果"""
+        self.wave_timer += 1
+        
+        if self.wave_timer > 5:
+            self.wave_timer = 0
+            
+            for _ in range(20):
+                if len(self.wave_particles) < 1000:
+                    angle = random.uniform(0, math.pi * 2)
+                    distance = random.uniform(50, 150)
+                    self.wave_particles.append({
+                        "x": self.player_pos[0] + math.cos(angle) * distance,
+                        "y": 0.1,
+                        "z": self.player_pos[2] + math.sin(angle) * distance,
+                        "amplitude": random.uniform(0.1, 0.3),
+                        "frequency": random.uniform(0.05, 0.1),
+                        "phase": random.uniform(0, math.pi * 2),
+                        "speed": random.uniform(0.02, 0.05)
+                    })
+        
+        for wave in self.wave_particles:
+            wave["y"] = 0.1 + wave["amplitude"] * math.sin(self.wave_timer * wave["frequency"] + wave["phase"])
+            wave["x"] += wave["speed"] * math.cos(wave["phase"])
+            wave["z"] += wave["speed"] * math.sin(wave["phase"])
+        self.wave_particles[:] = [wave for wave in self.wave_particles if math.hypot(wave["x"] - self.player_pos[0], wave["z"] - self.player_pos[2]) <= 200]
+    
+    def draw_waves(self):
+        """绘制海浪效果"""
+        try:
+            glDisable(GL_LIGHTING)
+            
+            for wave in self.wave_particles:
+                glPushMatrix()
+                glTranslatef(wave["x"], wave["y"], wave["z"])
+                
+                glColor4f(0.2, 0.5, 0.8, 0.6)
+                
+                size = 2
+                glBegin(GL_QUADS)
+                glVertex3f(-size, 0, -size)
+                glVertex3f(size, 0, -size)
+                glVertex3f(size, 0.1, size)
+                glVertex3f(-size, 0.1, size)
+                glEnd()
+                
+                glPopMatrix()
+            
+            glEnable(GL_LIGHTING)
+        except Exception as e:
+            logger.info(f"绘制海浪错误: {e}")
+    
+    def draw_tree(self, x, z):
+        """绘制树木"""
         try:
             glDisable(GL_LIGHTING)
             
             glPushMatrix()
-            glTranslatef(x, -1, z)
-            glScalef(scale, scale, scale)
+            glTranslatef(x, self.terrain_height(x, z), z)
             
             trunk_height = 3
             trunk_width = 0.3
@@ -3514,8 +2667,8 @@ class GameMap3D:
             leaf_colors = [(0.2, 0.6, 0.2), (0.15, 0.55, 0.15), (0.25, 0.65, 0.25)]
             
             for layer, layer_height in enumerate([1.5, 1.2, 0.8]):
-                y = leaves_base + layer * 0.6
-                size = 2.0 - layer * 0.35
+                y = leaves_base + layer * 0.8
+                size = 2.0 - layer * 0.4
                 color = leaf_colors[layer % len(leaf_colors)]
                 glColor3f(*color)
                 
@@ -3540,317 +2693,149 @@ class GameMap3D:
                 glVertex3f(-size, y + layer_height, -size)
                 glVertex3f(-size, y + layer_height, size)
                 glEnd()
+                
+                glColor3f(*[c * 0.8 for c in color])
+                glBegin(GL_QUADS)
+                glVertex3f(-size, y + layer_height, -size)
+                glVertex3f(size, y + layer_height, -size)
+                glVertex3f(size * 0.7, y + layer_height + 0.5, 0)
+                glVertex3f(-size * 0.7, y + layer_height + 0.5, 0)
+                glEnd()
             
             glPopMatrix()
             glEnable(GL_LIGHTING)
         except Exception as e:
-            print(f"绘制树木错误: {e}")
-    
-    def draw_large_structure(self, struct):
-        try:
-            x, z = struct["x"], struct["z"]
-            size = struct["size"]
-            height = struct["height"]
-            color = struct["color"]
-            
-            glPushMatrix()
-            glTranslatef(x, 0, z)
-            
-            glDisable(GL_LIGHTING)
-            
-            glColor3f(*color)
-            
-            glBegin(GL_QUADS)
-            glVertex3f(-size/2, 0, -size/2)
-            glVertex3f(size/2, 0, -size/2)
-            glVertex3f(size/2, height, -size/2)
-            glVertex3f(-size/2, height, -size/2)
-            
-            glVertex3f(size/2, 0, -size/2)
-            glVertex3f(size/2, 0, size/2)
-            glVertex3f(size/2, height, size/2)
-            glVertex3f(size/2, height, -size/2)
-            
-            glVertex3f(size/2, 0, size/2)
-            glVertex3f(-size/2, 0, size/2)
-            glVertex3f(-size/2, height, size/2)
-            glVertex3f(size/2, height, size/2)
-            
-            glVertex3f(-size/2, 0, size/2)
-            glVertex3f(-size/2, 0, -size/2)
-            glVertex3f(-size/2, height, -size/2)
-            glVertex3f(-size/2, height, size/2)
-            glEnd()
-            
-            glEnable(GL_LIGHTING)
-            glPopMatrix()
-        except Exception as e:
-            print(f"绘制大型结构错误: {e}")
+            logger.info(f"绘制树木错误: {e}")
     
     def draw_location(self, loc):
+        """绘制地点 - 优化版，增加高度和细节"""
         try:
             x, z = loc["x"], loc["y"]
-            loc_type = loc.get("type", "矿产")
-            color = loc.get("color", (0.6, 0.5, 0.4))
-            owner = loc.get("owner", "neutral")
-            height = loc.get("height", 8)
-            rotation_id = loc.get("rotation_id", 0)
-            
-            facing_id = self.calculate_facing_id(loc)
+            loc_type = loc.get("type", "村庄")
             
             glPushMatrix()
-            glTranslatef(x, 0, z)
-            
-            glRotatef(rotation_id * 90, 0, 1, 0)
+            glTranslatef(x, self.terrain_height(x, z), z)
             
             glDisable(GL_LIGHTING)
             
-            base_width = 15
-            base_depth = 15
+            base_width = 12
+            base_depth = 12
             base_height = 2
             
-            if owner == "player":
-                glColor3f(0.3, 0.6, 0.3)
-            elif owner == "enemy":
-                glColor3f(0.6, 0.3, 0.3)
+            glColor3f(0.5, 0.4, 0.3)
+            self.draw_cube(base_width, base_height, base_depth)
+            
+            wall_thickness = 0.5
+            wall_height = 12
+            
+            if loc_type == "关隘":
+                wall_color = (0.6, 0.55, 0.5)
+                wall_height = 18
+            elif loc_type == "军营":
+                wall_color = (0.7, 0.2, 0.2)
+                wall_height = 15
+            elif loc_type == "村庄":
+                wall_color = (0.85, 0.75, 0.55)
+                wall_height = 10
+            elif loc_type == "矿山":
+                wall_color = (0.5, 0.5, 0.45)
+                wall_height = 8
+            elif loc_type == "港口":
+                wall_color = (0.25, 0.55, 0.75)
+                wall_height = 10
             else:
-                glColor3f(*color)
+                wall_color = (0.6, 0.5, 0.4)
+                wall_height = 12
+            
+            glColor3f(wall_color)
             
             glBegin(GL_QUADS)
-            glVertex3f(-base_width/2, 0, -base_depth/2)
-            glVertex3f(base_width/2, 0, -base_depth/2)
-            glVertex3f(base_width/2, base_height, -base_depth/2)
             glVertex3f(-base_width/2, base_height, -base_depth/2)
-            
-            glVertex3f(base_width/2, 0, -base_depth/2)
-            glVertex3f(base_width/2, 0, base_depth/2)
-            glVertex3f(base_width/2, base_height, base_depth/2)
             glVertex3f(base_width/2, base_height, -base_depth/2)
+            glVertex3f(base_width/2, base_height + wall_height, -base_depth/2)
+            glVertex3f(-base_width/2, base_height + wall_height, -base_depth/2)
             
-            glVertex3f(base_width/2, 0, base_depth/2)
-            glVertex3f(-base_width/2, 0, base_depth/2)
-            glVertex3f(-base_width/2, base_height, base_depth/2)
+            glVertex3f(base_width/2, base_height, -base_depth/2)
             glVertex3f(base_width/2, base_height, base_depth/2)
+            glVertex3f(base_width/2, base_height + wall_height, base_depth/2)
+            glVertex3f(base_width/2, base_height + wall_height, -base_depth/2)
             
-            glVertex3f(-base_width/2, 0, base_depth/2)
-            glVertex3f(-base_width/2, 0, -base_depth/2)
-            glVertex3f(-base_width/2, base_height, -base_depth/2)
+            glVertex3f(base_width/2, base_height, base_depth/2)
             glVertex3f(-base_width/2, base_height, base_depth/2)
+            glVertex3f(-base_width/2, base_height + wall_height, base_depth/2)
+            glVertex3f(base_width/2, base_height + wall_height, base_depth/2)
+            
+            glVertex3f(-base_width/2, base_height, base_depth/2)
+            glVertex3f(-base_width/2, base_height, -base_depth/2)
+            glVertex3f(-base_width/2, base_height + wall_height, -base_depth/2)
+            glVertex3f(-base_width/2, base_height + wall_height, base_depth/2)
             glEnd()
             
-            wall_height = height
-            facing_colors = {
-                0: (color[0] * 1.2, color[1] * 1.2, color[2] * 1.2),
-                1: (color[0] * 0.9, color[1] * 0.9, color[2] * 0.9),
-                2: (color[0] * 0.8, color[1] * 0.8, color[2] * 0.8),
-                3: (color[0] * 0.7, color[1] * 0.7, color[2] * 0.7)
+            roof_height = 3
+            glColor3f(*[c * 0.8 for c in wall_color])
+            glBegin(GL_QUADS)
+            glVertex3f(-base_width/2 - 1, base_height + wall_height, -base_depth/2 - 1)
+            glVertex3f(base_width/2 + 1, base_height + wall_height, -base_depth/2 - 1)
+            glVertex3f(base_width/2 + 1, base_height + wall_height, base_depth/2 + 1)
+            glVertex3f(-base_width/2 - 1, base_height + wall_height, base_depth/2 + 1)
+            
+            glVertex3f(-base_width/2 - 1, base_height + wall_height, -base_depth/2 - 1)
+            glVertex3f(-base_width/2 - 1, base_height + wall_height, base_depth/2 + 1)
+            glVertex3f(0, base_height + wall_height + roof_height, 0)
+            
+            glVertex3f(base_width/2 + 1, base_height + wall_height, -base_depth/2 - 1)
+            glVertex3f(base_width/2 + 1, base_height + wall_height, base_depth/2 + 1)
+            glVertex3f(0, base_height + wall_height + roof_height, 0)
+            
+            glVertex3f(base_width/2 + 1, base_height + wall_height, base_depth/2 + 1)
+            glVertex3f(-base_width/2 - 1, base_height + wall_height, base_depth/2 + 1)
+            glVertex3f(0, base_height + wall_height + roof_height, 0)
+            
+            glVertex3f(-base_width/2 - 1, base_height + wall_height, -base_depth/2 - 1)
+            glVertex3f(-base_width/2 - 1, base_height + wall_height, base_depth/2 + 1)
+            glVertex3f(0, base_height + wall_height + roof_height, 0)
+            
+            glVertex3f(-base_width/2 - 1, base_height + wall_height, -base_depth/2 - 1)
+            glVertex3f(base_width/2 + 1, base_height + wall_height, -base_depth/2 - 1)
+            glVertex3f(0, base_height + wall_height + roof_height, 0)
+            glEnd()
+            
+            loc["collision_box"] = {
+                "min_x": x - base_width/2,
+                "max_x": x + base_width/2,
+                "min_y": 0,
+                "max_y": base_height + wall_height + roof_height,
+                "min_z": z - base_depth/2,
+                "max_z": z + base_depth/2
             }
-            facing_color = facing_colors.get(facing_id, color)
-            glColor3f(*facing_color)
-            
-            glBegin(GL_QUADS)
-            glVertex3f(-base_width/2, base_height, -base_depth/2)
-            glVertex3f(base_width/2, base_height, -base_depth/2)
-            glVertex3f(base_width/2, base_height + wall_height, -base_depth/2)
-            glVertex3f(-base_width/2, base_height + wall_height, -base_depth/2)
-            
-            glVertex3f(base_width/2, base_height, -base_depth/2)
-            glVertex3f(base_width/2, base_height, base_depth/2)
-            glVertex3f(base_width/2, base_height + wall_height, base_depth/2)
-            glVertex3f(base_width/2, base_height + wall_height, -base_depth/2)
-            
-            glVertex3f(base_width/2, base_height, base_depth/2)
-            glVertex3f(-base_width/2, base_height, base_depth/2)
-            glVertex3f(-base_width/2, base_height + wall_height, base_depth/2)
-            glVertex3f(base_width/2, base_height + wall_height, base_depth/2)
-            
-            glVertex3f(-base_width/2, base_height, base_depth/2)
-            glVertex3f(-base_width/2, base_height, -base_depth/2)
-            glVertex3f(-base_width/2, base_height + wall_height, -base_depth/2)
-            glVertex3f(-base_width/2, base_height + wall_height, base_depth/2)
-            glEnd()
-            
-            if owner == "player":
-                glColor3f(0.8, 0.8, 0)
-                glBegin(GL_LINE_LOOP)
-                glVertex3f(-base_width/2 - 2, base_height + wall_height + 5, -base_depth/2 - 2)
-                glVertex3f(base_width/2 + 2, base_height + wall_height + 5, -base_depth/2 - 2)
-                glVertex3f(base_width/2 + 2, base_height + wall_height + 5, base_depth/2 + 2)
-                glVertex3f(-base_width/2 - 2, base_height + wall_height + 5, base_depth/2 + 2)
-                glEnd()
+            loc["height"] = base_height + wall_height + roof_height
+            loc["enterable"] = True
             
             glEnable(GL_LIGHTING)
             glPopMatrix()
         except Exception as e:
-            print(f"绘制地点错误: {e}")
+            logger.info(f"绘制地点错误: {e}")
     
-    def draw_enemy(self, enemy):
-        try:
-            glPushMatrix()
-            glTranslatef(enemy["x"], 0, enemy["z"])
-            
-            glDisable(GL_LIGHTING)
-            glColor3f(*enemy["color"])
-            
-            glBegin(GL_QUADS)
-            glVertex3f(-0.5, 0, -0.5)
-            glVertex3f(0.5, 0, -0.5)
-            glVertex3f(0.5, 1.8, -0.5)
-            glVertex3f(-0.5, 1.8, -0.5)
-            
-            glVertex3f(0.5, 0, -0.5)
-            glVertex3f(0.5, 0, 0.5)
-            glVertex3f(0.5, 1.8, 0.5)
-            glVertex3f(0.5, 1.8, -0.5)
-            
-            glVertex3f(0.5, 0, 0.5)
-            glVertex3f(-0.5, 0, 0.5)
-            glVertex3f(-0.5, 1.8, 0.5)
-            glVertex3f(0.5, 1.8, 0.5)
-            
-            glVertex3f(-0.5, 0, 0.5)
-            glVertex3f(-0.5, 0, -0.5)
-            glVertex3f(-0.5, 1.8, -0.5)
-            glVertex3f(-0.5, 1.8, 0.5)
-            glEnd()
-            
-            if enemy["health"] < enemy["max_health"]:
-                health_percent = enemy["health"] / enemy["max_health"]
-                glColor3f(1, 0, 0)
-                glBegin(GL_LINES)
-                glVertex3f(-0.6, 2.2, 0)
-                glVertex3f(-0.6 + 1.2 * health_percent, 2.2, 0)
-                glEnd()
-            
-            glEnable(GL_LIGHTING)
-            glPopMatrix()
-        except Exception as e:
-            print(f"绘制敌人错误: {e}")
-    
-    def draw_general(self, general):
-        try:
-            glPushMatrix()
-            glTranslatef(general["x"], 0, general["z"])
-            
-            glDisable(GL_LIGHTING)
-            glColor3f(*general.get("color", (0.8, 0.6, 0.2)))
-            
-            glBegin(GL_QUADS)
-            glVertex3f(-0.6, 0, -0.6)
-            glVertex3f(0.6, 0, -0.6)
-            glVertex3f(0.6, 2.0, -0.6)
-            glVertex3f(-0.6, 2.0, -0.6)
-            
-            glVertex3f(0.6, 0, -0.6)
-            glVertex3f(0.6, 0, 0.6)
-            glVertex3f(0.6, 2.0, 0.6)
-            glVertex3f(0.6, 2.0, -0.6)
-            
-            glVertex3f(0.6, 0, 0.6)
-            glVertex3f(-0.6, 0, 0.6)
-            glVertex3f(-0.6, 2.0, 0.6)
-            glVertex3f(0.6, 2.0, 0.6)
-            
-            glVertex3f(-0.6, 0, 0.6)
-            glVertex3f(-0.6, 0, -0.6)
-            glVertex3f(-0.6, 2.0, -0.6)
-            glVertex3f(-0.6, 2.0, 0.6)
-            glEnd()
-            
-            if general.get("weapon"):
-                glColor3f(0.6, 0.6, 0.6)
-                glBegin(GL_LINES)
-                glVertex3f(0.6, 1.2, 0)
-                glVertex3f(1.2, 1.2, 0)
-                glEnd()
-            
-            glEnable(GL_LIGHTING)
-            glPopMatrix()
-        except Exception as e:
-            print(f"绘制武将错误: {e}")
-    
-    def draw_pet(self, pet):
-        try:
-            glPushMatrix()
-            glTranslatef(pet["x"], 0, pet["z"])
-            
-            glDisable(GL_LIGHTING)
-            glColor3f(*pet.get("color", (0.6, 0.4, 0.2)))
-            
-            size = pet.get("size", 1.0)
-            glScalef(size, size, size)
-            
-            glBegin(GL_QUADS)
-            glVertex3f(-0.4, 0, -0.4)
-            glVertex3f(0.4, 0, -0.4)
-            glVertex3f(0.4, 1.0, -0.4)
-            glVertex3f(-0.4, 1.0, -0.4)
-            glEnd()
-            
-            glEnable(GL_LIGHTING)
-            glPopMatrix()
-        except Exception as e:
-            print(f"绘制宠物错误: {e}")
-    
-    def draw_npc(self, npc):
-        try:
-            glPushMatrix()
-            glTranslatef(npc["x"], npc["y"], npc["z"])
-            
-            glDisable(GL_LIGHTING)
-            
-            bounce = math.sin(npc["animation_offset"]) * 0.2
-            
-            glColor3f(*npc["color"])
-            
-            body_height = 1.8
-            body_width = 0.4
-            body_depth = 0.3
-            
-            glTranslatef(0, body_height/2 + bounce, 0)
-            
-            glBegin(GL_QUADS)
-            glVertex3f(-body_width/2, -body_height/2, -body_depth/2)
-            glVertex3f(body_width/2, -body_height/2, -body_depth/2)
-            glVertex3f(body_width/2, body_height/2, -body_depth/2)
-            glVertex3f(-body_width/2, body_height/2, -body_depth/2)
-            
-            glVertex3f(body_width/2, -body_height/2, -body_depth/2)
-            glVertex3f(body_width/2, -body_height/2, body_depth/2)
-            glVertex3f(body_width/2, body_height/2, body_depth/2)
-            glVertex3f(body_width/2, body_height/2, -body_depth/2)
-            
-            glVertex3f(body_width/2, -body_height/2, body_depth/2)
-            glVertex3f(-body_width/2, -body_height/2, body_depth/2)
-            glVertex3f(-body_width/2, body_height/2, body_depth/2)
-            glVertex3f(body_width/2, body_height/2, body_depth/2)
-            
-            glVertex3f(-body_width/2, -body_height/2, body_depth/2)
-            glVertex3f(-body_width/2, -body_height/2, -body_depth/2)
-            glVertex3f(-body_width/2, body_height/2, -body_depth/2)
-            glVertex3f(-body_width/2, body_height/2, body_depth/2)
-            glEnd()
-            
-            distance_to_player = math.hypot(
-                npc["x"] - self.player_pos[0],
-                npc["z"] - self.player_pos[2]
-            )
-            
-            if distance_to_player <= self.npc_interaction_distance:
-                glColor3f(1.0, 1.0, 0.0)
-                glBegin(GL_LINE_LOOP)
-                for i in range(12):
-                    angle = i * math.pi * 2 / 12
-                    r = 1.2
-                    glVertex3f(r * math.cos(angle), 2.5 + math.sin(time.time() * 3) * 0.2, r * math.sin(angle))
-                glEnd()
-            
-            glEnable(GL_LIGHTING)
-            glPopMatrix()
-        except Exception as e:
-            print(f"绘制NPC错误: {e}")
+    def draw_cube(self, width, height, depth):
+        """绘制立方体"""
+        hw, hh, hd = width/2, height/2, depth/2
+        vertices = [
+            (-hw, -hh, -hd), (hw, -hh, -hd), (hw, hh, -hd), (-hw, hh, -hd),
+            (-hw, -hh, hd), (hw, -hh, hd), (hw, hh, hd), (-hw, hh, hd)
+        ]
+        faces = [
+            (0, 1, 2, 3), (1, 5, 6, 2), (5, 4, 7, 6),
+            (4, 0, 3, 7), (3, 2, 6, 7), (4, 5, 1, 0)
+        ]
+        
+        glBegin(GL_QUADS)
+        for face in faces:
+            for i in face:
+                glVertex3f(vertices[i][0], vertices[i][1], vertices[i][2])
+        glEnd()
     
     def draw_player(self):
+        """绘制玩家 - 带手脚版本"""
         try:
             glPushMatrix()
             player_x, player_y, player_z = self.player_pos[0], self.player_pos[1], self.player_pos[2]
@@ -3858,71 +2843,302 @@ class GameMap3D:
             
             glDisable(GL_LIGHTING)
             
+            walk_cycle = math.sin(pygame.time.get_ticks() * 0.01) if self.velocity[0] != 0 or self.velocity[2] != 0 else 0
+            arm_swing = walk_cycle * 0.3
+            leg_swing = walk_cycle * 0.4
+            
+            body_width = 0.5
+            body_height = 1.0
+            body_depth = 0.3
+            
             glColor3f(0.2, 0.4, 0.8)
             glBegin(GL_QUADS)
-            glVertex3f(-0.25, 0, -0.15)
-            glVertex3f(0.25, 0, -0.15)
-            glVertex3f(0.25, 1.8, -0.15)
-            glVertex3f(-0.25, 1.8, -0.15)
+            glVertex3f(-body_width/2, 0.3, -body_depth/2)
+            glVertex3f(body_width/2, 0.3, -body_depth/2)
+            glVertex3f(body_width/2, 0.3 + body_height, -body_depth/2)
+            glVertex3f(-body_width/2, 0.3 + body_height, -body_depth/2)
             
-            glVertex3f(0.25, 0, -0.15)
-            glVertex3f(0.25, 0, 0.15)
-            glVertex3f(0.25, 1.8, 0.15)
-            glVertex3f(0.25, 1.8, -0.15)
+            glVertex3f(body_width/2, 0.3, -body_depth/2)
+            glVertex3f(body_width/2, 0.3, body_depth/2)
+            glVertex3f(body_width/2, 0.3 + body_height, body_depth/2)
+            glVertex3f(body_width/2, 0.3 + body_height, -body_depth/2)
             
-            glVertex3f(0.25, 0, 0.15)
-            glVertex3f(-0.25, 0, 0.15)
-            glVertex3f(-0.25, 1.8, 0.15)
-            glVertex3f(0.25, 1.8, 0.15)
+            glVertex3f(body_width/2, 0.3, body_depth/2)
+            glVertex3f(-body_width/2, 0.3, body_depth/2)
+            glVertex3f(-body_width/2, 0.3 + body_height, body_depth/2)
+            glVertex3f(body_width/2, 0.3 + body_height, body_depth/2)
             
-            glVertex3f(-0.25, 0, 0.15)
-            glVertex3f(-0.25, 0, -0.15)
-            glVertex3f(-0.25, 1.8, -0.15)
-            glVertex3f(-0.25, 1.8, 0.15)
+            glVertex3f(-body_width/2, 0.3, body_depth/2)
+            glVertex3f(-body_width/2, 0.3, -body_depth/2)
+            glVertex3f(-body_width/2, 0.3 + body_height, -body_depth/2)
+            glVertex3f(-body_width/2, 0.3 + body_height, body_depth/2)
             glEnd()
+            
+            glColor3f(0.8, 0.6, 0.4)
+            glPushMatrix()
+            glTranslatef(0, 0.85, 0)
+            glBegin(GL_QUADS)
+            glVertex3f(-0.2, 0, -0.2)
+            glVertex3f(0.2, 0, -0.2)
+            glVertex3f(0.2, 0.3, -0.2)
+            glVertex3f(-0.2, 0.3, -0.2)
+            
+            glVertex3f(0.2, 0, -0.2)
+            glVertex3f(0.2, 0, 0.2)
+            glVertex3f(0.2, 0.3, 0.2)
+            glVertex3f(0.2, 0.3, -0.2)
+            
+            glVertex3f(0.2, 0, 0.2)
+            glVertex3f(-0.2, 0, 0.2)
+            glVertex3f(-0.2, 0.3, 0.2)
+            glVertex3f(0.2, 0.3, 0.2)
+            
+            glVertex3f(-0.2, 0, 0.2)
+            glVertex3f(-0.2, 0, -0.2)
+            glVertex3f(-0.2, 0.3, -0.2)
+            glVertex3f(-0.2, 0.3, 0.2)
+            glEnd()
+            glPopMatrix()
+            
+            arm_width = 0.15
+            arm_length = 0.6
+            
+            glColor3f(0.25, 0.45, 0.85)
+            glPushMatrix()
+            glTranslatef(body_width/2 + arm_width/2, 0.4 + arm_swing, 0)
+            glBegin(GL_QUADS)
+            glVertex3f(-arm_width/2, 0, -arm_width/2)
+            glVertex3f(arm_width/2, 0, -arm_width/2)
+            glVertex3f(arm_width/2, arm_length, -arm_width/2)
+            glVertex3f(-arm_width/2, arm_length, -arm_width/2)
+            
+            glVertex3f(arm_width/2, 0, -arm_width/2)
+            glVertex3f(arm_width/2, 0, arm_width/2)
+            glVertex3f(arm_width/2, arm_length, arm_width/2)
+            glVertex3f(arm_width/2, arm_length, -arm_width/2)
+            
+            glVertex3f(arm_width/2, 0, arm_width/2)
+            glVertex3f(-arm_width/2, 0, arm_width/2)
+            glVertex3f(-arm_width/2, arm_length, arm_width/2)
+            glVertex3f(arm_width/2, arm_length, arm_width/2)
+            
+            glVertex3f(-arm_width/2, 0, arm_width/2)
+            glVertex3f(-arm_width/2, 0, -arm_width/2)
+            glVertex3f(-arm_width/2, arm_length, -arm_width/2)
+            glVertex3f(-arm_width/2, arm_length, arm_width/2)
+            glEnd()
+            
+            glColor3f(0.8, 0.6, 0.4)
+            glTranslatef(0, arm_length - 0.1, 0)
+            glBegin(GL_QUADS)
+            glVertex3f(-arm_width/2, 0, -arm_width/2)
+            glVertex3f(arm_width/2, 0, -arm_width/2)
+            glVertex3f(arm_width/2, 0.2, -arm_width/2)
+            glVertex3f(-arm_width/2, 0.2, -arm_width/2)
+            
+            glVertex3f(arm_width/2, 0, -arm_width/2)
+            glVertex3f(arm_width/2, 0, arm_width/2)
+            glVertex3f(arm_width/2, 0.2, arm_width/2)
+            glVertex3f(arm_width/2, 0.2, -arm_width/2)
+            
+            glVertex3f(arm_width/2, 0, arm_width/2)
+            glVertex3f(-arm_width/2, 0, arm_width/2)
+            glVertex3f(-arm_width/2, 0.2, arm_width/2)
+            glVertex3f(arm_width/2, 0.2, arm_width/2)
+            
+            glVertex3f(-arm_width/2, 0, arm_width/2)
+            glVertex3f(-arm_width/2, 0, -arm_width/2)
+            glVertex3f(-arm_width/2, 0.2, -arm_width/2)
+            glVertex3f(-arm_width/2, 0.2, arm_width/2)
+            glEnd()
+            glPopMatrix()
+            
+            glPushMatrix()
+            glTranslatef(-body_width/2 - arm_width/2, 0.4 - arm_swing, 0)
+            glColor3f(0.25, 0.45, 0.85)
+            glBegin(GL_QUADS)
+            glVertex3f(-arm_width/2, 0, -arm_width/2)
+            glVertex3f(arm_width/2, 0, -arm_width/2)
+            glVertex3f(arm_width/2, arm_length, -arm_width/2)
+            glVertex3f(-arm_width/2, arm_length, -arm_width/2)
+            
+            glVertex3f(arm_width/2, 0, -arm_width/2)
+            glVertex3f(arm_width/2, 0, arm_width/2)
+            glVertex3f(arm_width/2, arm_length, arm_width/2)
+            glVertex3f(arm_width/2, arm_length, -arm_width/2)
+            
+            glVertex3f(arm_width/2, 0, arm_width/2)
+            glVertex3f(-arm_width/2, 0, arm_width/2)
+            glVertex3f(-arm_width/2, arm_length, arm_width/2)
+            glVertex3f(arm_width/2, arm_length, arm_width/2)
+            
+            glVertex3f(-arm_width/2, 0, arm_width/2)
+            glVertex3f(-arm_width/2, 0, -arm_width/2)
+            glVertex3f(-arm_width/2, arm_length, -arm_width/2)
+            glVertex3f(-arm_width/2, arm_length, arm_width/2)
+            glEnd()
+            
+            glColor3f(0.8, 0.6, 0.4)
+            glTranslatef(0, arm_length - 0.1, 0)
+            glBegin(GL_QUADS)
+            glVertex3f(-arm_width/2, 0, -arm_width/2)
+            glVertex3f(arm_width/2, 0, -arm_width/2)
+            glVertex3f(arm_width/2, 0.2, -arm_width/2)
+            glVertex3f(-arm_width/2, 0.2, -arm_width/2)
+            
+            glVertex3f(arm_width/2, 0, -arm_width/2)
+            glVertex3f(arm_width/2, 0, arm_width/2)
+            glVertex3f(arm_width/2, 0.2, arm_width/2)
+            glVertex3f(arm_width/2, 0.2, -arm_width/2)
+            
+            glVertex3f(arm_width/2, 0, arm_width/2)
+            glVertex3f(-arm_width/2, 0, arm_width/2)
+            glVertex3f(-arm_width/2, 0.2, arm_width/2)
+            glVertex3f(arm_width/2, 0.2, arm_width/2)
+            
+            glVertex3f(-arm_width/2, 0, arm_width/2)
+            glVertex3f(-arm_width/2, 0, -arm_width/2)
+            glVertex3f(-arm_width/2, 0.2, -arm_width/2)
+            glVertex3f(-arm_width/2, 0.2, arm_width/2)
+            glEnd()
+            glPopMatrix()
+            
+            leg_width = 0.18
+            leg_length = 0.7
+            
+            glColor3f(0.15, 0.35, 0.7)
+            glPushMatrix()
+            glTranslatef(body_width/4, 0.3 - leg_swing, 0)
+            glBegin(GL_QUADS)
+            glVertex3f(-leg_width/2, -leg_length, -leg_width/2)
+            glVertex3f(leg_width/2, -leg_length, -leg_width/2)
+            glVertex3f(leg_width/2, 0, -leg_width/2)
+            glVertex3f(-leg_width/2, 0, -leg_width/2)
+            
+            glVertex3f(leg_width/2, -leg_length, -leg_width/2)
+            glVertex3f(leg_width/2, -leg_length, leg_width/2)
+            glVertex3f(leg_width/2, 0, leg_width/2)
+            glVertex3f(leg_width/2, 0, -leg_width/2)
+            
+            glVertex3f(leg_width/2, -leg_length, leg_width/2)
+            glVertex3f(-leg_width/2, -leg_length, leg_width/2)
+            glVertex3f(-leg_width/2, 0, leg_width/2)
+            glVertex3f(leg_width/2, 0, leg_width/2)
+            
+            glVertex3f(-leg_width/2, -leg_length, leg_width/2)
+            glVertex3f(-leg_width/2, -leg_length, -leg_width/2)
+            glVertex3f(-leg_width/2, 0, -leg_width/2)
+            glVertex3f(-leg_width/2, 0, leg_width/2)
+            glEnd()
+            
+            glColor3f(0.3, 0.3, 0.3)
+            glTranslatef(0, -leg_length + 0.05, 0.05)
+            glBegin(GL_QUADS)
+            glVertex3f(-leg_width/2 - 0.05, -0.15, -leg_width/2 - 0.05)
+            glVertex3f(leg_width/2 + 0.05, -0.15, -leg_width/2 - 0.05)
+            glVertex3f(leg_width/2 + 0.05, 0, -leg_width/2 - 0.05)
+            glVertex3f(-leg_width/2 - 0.05, 0, -leg_width/2 - 0.05)
+            
+            glVertex3f(leg_width/2 + 0.05, -0.15, -leg_width/2 - 0.05)
+            glVertex3f(leg_width/2 + 0.05, -0.15, leg_width/2 + 0.05)
+            glVertex3f(leg_width/2 + 0.05, 0, leg_width/2 + 0.05)
+            glVertex3f(leg_width/2 + 0.05, 0, -leg_width/2 - 0.05)
+            
+            glVertex3f(leg_width/2 + 0.05, -0.15, leg_width/2 + 0.05)
+            glVertex3f(-leg_width/2 - 0.05, -0.15, leg_width/2 + 0.05)
+            glVertex3f(-leg_width/2 - 0.05, 0, leg_width/2 + 0.05)
+            glVertex3f(leg_width/2 + 0.05, 0, leg_width/2 + 0.05)
+            
+            glVertex3f(-leg_width/2 - 0.05, -0.15, leg_width/2 + 0.05)
+            glVertex3f(-leg_width/2 - 0.05, -0.15, -leg_width/2 - 0.05)
+            glVertex3f(-leg_width/2 - 0.05, 0, -leg_width/2 - 0.05)
+            glVertex3f(-leg_width/2 - 0.05, 0, leg_width/2 + 0.05)
+            glEnd()
+            glPopMatrix()
+            
+            glPushMatrix()
+            glTranslatef(-body_width/4, 0.3 + leg_swing, 0)
+            glColor3f(0.15, 0.35, 0.7)
+            glBegin(GL_QUADS)
+            glVertex3f(-leg_width/2, -leg_length, -leg_width/2)
+            glVertex3f(leg_width/2, -leg_length, -leg_width/2)
+            glVertex3f(leg_width/2, 0, -leg_width/2)
+            glVertex3f(-leg_width/2, 0, -leg_width/2)
+            
+            glVertex3f(leg_width/2, -leg_length, -leg_width/2)
+            glVertex3f(leg_width/2, -leg_length, leg_width/2)
+            glVertex3f(leg_width/2, 0, leg_width/2)
+            glVertex3f(leg_width/2, 0, -leg_width/2)
+            
+            glVertex3f(leg_width/2, -leg_length, leg_width/2)
+            glVertex3f(-leg_width/2, -leg_length, leg_width/2)
+            glVertex3f(-leg_width/2, 0, leg_width/2)
+            glVertex3f(leg_width/2, 0, leg_width/2)
+            
+            glVertex3f(-leg_width/2, -leg_length, leg_width/2)
+            glVertex3f(-leg_width/2, -leg_length, -leg_width/2)
+            glVertex3f(-leg_width/2, 0, -leg_width/2)
+            glVertex3f(-leg_width/2, 0, leg_width/2)
+            glEnd()
+            
+            glColor3f(0.3, 0.3, 0.3)
+            glTranslatef(0, -leg_length + 0.05, 0.05)
+            glBegin(GL_QUADS)
+            glVertex3f(-leg_width/2 - 0.05, -0.15, -leg_width/2 - 0.05)
+            glVertex3f(leg_width/2 + 0.05, -0.15, -leg_width/2 - 0.05)
+            glVertex3f(leg_width/2 + 0.05, 0, -leg_width/2 - 0.05)
+            glVertex3f(-leg_width/2 - 0.05, 0, -leg_width/2 - 0.05)
+            
+            glVertex3f(leg_width/2 + 0.05, -0.15, -leg_width/2 - 0.05)
+            glVertex3f(leg_width/2 + 0.05, -0.15, leg_width/2 + 0.05)
+            glVertex3f(leg_width/2 + 0.05, 0, leg_width/2 + 0.05)
+            glVertex3f(leg_width/2 + 0.05, 0, -leg_width/2 - 0.05)
+            
+            glVertex3f(leg_width/2 + 0.05, -0.15, leg_width/2 + 0.05)
+            glVertex3f(-leg_width/2 - 0.05, -0.15, leg_width/2 + 0.05)
+            glVertex3f(-leg_width/2 - 0.05, 0, leg_width/2 + 0.05)
+            glVertex3f(leg_width/2 + 0.05, 0, leg_width/2 + 0.05)
+            
+            glVertex3f(-leg_width/2 - 0.05, -0.15, leg_width/2 + 0.05)
+            glVertex3f(-leg_width/2 - 0.05, -0.15, -leg_width/2 - 0.05)
+            glVertex3f(-leg_width/2 - 0.05, 0, -leg_width/2 - 0.05)
+            glVertex3f(-leg_width/2 - 0.05, 0, leg_width/2 + 0.05)
+            glEnd()
+            glPopMatrix()
             
             glEnable(GL_LIGHTING)
             glPopMatrix()
         except Exception as e:
-            print(f"绘制玩家错误: {e}")
+            logger.info(f"绘制玩家错误: {e}")
     
     def draw_follower(self, follower):
+        """绘制跟随者"""
         try:
             glPushMatrix()
             glTranslatef(follower["x"], follower["y"], follower["z"])
             
+            # 禁用光照以绘制跟随者
             glDisable(GL_LIGHTING)
             
+            # 跟随者头部
             glColor3f(0.6, 0.8, 0.4)
+            self.draw_cube(1.5, 1.5, 1.5)
             
-            glBegin(GL_QUADS)
-            glVertex3f(-0.75, 0, -0.75)
-            glVertex3f(0.75, 0, -0.75)
-            glVertex3f(0.75, 1.5, -0.75)
-            glVertex3f(-0.75, 1.5, -0.75)
+            # 跟随者身体
+            glColor3f(0.4, 0.6, 0.2)
+            glTranslatef(0, -2, 0)
+            self.draw_cube(2, 3, 1.5)
             
-            glVertex3f(0.75, 0, -0.75)
-            glVertex3f(0.75, 0, 0.75)
-            glVertex3f(0.75, 1.5, 0.75)
-            glVertex3f(0.75, 1.5, -0.75)
-            
-            glVertex3f(0.75, 0, 0.75)
-            glVertex3f(-0.75, 0, 0.75)
-            glVertex3f(-0.75, 1.5, 0.75)
-            glVertex3f(0.75, 1.5, 0.75)
-            
-            glVertex3f(-0.75, 0, 0.75)
-            glVertex3f(-0.75, 0, -0.75)
-            glVertex3f(-0.75, 1.5, -0.75)
-            glVertex3f(-0.75, 1.5, 0.75)
-            glEnd()
-            
+            # 重新启用光照
             glEnable(GL_LIGHTING)
+            
             glPopMatrix()
         except Exception as e:
-            print(f"绘制跟随者错误: {e}")
+            logger.info(f"绘制跟随者错误: {e}")
     
     def draw_hud(self):
+        """绘制HUD"""
+        # 恢复到2D模式
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
         glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
@@ -3930,30 +3146,18 @@ class GameMap3D:
         glLoadIdentity()
         glDisable(GL_DEPTH_TEST)
         
-        pos_text = f"位置: ({int(self.player_pos[0])}, {int(self.player_pos[1])}, {int(self.player_pos[2])})"
+        # 绘制位置信息
+        pos_text = f"位置: ({int(self.player_pos[0])}, {int(self.player_pos[2])})"
         pos_surf = self.font_small.render(pos_text, True, COLORS["text_white"])
         self.screen.blit(pos_surf, (10, 10))
         
+        # 绘制跟随状态
         if self.follow_target:
             follow_text = f"跟随: {self.follow_target.get('type', '位置')}"
             follow_surf = self.font_small.render(follow_text, True, COLORS["accent_green"])
             self.screen.blit(follow_surf, (10, 40))
         
-        resources = data.get('resources', {})
-        gold = resources.get('金元宝', 0)
-        coal = resources.get('煤炭', 0)
-        food = resources.get('食物', 0)
-        water = resources.get('水', 0)
-        resource_text = f"金元宝:{gold} 煤炭:{coal} 食物:{food} 水:{water}"
-        resource_surf = self.font_small.render(resource_text, True, COLORS["accent_gold"])
-        self.screen.blit(resource_surf, (10, 70))
-        
-        owned_count = len([loc for loc in self.locations if loc.get('owner') == 'player'])
-        total_count = len(self.locations)
-        territory_text = f"占领地点: {owned_count}/{total_count}"
-        territory_surf = self.font_small.render(territory_text, True, COLORS["accent_green"])
-        self.screen.blit(territory_surf, (10, 100))
-        
+        # 绘制消息
         if self.message and self.message_timer > 0:
             msg_surf = self.font_main.render(self.message, True, COLORS["accent_gold"])
             msg_rect = msg_surf.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT - 50))
@@ -3962,88 +3166,1756 @@ class GameMap3D:
             if self.message_timer < 0:
                 self.message = None
         
+        # 绘制十字准心
+        crosshair_center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+        crosshair_size = 15
+        crosshair_gap = 5
+        crosshair_color = (255, 255, 255, 200)
+        
+        try:
+            crosshair_surf = pygame.Surface((crosshair_size * 2 + 10, crosshair_size * 2 + 10), pygame.SRCALPHA)
+            
+            pygame.draw.line(crosshair_surf, crosshair_color,
+                           (crosshair_size + 5, crosshair_gap),
+                           (crosshair_size + 5, crosshair_size), 2)
+            pygame.draw.line(crosshair_surf, crosshair_color,
+                           (crosshair_size + 5, crosshair_size + crosshair_gap * 2 + 5),
+                           (crosshair_size + 5, crosshair_size * 2 + 5), 2)
+            pygame.draw.line(crosshair_surf, crosshair_color,
+                           (crosshair_gap, crosshair_size + 5),
+                           (crosshair_size, crosshair_size + 5), 2)
+            pygame.draw.line(crosshair_surf, crosshair_color,
+                           (crosshair_size + crosshair_gap * 2 + 5, crosshair_size + 5),
+                           (crosshair_size * 2 + 5, crosshair_size + 5), 2)
+            
+            pygame.draw.circle(crosshair_surf, crosshair_color,
+                             (crosshair_size + 5, crosshair_size + 5), 2, 1)
+            
+            self.screen.blit(crosshair_surf, 
+                           (crosshair_center[0] - crosshair_size - 5, 
+                            crosshair_center[1] - crosshair_size - 5))
+        except Exception as _e:
+            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
+        
+        # 绘制控制提示
         controls = [
             "WASD: 移动",
             "空格: 跳跃",
-            "E: 进入地点",
-            "R: 换弹/收集",
-            "F: 瞄准/跟随",
-            "I: 背包",
-            "M: 小地图",
-            "T: 交易行",
+            "Shift: 潜行",
             "Tab: 锁定鼠标",
+            "F: 跟随模式",
             "F5: 切换视角",
-            "Q: 给武将装备武器",
-            "Shift+左键: 放置方块",
-            "左键: 挖掘/攻击",
-            "右键: 按住连射"
+            "1-9: 选择物品",
+            "左键: 放置/使用",
+            "右键: 破坏/交互",
+            "E: 背包",
+            "C: 合成台",
+            "Esc: 暂停菜单"
         ]
-        
         for i, control in enumerate(controls):
-            control_surf = self.font_small.render(control, True, (200, 200, 200))
-            self.screen.blit(control_surf, (SCREEN_WIDTH - 150, 10 + i * 25))
+            ctrl_surf = self.font_small.render(control, True, COLORS["text_white"])
+            self.screen.blit(ctrl_surf, (SCREEN_WIDTH - 150, 10 + i * 25))
+        
+        self.draw_hotbar()
         
         glEnable(GL_DEPTH_TEST)
     
-    def update_physics(self):
-        self.velocity[1] += self.gravity
+    def draw_mc_hud(self):
+        """绘制MC风格HUD（生命值、饥饿值等）"""
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+        glDisable(GL_DEPTH_TEST)
         
-        self.velocity[0] *= self.friction
-        self.velocity[2] *= self.friction
+        # 屏幕中心下方位置
+        center_x = SCREEN_WIDTH // 2
+        bottom_y = SCREEN_HEIGHT - 100
         
-        if abs(self.velocity[0]) < 0.01:
-            self.velocity[0] = 0
-        if abs(self.velocity[2]) < 0.01:
-            self.velocity[2] = 0
+        # 绘制生命值（红色心形）
+        heart_size = 20
+        heart_spacing = 24
+        start_heart_x = center_x - 10 * heart_spacing // 2
+        for i in range(10):
+            heart_x = start_heart_x + i * heart_spacing
+            heart_y = bottom_y
+            
+            # 绘制心形容器
+            heart_surf = pygame.Surface((heart_size, heart_size), pygame.SRCALPHA)
+            if i * 2 < self.health:
+                if i * 2 + 1 < self.health:
+                    heart_surf.fill((255, 0, 0, 255))  # 满血
+                else:
+                    heart_surf.fill((255, 100, 100, 255))  # 半血
+            else:
+                heart_surf.fill((80, 80, 80, 180))  # 空血
+            
+            pygame.draw.circle(heart_surf, (0, 0, 0, 100), (10, 10), 9, 2)
+            self.screen.blit(heart_surf, (heart_x, heart_y))
         
-        self.player_pos[0] += self.velocity[0]
-        self.player_pos[1] += self.velocity[1]
-        self.player_pos[2] += self.velocity[2]
+        # 绘制饥饿值（鸡腿）
+        start_hunger_x = center_x + 10 * heart_spacing // 2 - heart_size
+        for i in range(10):
+            hunger_x = start_hunger_x - i * heart_spacing
+            hunger_y = bottom_y
+            
+            hunger_surf = pygame.Surface((heart_size, heart_size), pygame.SRCALPHA)
+            if i * 2 < self.hunger:
+                if i * 2 + 1 < self.hunger:
+                    hunger_surf.fill((255, 165, 0, 255))  # 饱
+                else:
+                    hunger_surf.fill((255, 200, 100, 255))  # 半饱
+            else:
+                hunger_surf.fill((80, 80, 80, 180))  # 饿
+            
+            pygame.draw.circle(hunger_surf, (0, 0, 0, 100), (10, 10), 9, 2)
+            self.screen.blit(hunger_surf, (hunger_x, hunger_y))
         
-        if self.player_pos[1] < 0:
-            self.player_pos[1] = 0
-            self.velocity[1] = 0
+        # 绘制氧气值（水中使用）
+        if self.oxygen < 10:
+            start_oxygen_x = center_x - 10 * heart_spacing // 2
+            for i in range(10):
+                oxygen_x = start_oxygen_x + i * heart_spacing
+                oxygen_y = bottom_y + 30
+                
+                oxygen_surf = pygame.Surface((heart_size, heart_size), pygame.SRCALPHA)
+                if i < self.oxygen:
+                    oxygen_surf.fill((0, 150, 255, 255))
+                else:
+                    oxygen_surf.fill((50, 50, 80, 180))
+                
+                pygame.draw.circle(oxygen_surf, (0, 0, 0, 100), (10, 10), 9, 2)
+                self.screen.blit(oxygen_surf, (oxygen_x, oxygen_y))
         
-        self.player_pos[0] = max(-1800, min(1800, self.player_pos[0]))
-        self.player_pos[2] = max(-1800, min(1800, self.player_pos[2]))
+        # 绘制经验条
+        exp_bar_width = 200
+        exp_bar_height = 10
+        exp_bar_x = center_x - exp_bar_width // 2
+        exp_bar_y = bottom_y - 30
         
-        self.update_camera()
+        exp_bar_bg = pygame.Surface((exp_bar_width, exp_bar_height), pygame.SRCALPHA)
+        exp_bar_bg.fill((50, 50, 50, 200))
+        self.screen.blit(exp_bar_bg, (exp_bar_x, exp_bar_y))
+        
+        exp_fill = pygame.Surface((int(exp_bar_width * (self.experience % 100 / 100)), exp_bar_height), pygame.SRCALPHA)
+        exp_fill.fill((50, 200, 50, 255))
+        self.screen.blit(exp_fill, (exp_bar_x, exp_bar_y))
+        
+        # 绘制等级
+        if self.level > 0:
+            level_text = self.font_main.render(str(self.level), True, (255, 215, 0))
+            level_rect = level_text.get_rect(center=(center_x, exp_bar_y - 15))
+            self.screen.blit(level_text, level_rect)
+        
+        # 绘制十字准星
+        crosshair_size = 15
+        crosshair_thickness = 2
+        crosshair_color = (255, 255, 255)
+        center_y = SCREEN_HEIGHT // 2
+        
+        # 水平线
+        pygame.draw.line(self.screen, crosshair_color, 
+                        (center_x - crosshair_size, center_y), 
+                        (center_x + crosshair_size, center_y), 
+                        crosshair_thickness)
+        # 垂直线
+        pygame.draw.line(self.screen, crosshair_color, 
+                        (center_x, center_y - crosshair_size), 
+                        (center_x, center_y + crosshair_size), 
+                        crosshair_thickness)
+        
+        # 绘制聊天窗口
+        chat_width = 400
+        chat_height = 150
+        chat_x = 10
+        chat_y = SCREEN_HEIGHT - chat_height - 70
+        
+        chat_bg = pygame.Surface((chat_width, chat_height), pygame.SRCALPHA)
+        chat_bg.fill((0, 0, 0, 120))
+        self.screen.blit(chat_bg, (chat_x, chat_y))
+        
+        for i, msg in enumerate(self.chat_messages[-5:]):
+            msg_text = self.font_small.render(msg, True, (255, 255, 255))
+            self.screen.blit(msg_text, (chat_x + 5, chat_y + 5 + i * 25))
+        
+        # 绘制物品提示
+        if self.hovered_item and self.item_tooltip_timer > 0:
+            tooltip_text = self.font_small.render(self.hovered_item, True, (255, 255, 255))
+            tooltip_bg = pygame.Surface((tooltip_text.get_width() + 10, tooltip_text.get_height() + 6), pygame.SRCALPHA)
+            tooltip_bg.fill((0, 0, 0, 200))
+            
+            mx, my = pygame.mouse.get_pos()
+            tooltip_x = mx + 15
+            tooltip_y = my - tooltip_text.get_height() - 3
+            
+            if tooltip_x + tooltip_bg.get_width() > SCREEN_WIDTH:
+                tooltip_x = mx - tooltip_bg.get_width() - 15
+            
+            self.screen.blit(tooltip_bg, (tooltip_x, tooltip_y))
+            self.screen.blit(tooltip_text, (tooltip_x + 5, tooltip_y + 3))
+            
+            self.item_tooltip_timer -= 1
+        
+        glEnable(GL_DEPTH_TEST)
     
-    def run(self):
+    def add_chat_message(self, message):
+        """添加聊天消息"""
+        self.chat_messages.append(message)
+        if len(self.chat_messages) > self.max_chat_lines:
+            self.chat_messages.pop(0)
+    
+    def unlock_achievement(self, achievement_id):
+        """解锁成就"""
+        if achievement_id in self.achievements and not self.achievements[achievement_id]["unlocked"]:
+            self.achievements[achievement_id]["unlocked"] = True
+            achievement = self.achievements[achievement_id]
+            self.add_chat_message(f"[成就] {achievement['name']}: {achievement['description']}")
+    
+    def check_egg_triggers(self):
+        """检测彩蛋触发条件"""
+        try:
+            # 检测放置方块彩蛋
+            if len(self.placed_blocks) >= 1 and not self.eggs.get("first_block", {}).get("found", False):
+                self.eggs["first_block"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 放置第一个方块！")
+            
+            if len(self.placed_blocks) >= 100 and not self.eggs.get("100_blocks", {}).get("found", False):
+                self.eggs["100_blocks"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 放置100个方块！")
+            
+            # 检测合成彩蛋
+            if self.stats["items_crafted"] >= 1 and not self.eggs.get("first_craft", {}).get("found", False):
+                self.eggs["first_craft"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 完成第一次合成！")
+            
+            # 检测击杀彩蛋
+            if self.stats["mobs_killed"] >= 1 and not self.eggs.get("first_kill", {}).get("found", False):
+                self.eggs["first_kill"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 杀死第一个怪物！")
+            
+            if self.stats["mobs_killed"] >= 100 and not self.eggs.get("100_kills", {}).get("found", False):
+                self.eggs["100_kills"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 杀死100个怪物！")
+            
+            # 检测昼夜彩蛋
+            if self.stats["days_passed"] >= 1 and not self.eggs.get("day_night", {}).get("found", False):
+                self.eggs["day_night"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 度过一个完整的昼夜循环！")
+            
+            # 检测高度彩蛋
+            if self.player_pos[1] <= -50 and not self.eggs.get("underground", {}).get("found", False):
+                self.eggs["underground"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 深入地下50格！")
+            
+            if self.player_pos[1] >= 50 and not self.eggs.get("high_altitude", {}).get("found", False):
+                self.eggs["high_altitude"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 到达高空50格！")
+            
+            # 检测天气彩蛋
+            if self.weather == "rain" and not self.eggs.get("rain", {}).get("found", False):
+                self.eggs["rain"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 在雨中待5分钟！")
+            
+            if self.weather == "snow" and not self.eggs.get("snow", {}).get("found", False):
+                self.eggs["snow"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 在雪中待5分钟！")
+            
+            # 检测Herobrine彩蛋
+            if self.herobrine_active and not self.eggs.get("herobrine", {}).get("found", False):
+                self.eggs["herobrine"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 在夜晚遇到Herobrine！")
+            
+            # 检测创造模式飞行彩蛋
+            if self.game_mode == "creative" and not self.eggs.get("fly_creative", {}).get("found", False):
+                total_distance = abs(self.player_pos[0]) + abs(self.player_pos[1]) + abs(self.player_pos[2])
+                if total_distance >= 100:
+                    self.eggs["fly_creative"]["found"] = True
+                    self.add_chat_message("🎉 解锁彩蛋: 在创造模式飞行100格！")
+            
+            # 检测游泳彩蛋
+            if self.player_pos[1] < 0 and not self.eggs.get("swim", {}).get("found", False):
+                self.eggs["swim"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 游泳100格！")
+            
+            # 检测跳跃彩蛋
+            if not hasattr(self, 'jump_count'):
+                self.jump_count = 0
+            
+            if self.velocity[1] > 0:
+                self.jump_count += 1
+                if self.jump_count >= 100 and not self.eggs.get("jump_100", {}).get("found", False):
+                    self.eggs["jump_100"]["found"] = True
+                    self.add_chat_message("🎉 解锁彩蛋: 跳跃100次！")
+            
+            # 检测潜行彩蛋
+            if self.is_sneaking and not self.eggs.get("sneak", {}).get("found", False):
+                self.eggs["sneak"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 潜行100格！")
+            
+            # 检测冲刺彩蛋
+            if self.is_sprinting and not self.eggs.get("sprint", {}).get("found", False):
+                self.eggs["sprint"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 冲刺100格！")
+            
+            # 检测工具制作彩蛋
+            if self.eggs.get("pickaxe", {}).get("found", False):
+                self.eggs["pickaxe"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 制作一把镐子！")
+            
+            if self.eggs.get("axe", {}).get("found", False):
+                self.eggs["axe"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 制作一把斧头！")
+            
+            if self.eggs.get("shovel", {}).get("found", False):
+                self.eggs["shovel"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 制作一把铲子！")
+            
+            if self.eggs.get("hoe", {}).get("found", False):
+                self.eggs["hoe"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 制作一把锄头！")
+            
+            if self.eggs.get("sword", {}).get("found", False):
+                self.eggs["sword"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 制作一把剑！")
+            
+            if self.eggs.get("bow", {}).get("found", False):
+                self.eggs["bow"]["found"] = True
+                self.add_chat_message("🎉 解锁彩蛋: 制作一把弓！")
+            
+        except Exception as e:
+            logger.info(f"[错误] 检测彩蛋触发失败: {e}")
+    
+    def draw_pause_menu(self):
+        """绘制暂停菜单（类似MC风格）"""
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+        glDisable(GL_DEPTH_TEST)
+        
+        menu_width = 300
+        menu_height = 250
+        menu_x = SCREEN_WIDTH // 2 - menu_width // 2
+        menu_y = SCREEN_HEIGHT // 2 - menu_height // 2
+        
+        bg_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        bg_surf.fill((0, 0, 0, 180))
+        self.screen.blit(bg_surf, (0, 0))
+        
+        menu_surf = pygame.Surface((menu_width, menu_height), pygame.SRCALPHA)
+        menu_surf.fill((60, 60, 80, 240))
+        pygame.draw.rect(menu_surf, (100, 100, 120), (0, 0, menu_width, menu_height), 3, border_radius=10)
+        self.screen.blit(menu_surf, (menu_x, menu_y))
+        
+        title_surf = self.font_main.render("游戏暂停", True, COLORS["accent_gold"])
+        title_rect = title_surf.get_rect(center=(SCREEN_WIDTH // 2, menu_y + 30))
+        self.screen.blit(title_surf, title_rect)
+        
+        button_height = 40
+        button_spacing = 10
+        button_start_y = menu_y + 70
+        
+        for i, option in enumerate(self.pause_menu_options):
+            button_y = button_start_y + i * (button_height + button_spacing)
+            button_width = menu_width - 40
+            button_x = menu_x + 20
+            
+            is_selected = (i == self.pause_menu_selected)
+            
+            btn_surf = pygame.Surface((button_width, button_height), pygame.SRCALPHA)
+            if is_selected:
+                btn_surf.fill((80, 120, 80, 255))
+                pygame.draw.rect(btn_surf, COLORS["accent_green"], (0, 0, button_width, button_height), 2, border_radius=5)
+            else:
+                btn_surf.fill((50, 50, 70, 255))
+                pygame.draw.rect(btn_surf, (80, 80, 100), (0, 0, button_width, button_height), 2, border_radius=5)
+            
+            self.screen.blit(btn_surf, (button_x, button_y))
+            
+            text_surf = self.font_small.render(option, True, COLORS["text_white"])
+            text_rect = text_surf.get_rect(center=(button_x + button_width // 2, button_y + button_height // 2))
+            self.screen.blit(text_surf, text_rect)
+        
+        hint_surf = self.font_small.render("↑↓选择  Enter确认  Esc返回", True, (150, 150, 150))
+        hint_rect = hint_surf.get_rect(center=(SCREEN_WIDTH // 2, menu_y + menu_height - 20))
+        self.screen.blit(hint_surf, hint_rect)
+        
+        glEnable(GL_DEPTH_TEST)
+    
+    def handle_pause_input(self):
+        """处理暂停菜单输入"""
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return "quit"
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self.is_paused = False
+                    self.is_mouse_locked = True
+                    pygame.mouse.set_visible(False)
+                    pygame.event.set_grab(True)
+                elif event.key == pygame.K_UP:
+                    self.pause_menu_selected = (self.pause_menu_selected - 1) % len(self.pause_menu_options)
+                elif event.key == pygame.K_DOWN:
+                    self.pause_menu_selected = (self.pause_menu_selected + 1) % len(self.pause_menu_options)
+                elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                    option = self.pause_menu_options[self.pause_menu_selected]
+                    if option == "继续游戏":
+                        self.is_paused = False
+                        self.is_mouse_locked = True
+                        pygame.mouse.set_visible(False)
+                        pygame.event.set_grab(True)
+                    elif option == "设置":
+                        self.message = "设置功能开发中..."
+                        self.message_timer = 2000
+                    elif option == "保存并退出":
+                        return "quit"
+                    elif option == "返回主菜单":
+                        return "main_menu"
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+                    menu_width = 300
+                    menu_height = 250
+                    menu_x = SCREEN_WIDTH // 2 - menu_width // 2
+                    menu_y = SCREEN_HEIGHT // 2 - menu_height // 2
+                    button_height = 40
+                    button_spacing = 10
+                    button_start_y = menu_y + 70
+                    
+                    mx, my = event.pos
+                    for i in range(len(self.pause_menu_options)):
+                        button_y = button_start_y + i * (button_height + button_spacing)
+                        button_width = menu_width - 40
+                        button_x = menu_x + 20
+                        
+                        if button_x <= mx <= button_x + button_width and button_y <= my <= button_y + button_height:
+                            self.pause_menu_selected = i
+                            option = self.pause_menu_options[i]
+                            if option == "继续游戏":
+                                self.is_paused = False
+                                self.is_mouse_locked = True
+                                pygame.mouse.set_visible(False)
+                                pygame.event.set_grab(True)
+                            elif option == "设置":
+                                self.message = "设置功能开发中..."
+                                self.message_timer = 2000
+                            elif option == "保存并退出":
+                                return "quit"
+                            elif option == "返回主菜单":
+                                return "main_menu"
+        return "continue"
+    
+    def draw_hotbar(self):
+        """绘制快捷栏（类似MC）"""
+        hotbar_width = 9 * 50 + 10
+        hotbar_height = 50
+        hotbar_x = SCREEN_WIDTH // 2 - hotbar_width // 2
+        hotbar_y = SCREEN_HEIGHT - 60
+        
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+        glDisable(GL_DEPTH_TEST)
+        
+        hotbar_surf = pygame.Surface((hotbar_width, hotbar_height), pygame.SRCALPHA)
+        hotbar_surf.fill((30, 30, 30, 200))
+        
+        for i in range(9):
+            slot_x = 5 + i * 50
+            slot_surf = pygame.Surface((45, 45), pygame.SRCALPHA)
+            
+            if i == self.hotbar_selected:
+                slot_surf.fill((80, 80, 80, 255))
+                pygame.draw.rect(slot_surf, COLORS["accent_gold"], (0, 0, 45, 45), 2)
+            else:
+                slot_surf.fill((50, 50, 50, 255))
+                pygame.draw.rect(slot_surf, (70, 70, 70), (0, 0, 45, 45), 1)
+            
+            hotbar_surf.blit(slot_surf, (slot_x, 2))
+            
+            if self.hotbar[i]:
+                block_color = self.get_block_color(self.hotbar[i])
+                block_surf = pygame.Surface((35, 35), pygame.SRCALPHA)
+                block_surf.fill(block_color)
+                hotbar_surf.blit(block_surf, (slot_x + 5, 7))
+        
+        self.screen.blit(hotbar_surf, (hotbar_x, hotbar_y))
+
+        # 选中物品名称（《我的世界》风格提示）
+        selected = self.hotbar[self.hotbar_selected]
+        if selected:
+            try:
+                name_surf = self.font_small.render(str(selected), True, COLORS["text_white"])
+                shadow_surf = self.font_small.render(str(selected), True, (0, 0, 0))
+                nx = SCREEN_WIDTH // 2 - name_surf.get_width() // 2
+                ny = hotbar_y - 28
+                self.screen.blit(shadow_surf, (nx + 1, ny + 1))
+                self.screen.blit(name_surf, (nx, ny))
+            except Exception as _e:
+                pass
+
+        glEnable(GL_DEPTH_TEST)
+    
+    def get_block_color(self, block_type):
+        """获取方块颜色"""
+        colors = {
+            "泥土": (139, 90, 43),
+            "石头": (128, 128, 128),
+            "木头": (160, 82, 45),
+            "草地": (34, 139, 34),
+            "沙子": (238, 214, 175),
+            "水": (65, 105, 225),
+            "玻璃": (200, 200, 200),
+            "砖块": (178, 34, 34)
+        }
+        return colors.get(block_type, (128, 128, 128))
+    
+    def draw_inventory(self):
+        """绘制背包界面（类似旅行者背包）"""
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+        glDisable(GL_DEPTH_TEST)
+        
+        inv_width = 500
+        inv_height = 400
+        inv_x = SCREEN_WIDTH // 2 - inv_width // 2
+        inv_y = SCREEN_HEIGHT // 2 - inv_height // 2
+        
+        bg_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        bg_surf.fill((0, 0, 0, 150))
+        self.screen.blit(bg_surf, (0, 0))
+        
+        inv_surf = pygame.Surface((inv_width, inv_height), pygame.SRCALPHA)
+        inv_surf.fill((60, 60, 80, 240))
+        pygame.draw.rect(inv_surf, (100, 100, 120), (0, 0, inv_width, inv_height), 3, border_radius=10)
+        self.screen.blit(inv_surf, (inv_x, inv_y))
+        
+        title_surf = self.font_main.render("背包", True, COLORS["accent_gold"])
+        title_rect = title_surf.get_rect(center=(SCREEN_WIDTH // 2, inv_y + 25))
+        self.screen.blit(title_surf, title_rect)
+        
+        categories = ["全部", "方块类", "资源类", "武器类", "弹药类", "食物类", "工具类"]
+        cat_width = 60
+        cat_start_x = inv_x + 20
+        cat_y = inv_y + 50
+        
+        for i, cat in enumerate(categories):
+            cat_x = cat_start_x + i * (cat_width + 5)
+            cat_surf = pygame.Surface((cat_width, 25), pygame.SRCALPHA)
+            
+            if cat == self.inventory_category:
+                cat_surf.fill((80, 120, 80, 255))
+            else:
+                cat_surf.fill((50, 50, 70, 255))
+            
+            pygame.draw.rect(cat_surf, (80, 80, 100), (0, 0, cat_width, 25), 1, border_radius=3)
+            self.screen.blit(cat_surf, (cat_x, cat_y))
+            
+            cat_text = self.font_small.render(cat, True, COLORS["text_white"])
+            cat_text_rect = cat_text.get_rect(center=(cat_x + cat_width // 2, cat_y + 12))
+            self.screen.blit(cat_text, cat_text_rect)
+        
+        slot_size = 45
+        slot_spacing = 5
+        slots_per_row = 9
+        slot_start_x = inv_x + 20
+        slot_start_y = inv_y + 85
+        
+        for row in range(3):
+            for col in range(slots_per_row):
+                slot_idx = row * slots_per_row + col
+                slot_x = slot_start_x + col * (slot_size + slot_spacing)
+                slot_y = slot_start_y + row * (slot_size + slot_spacing)
+                
+                slot_surf = pygame.Surface((slot_size, slot_size), pygame.SRCALPHA)
+                
+                if slot_idx == self.inventory_selected_slot:
+                    slot_surf.fill((80, 120, 80, 255))
+                    pygame.draw.rect(slot_surf, COLORS["accent_gold"], (0, 0, slot_size, slot_size), 2)
+                else:
+                    slot_surf.fill((50, 50, 70, 255))
+                    pygame.draw.rect(slot_surf, (70, 70, 90), (0, 0, slot_size, slot_size), 1)
+                
+                self.screen.blit(slot_surf, (slot_x, slot_y))
+                
+                item = self.inventory[slot_idx]
+                if item:
+                    item_color = self.get_item_color(item["name"])
+                    item_surf = pygame.Surface((35, 35), pygame.SRCALPHA)
+                    item_surf.fill(item_color)
+                    self.screen.blit(item_surf, (slot_x + 5, slot_y + 5))
+                    
+                    if item.get("count", 1) > 1:
+                        count_text = self.font_small.render(str(item["count"]), True, COLORS["text_white"])
+                        self.screen.blit(count_text, (slot_x + slot_size - 20, slot_y + slot_size - 15))
+        
+        hotbar_y = inv_y + inv_height - 60
+        hotbar_width = 9 * 50 + 10
+        hotbar_x = inv_x + (inv_width - hotbar_width) // 2
+        
+        hotbar_label = self.font_small.render("快捷栏", True, COLORS["text_white"])
+        self.screen.blit(hotbar_label, (hotbar_x, hotbar_y - 20))
+        
+        for i in range(9):
+            slot_x = hotbar_x + 5 + i * 50
+            slot_surf = pygame.Surface((45, 45), pygame.SRCALPHA)
+            
+            if i == self.hotbar_selected:
+                slot_surf.fill((80, 120, 80, 255))
+                pygame.draw.rect(slot_surf, COLORS["accent_gold"], (0, 0, 45, 45), 2)
+            else:
+                slot_surf.fill((50, 50, 70, 255))
+                pygame.draw.rect(slot_surf, (70, 70, 90), (0, 0, 45, 45), 1)
+            
+            self.screen.blit(slot_surf, (slot_x, hotbar_y))
+            
+            if self.hotbar[i]:
+                item_color = self.get_item_color(self.hotbar[i])
+                item_surf = pygame.Surface((35, 35), pygame.SRCALPHA)
+                item_surf.fill(item_color)
+                self.screen.blit(item_surf, (slot_x + 5, hotbar_y + 5))
+        
+        if self.dragging_item:
+            mx, my = pygame.mouse.get_pos()
+            drag_color = self.get_item_color(self.dragging_item["name"])
+            drag_surf = pygame.Surface((40, 40), pygame.SRCALPHA)
+            drag_surf.fill(drag_color)
+            pygame.draw.rect(drag_surf, COLORS["accent_gold"], (0, 0, 40, 40), 2)
+            self.screen.blit(drag_surf, (mx - 20, my - 20))
+        
+        hint_surf = self.font_small.render("E: 关闭背包 | 左键: 选择/拖拽 | 右键: 放置半堆", True, (150, 150, 150))
+        hint_rect = hint_surf.get_rect(center=(SCREEN_WIDTH // 2, inv_y + inv_height - 10))
+        self.screen.blit(hint_surf, hint_rect)
+        
+        glEnable(GL_DEPTH_TEST)
+    
+    def get_item_color(self, item_name):
+        """获取物品颜色"""
+        colors = {
+            "泥土": (139, 90, 43),
+            "石头": (128, 128, 128),
+            "木头": (160, 82, 45),
+            "草地": (34, 139, 34),
+            "沙子": (238, 214, 175),
+            "水": (65, 105, 225),
+            "玻璃": (200, 200, 200),
+            "砖块": (178, 34, 34),
+            "煤炭": (50, 50, 50),
+            "金元宝": (255, 215, 0),
+            "食物": (255, 100, 100),
+            "手枪": (100, 100, 100),
+            "步枪": (80, 80, 80),
+            "狙击枪": (60, 60, 60),
+            "机枪": (70, 70, 70),
+            "普通子弹": (180, 180, 180),
+            "高级子弹": (200, 200, 200),
+            "稀有子弹": (220, 220, 220),
+            "面包": (210, 180, 140),
+            "苹果": (255, 0, 0),
+            "烤肉": (150, 80, 50),
+            "药草": (0, 200, 0),
+            "镐子": (150, 150, 150),
+            "斧头": (139, 90, 43),
+            "铲子": (180, 180, 180),
+            "刘备卡": (255, 200, 100),
+            "关羽卡": (255, 100, 100),
+            "张飞卡": (100, 100, 255),
+            "赵云卡": (100, 255, 100),
+            "诸葛亮卡": (200, 200, 255),
+            "曹操卡": (50, 50, 50)
+        }
+        return colors.get(item_name, (128, 128, 128))
+    
+    def handle_inventory_input(self):
+        """处理背包输入"""
+        inv_width = 500
+        inv_height = 400
+        inv_x = SCREEN_WIDTH // 2 - inv_width // 2
+        inv_y = SCREEN_HEIGHT // 2 - inv_height // 2
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return "quit"
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE or event.key == pygame.K_e:
+                    self.show_inventory = False
+                    self.is_mouse_locked = True
+                    pygame.mouse.set_visible(False)
+                    pygame.event.set_grab(True)
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mx, my = event.pos
+                
+                categories = ["全部", "方块类", "资源类", "武器类", "弹药类", "食物类", "工具类"]
+                cat_width = 60
+                cat_start_x = inv_x + 20
+                cat_y = inv_y + 50
+                
+                for i, cat in enumerate(categories):
+                    cat_x = cat_start_x + i * (cat_width + 5)
+                    if cat_x <= mx <= cat_x + cat_width and cat_y <= my <= cat_y + 25:
+                        self.inventory_category = cat
+                
+                slot_size = 45
+                slot_spacing = 5
+                slots_per_row = 9
+                slot_start_x = inv_x + 20
+                slot_start_y = inv_y + 85
+                
+                for row in range(3):
+                    for col in range(slots_per_row):
+                        slot_idx = row * slots_per_row + col
+                        slot_x = slot_start_x + col * (slot_size + slot_spacing)
+                        slot_y = slot_start_y + row * (slot_size + slot_spacing)
+                        
+                        if slot_x <= mx <= slot_x + slot_size and slot_y <= my <= slot_y + slot_size:
+                            if event.button == 1:
+                                self.handle_slot_click(slot_idx, "inventory")
+                            elif event.button == 3:
+                                self.handle_slot_right_click(slot_idx, "inventory")
+                
+                hotbar_y = inv_y + inv_height - 60
+                hotbar_width = 9 * 50 + 10
+                hotbar_x = inv_x + (inv_width - hotbar_width) // 2
+                
+                for i in range(9):
+                    slot_x = hotbar_x + 5 + i * 50
+                    if slot_x <= mx <= slot_x + 45 and hotbar_y <= my <= hotbar_y + 45:
+                        if event.button == 1:
+                            self.handle_slot_click(i, "hotbar")
+                        elif event.button == 3:
+                            self.handle_slot_right_click(i, "hotbar")
+        
+        return "continue"
+    
+    def handle_slot_click(self, slot_idx, source):
+        """处理槽位点击"""
+        if source == "inventory":
+            slot_item = self.inventory[slot_idx]
+        else:
+            slot_item = {"name": self.hotbar[slot_idx], "count": 1} if self.hotbar[slot_idx] else None
+        
+        if self.dragging_item:
+            if slot_item:
+                if slot_item["name"] == self.dragging_item["name"]:
+                    total = slot_item.get("count", 1) + self.dragging_item.get("count", 1)
+                    if total <= self.max_stack_size:
+                        slot_item["count"] = total
+                        self.dragging_item = None
+                    else:
+                        slot_item["count"] = self.max_stack_size
+                        self.dragging_item["count"] = total - self.max_stack_size
+                else:
+                    if source == "inventory":
+                        self.inventory[slot_idx] = self.dragging_item
+                    else:
+                        self.hotbar[slot_idx] = self.dragging_item["name"]
+                    self.dragging_item = slot_item
+            else:
+                if source == "inventory":
+                    self.inventory[slot_idx] = self.dragging_item
+                else:
+                    self.hotbar[slot_idx] = self.dragging_item["name"]
+                self.dragging_item = None
+        else:
+            if slot_item:
+                self.dragging_item = slot_item
+                if source == "inventory":
+                    self.inventory[slot_idx] = None
+                else:
+                    self.hotbar[slot_idx] = None
+                self.drag_source = source
+    
+    def handle_slot_right_click(self, slot_idx, source):
+        """处理槽位右键点击（放置半堆）"""
+        if self.dragging_item:
+            if source == "inventory":
+                if self.inventory[slot_idx]:
+                    if self.inventory[slot_idx]["name"] == self.dragging_item["name"]:
+                        self.inventory[slot_idx]["count"] += 1
+                        self.dragging_item["count"] -= 1
+                    else:
+                        return
+                else:
+                    self.inventory[slot_idx] = {"name": self.dragging_item["name"], "count": 1}
+                    self.dragging_item["count"] -= 1
+            else:
+                if self.hotbar[slot_idx] == self.dragging_item["name"]:
+                    pass
+                elif self.hotbar[slot_idx] is None:
+                    self.hotbar[slot_idx] = self.dragging_item["name"]
+                    self.dragging_item["count"] -= 1
+            
+            if self.dragging_item["count"] <= 0:
+                self.dragging_item = None
+    
+    def add_item_to_inventory(self, item_name, count=1):
+        """添加物品到背包"""
+        for i, slot in enumerate(self.inventory):
+            if slot and slot["name"] == item_name:
+                if slot["count"] + count <= self.max_stack_size:
+                    slot["count"] += count
+                    return True
+                else:
+                    remaining = self.max_stack_size - slot["count"]
+                    slot["count"] = self.max_stack_size
+                    count -= remaining
+        
+        for i, slot in enumerate(self.inventory):
+            if slot is None:
+                self.inventory[i] = {"name": item_name, "count": count}
+                return True
+        
+        return False
+    
+    def remove_item_from_inventory(self, item_name, count=1):
+        """从背包移除物品"""
+        for i, slot in enumerate(self.inventory):
+            if slot and slot["name"] == item_name:
+                if slot["count"] >= count:
+                    slot["count"] -= count
+                    if slot["count"] <= 0:
+                        self.inventory[i] = None
+                    return True
+                else:
+                    return False
+        return False
+    
+    def clamp_value(self, value, min_val, max_val):
+        """限制值在范围内（安全保护）"""
+        if not isinstance(value, (int, float)):
+            return min_val
+        return max(min_val, min(max_val, value))
+    
+    def set_health(self, value):
+        """安全设置生命值"""
+        self.health = self.clamp_value(value, 0, self.max_health)
+    
+    def add_health(self, amount):
+        """安全增加生命值"""
+        self.set_health(self.health + amount)
+    
+    def set_hunger(self, value):
+        """安全设置饥饿值"""
+        self.hunger = self.clamp_value(value, 0, self.max_hunger)
+    
+    def add_hunger(self, amount):
+        """安全增加饥饿值"""
+        self.set_hunger(self.hunger + amount)
+    
+    def set_oxygen(self, value):
+        """安全设置氧气值"""
+        self.oxygen = self.clamp_value(value, 0, self.max_oxygen)
+    
+    def add_oxygen(self, amount):
+        """安全增加氧气值"""
+        self.set_oxygen(self.oxygen + amount)
+    
+    def set_armor(self, value):
+        """安全设置护甲值"""
+        self.armor = self.clamp_value(value, 0, self.max_armor)
+    
+    def add_armor(self, amount):
+        """安全增加护甲值"""
+        self.set_armor(self.armor + amount)
+    
+    def validate_inventory(self):
+        """验证背包数据完整性（安全检查）"""
+        if not isinstance(self.inventory, list):
+            self.inventory = [None] * self.inventory_slots
+        
+        for i in range(len(self.inventory)):
+            if self.inventory[i] is not None:
+                if not isinstance(self.inventory[i], dict):
+                    self.inventory[i] = None
+                else:
+                    if "name" not in self.inventory[i] or "count" not in self.inventory[i]:
+                        self.inventory[i] = None
+                    else:
+                        self.inventory[i]["count"] = self.clamp_value(self.inventory[i]["count"], 1, self.max_stack_size)
+    
+    def validate_hotbar(self):
+        """验证快捷栏数据完整性"""
+        if not isinstance(self.hotbar, list):
+            self.hotbar = [None] * 9
+        
+        self.hotbar_selected = self.clamp_value(self.hotbar_selected, 0, 8)
+    
+    def validate_crafting_grid(self):
+        """验证合成网格数据完整性"""
+        if not isinstance(self.crafting_grid, list) or len(self.crafting_grid) != 3:
+            self.crafting_grid = [[None for _ in range(3)] for _ in range(3)]
+        
+        for row in range(3):
+            if not isinstance(self.crafting_grid[row], list) or len(self.crafting_grid[row]) != 3:
+                self.crafting_grid[row] = [None, None, None]
+    
+    def validate_player_position(self):
+        """验证玩家位置（防止非法位置）"""
+        if not isinstance(self.player_pos, list) or len(self.player_pos) != 3:
+            self.player_pos = [0, 0, 0]
+        
+        for i in range(3):
+            if not isinstance(self.player_pos[i], (int, float)):
+                self.player_pos[i] = 0
+        
+        self.player_pos[1] = max(self.player_pos[1], 0)
+    
+    def validate_camera(self):
+        """验证相机参数"""
+        self.camera["yaw"] = self.camera["yaw"] % 360
+        self.camera["pitch"] = self.clamp_value(self.camera["pitch"], -90, 90)
+        self.camera["speed"] = self.clamp_value(self.camera["speed"], 0.1, 2.0)
+    
+    def validate_all(self):
+        """全面验证所有数据（在加载后调用）"""
+        self.validate_inventory()
+        self.validate_hotbar()
+        self.validate_crafting_grid()
+        self.validate_player_position()
+        self.validate_camera()
+        
+        self.set_health(self.health)
+        self.set_hunger(self.hunger)
+        self.set_oxygen(self.oxygen)
+        self.set_armor(self.armor)
+    
+    def toggle_gamemode(self):
+        """切换游戏模式（生存/创造）"""
+        if self.game_mode == "survival":
+            self.game_mode = "creative"
+            self.can_fly = True
+            self.flying = False
+            self.health = self.max_health
+            self.hunger = self.max_hunger
+            self.add_chat_message("已切换到创造模式")
+        else:
+            self.game_mode = "survival"
+            self.can_fly = False
+            self.flying = False
+            self.add_chat_message("已切换到生存模式")
+    
+    def handle_flying(self):
+        """处理飞行逻辑（创造模式）"""
+        if not self.can_fly:
+            return
+        
+        keys = pygame.key.get_pressed()
+        
+        if keys[pygame.K_SPACE]:
+            self.flying = True
+            self.player_pos[1] += self.fly_speed
+        elif keys[pygame.K_LSHIFT]:
+            self.player_pos[1] -= self.fly_speed
+        else:
+            self.flying = False
+    
+    def execute_command(self, command):
+        """执行命令"""
+        command = command.strip().lower()
+        args = command.split()
+        
+        if not args:
+            return
+        
+        cmd = args[0]
+        
+        if cmd == "gamemode" or cmd == "gm":
+            if len(args) >= 2:
+                mode = args[1]
+                if mode in ["creative", "c", "1"]:
+                    self.game_mode = "creative"
+                    self.can_fly = True
+                    self.add_chat_message("已切换到创造模式")
+                elif mode in ["survival", "s", "0"]:
+                    self.game_mode = "survival"
+                    self.can_fly = False
+                    self.flying = False
+                    self.add_chat_message("已切换到生存模式")
+                else:
+                    self.add_chat_message("未知游戏模式: " + mode)
+            else:
+                self.add_chat_message("当前模式: " + self.game_mode)
+        
+        elif cmd == "give":
+            if len(args) >= 2:
+                item_name = args[1]
+                count = int(args[2]) if len(args) >= 3 else 1
+                self.add_item_to_inventory(item_name, count)
+                self.add_chat_message(f"获得 {count} 个 {item_name}")
+            else:
+                self.add_chat_message("用法: /give <物品名称> [数量]")
+        
+        elif cmd == "kill":
+            self.health = 0
+            self.add_chat_message("你自杀了!")
+        
+        elif cmd == "time":
+            if len(args) >= 2:
+                sub_cmd = args[1]
+                if sub_cmd == "day":
+                    self.day_time = 1000
+                    self.add_chat_message("已设置为白天")
+                elif sub_cmd == "night":
+                    self.day_time = 13000
+                    self.add_chat_message("已设置为夜晚")
+                elif sub_cmd == "add" and len(args) >= 3:
+                    self.day_time += int(args[2])
+                    self.add_chat_message(f"时间增加了 {args[2]}")
+            else:
+                time_str = "白天" if self.is_day else "夜晚"
+                self.add_chat_message(f"当前时间: {self.day_time} ({time_str})")
+        
+        elif cmd == "weather":
+            if len(args) >= 2:
+                weather_type = args[1]
+                if weather_type in ["clear", "sunny"]:
+                    self.weather = "clear"
+                    self.add_chat_message("天气已设置为晴天")
+                elif weather_type == "rain":
+                    self.weather = "rain"
+                    self.add_chat_message("天气已设置为下雨")
+                elif weather_type == "snow":
+                    self.weather = "snow"
+                    self.add_chat_message("天气已设置为下雪")
+                else:
+                    self.add_chat_message("未知天气类型: " + weather_type)
+            else:
+                self.add_chat_message(f"当前天气: {self.weather}")
+        
+        elif cmd == "tp" or cmd == "teleport":
+            if len(args) >= 4:
+                try:
+                    x = float(args[1])
+                    y = float(args[2])
+                    z = float(args[3])
+                    self.player_pos = [x, y, z]
+                    self.add_chat_message(f"已传送到 ({x}, {y}, {z})")
+                except Exception as _e:
+                    self.add_chat_message("用法: /tp <x> <y> <z>")
+        
+        elif cmd == "heal":
+            self.health = self.max_health
+            self.add_chat_message("已恢复全部生命值")
+        
+        elif cmd == "feed":
+            self.hunger = self.max_hunger
+            self.add_chat_message("已恢复全部饥饿值")
+        
+        elif cmd == "help":
+            help_text = [
+                "可用命令:",
+                "/gamemode <creative/survival> - 切换游戏模式",
+                "/give <物品> [数量] - 获得物品",
+                "/kill - 自杀",
+                "/time <day/night/add> - 设置时间",
+                "/weather <clear/rain/snow/thunder> - 设置天气",
+                "/tp <x> <y> <z> - 传送",
+                "/heal - 恢复生命",
+                "/feed - 恢复饥饿",
+                "/help - 显示帮助",
+                "/eggs - 显示彩蛋提示",
+                "/cheats - 显示作弊码列表",
+                "/developer - 开发者彩蛋",
+                "/dev - 开发者隐藏命令",
+                "/effect <效果> - 添加效果",
+                "/spawn <生物> - 生成生物"
+            ]
+            for line in help_text:
+                self.add_chat_message(line)
+        
+        elif cmd == "cheats" or cmd == "cheatcodes":
+            self.add_chat_message("=== 🎮 作弊码列表 ===")
+            self.add_chat_message("💡 在游戏中按顺序输入按键即可激活！")
+            self.add_chat_message("⚠️ 2秒内未继续输入会重置序列")
+            for code_id, code_data in self.cheat_codes.items():
+                sequence_str = " ".join(code_data["sequence"])
+                self.add_chat_message(f"🔑 {code_data['name']}: {sequence_str}")
+            self.add_chat_message("📍 还有隐藏的特定位置彩蛋等你发现！")
+        
+        elif cmd == "dev" or cmd == "developer":
+            if self.active_cheat_effects.get("developer_mode", False) or cmd == "developer":
+                if not self.eggs["developer"]["found"]:
+                    self.eggs["developer"]["found"] = True
+                    self.add_chat_message("🎉 恭喜解锁开发者彩蛋！")
+                    self.add_chat_message("神秘信息: 42是宇宙的终极答案")
+                self.add_chat_message("🔧 开发者命令已激活！")
+                self.add_chat_message("可用: /dev_stats, /dev_spawn, /dev_effect")
+                self.active_cheat_effects["developer_mode"] = True
+            else:
+                self.add_chat_message("⚠️ 需要先激活开发者模式！")
+                self.add_chat_message("提示: 输入 42 或找到开发者彩蛋")
+        
+        elif cmd == "dev_stats":
+            if self.active_cheat_effects.get("developer_mode", False):
+                self.add_chat_message("=== 📊 开发者统计 ===")
+                self.add_chat_message(f"作弊码输入次数: {self.cheat_stats['codes_entered']}")
+                self.add_chat_message(f"成功激活次数: {self.cheat_stats['codes_successful']}")
+                self.add_chat_message(f"最后激活: {self.cheat_stats['last_code'] or '无'}")
+                self.add_chat_message(f"总奖励数: {self.cheat_stats['total_rewards']}")
+                self.add_chat_message(f"已解锁彩蛋: {sum(1 for e in self.eggs.values() if e.get('found', False))}")
+                self.add_chat_message(f"当前按键序列: {self.cheat_code_buffer}")
+            else:
+                self.add_chat_message("⚠️ 需要开发者模式！")
+        
+        elif cmd == "effect":
+            if len(args) >= 2:
+                effect_name = args[1]
+                duration = int(args[2]) if len(args) >= 3 else 60
+                if effect_name in self.active_cheat_effects:
+                    self.active_cheat_effects[effect_name] = True
+                    self.add_chat_message(f"✨ 效果 {effect_name} 已激活，持续 {duration} 秒！")
+                else:
+                    available_effects = list(self.active_cheat_effects.keys())
+                    self.add_chat_message(f"未知效果: {effect_name}")
+                    self.add_chat_message(f"可用效果: {', '.join(available_effects)}")
+            else:
+                self.add_chat_message("用法: /effect <效果名> [持续时间]")
+        
+        elif cmd == "spawn":
+            if len(args) >= 2:
+                entity_type = args[1]
+                self.add_chat_message(f"🐉 生成生物: {entity_type}")
+                self.spawn_effect_particle(self.player_pos[0], self.player_pos[1] + 2, self.player_pos[2], "magic")
+            else:
+                self.add_chat_message("用法: /spawn <生物类型>")
+        
+        elif cmd == "locations":
+            self.add_chat_message("=== 📍 秘密位置彩蛋 ===")
+            for loc_id, loc_data in self.secret_locations.items():
+                pos = loc_data["pos"]
+                if self.active_cheat_effects.get("egg_hints", False):
+                    self.add_chat_message(f"🎯 {loc_data['message']} 位置: ({pos[0]}, {pos[1]}, {pos[2]})")
+                else:
+                    self.add_chat_message(f"❓ {loc_data['message']} (位置隐藏)")
+            self.add_chat_message("💡 使用 'egg' 作弊码显示位置提示！")
+        
+        elif cmd == "eggs":
+            self.add_chat_message("=== 彩蛋列表 ===")
+            for egg_id, egg_data in self.eggs.items():
+                status = "✅" if egg_data["found"] else "❓"
+                self.add_chat_message(f"{status} {egg_data['hint']}")
+        
+        elif cmd == "developer":
+            if not self.eggs["developer"]["found"]:
+                self.eggs["developer"]["found"] = True
+                self.add_chat_message("🎉 恭喜解锁开发者彩蛋！")
+                self.add_chat_message("神秘信息: 42是宇宙的终极答案")
+                self.add_chat_message("你发现了隐藏的开发者命令！")
+            else:
+                self.add_chat_message("你已经解锁过这个彩蛋了！")
+        
+        elif cmd == "herobrine":
+            self.herobrine_active = True
+            self.herobrine_pos = [self.player_pos[0] + 10, 0, self.player_pos[2] + 10]
+            self.add_chat_message("⚠️ Herobrine已被召唤...")
+        
+        else:
+            self.add_chat_message("未知命令: " + cmd)
+    
+    def check_cheat_code_sequence(self, key):
+        """检测按键序列作弊码"""
+        try:
+            current_time = time.time()
+            
+            if current_time - self.last_cheat_key_time > self.cheat_code_input_timeout:
+                self.cheat_code_buffer = []
+            
+            self.last_cheat_key_time = current_time
+            
+            key_name = self.get_key_name(key)
+            if key_name:
+                self.cheat_code_buffer.append(key_name)
+                
+                if len(self.cheat_code_buffer) > self.cheat_code_max_length:
+                    self.cheat_code_buffer.pop(0)
+                
+                for code_id, code_data in self.cheat_codes.items():
+                    sequence = code_data["sequence"]
+                    buffer_tail = self.cheat_code_buffer[-len(sequence):]
+                    
+                    if buffer_tail == sequence:
+                        self.activate_cheat_code(code_id, code_data)
+                        self.cheat_code_buffer = []
+                        return
+                        
+        except Exception as e:
+            logger.info(f"[错误] 检测作弊码序列失败: {e}")
+    
+    def get_key_name(self, key):
+        """获取按键名称"""
+        key_map = {
+            pygame.K_UP: "up",
+            pygame.K_DOWN: "down",
+            pygame.K_LEFT: "left",
+            pygame.K_RIGHT: "right",
+            pygame.K_a: "a",
+            pygame.K_b: "b",
+            pygame.K_c: "c",
+            pygame.K_d: "d",
+            pygame.K_e: "e",
+            pygame.K_f: "f",
+            pygame.K_g: "g",
+            pygame.K_h: "h",
+            pygame.K_i: "i",
+            pygame.K_j: "j",
+            pygame.K_k: "k",
+            pygame.K_l: "l",
+            pygame.K_m: "m",
+            pygame.K_n: "n",
+            pygame.K_o: "o",
+            pygame.K_p: "p",
+            pygame.K_q: "q",
+            pygame.K_r: "r",
+            pygame.K_s: "s",
+            pygame.K_t: "t",
+            pygame.K_u: "u",
+            pygame.K_v: "v",
+            pygame.K_w: "w",
+            pygame.K_x: "x",
+            pygame.K_y: "y",
+            pygame.K_z: "z",
+            pygame.K_0: "0",
+            pygame.K_1: "1",
+            pygame.K_2: "2",
+            pygame.K_3: "3",
+            pygame.K_4: "4",
+            pygame.K_5: "5",
+            pygame.K_6: "6",
+            pygame.K_7: "7",
+            pygame.K_8: "8",
+            pygame.K_9: "9"
+        }
+        return key_map.get(key, None)
+    
+    def activate_cheat_code(self, code_id, code_data):
+        """激活作弊码效果"""
+        try:
+            self.add_chat_message(f"🎮 {code_data['message']}")
+            self.cheat_stats["codes_entered"] += 1
+            self.cheat_stats["codes_successful"] += 1
+            self.cheat_stats["last_code"] = code_id
+            
+            effect = code_data.get("effect", "")
+            reward = code_data.get("reward", {})
+            
+            if "health" in reward:
+                self.health = min(self.health + reward["health"], self.max_health * 10)
+            if "hunger" in reward:
+                self.hunger = min(self.hunger + reward["hunger"], self.max_hunger * 10)
+            if "experience" in reward:
+                self.experience += reward["experience"]
+            if "level" in reward:
+                self.level = reward["level"]
+            if "game_mode" in reward:
+                self.game_mode = reward["game_mode"]
+                if reward["game_mode"] == "creative":
+                    self.can_fly = True
+            if "can_fly" in reward:
+                self.can_fly = reward["can_fly"]
+            if "flying" in reward:
+                self.flying = reward["flying"]
+            if "speed" in reward:
+                self.camera["speed"] = reward["speed"]
+            if "fly_speed" in reward:
+                self.fly_speed = reward["fly_speed"]
+            if "jump_power" in reward:
+                self.velocity[1] = reward["jump_power"]
+            
+            for effect_name, effect_value in reward.items():
+                if effect_name in self.active_cheat_effects:
+                    self.active_cheat_effects[effect_name] = effect_value
+            
+            if "generals" in reward:
+                for general in reward["generals"]:
+                    self.add_item_to_inventory(f"{general}卡", 1)
+                    self.add_chat_message(f"⚔️ 获得 {general} 武将卡！")
+            
+            if "secret_items" in reward:
+                for item in reward["secret_items"]:
+                    self.add_item_to_inventory(item, 1)
+                    self.add_chat_message(f"🎁 获得 {item}！")
+            
+            if "eggs_unlocked" in reward:
+                unlocked_count = 0
+                for egg_id in self.eggs:
+                    if not self.eggs[egg_id]["found"]:
+                        self.eggs[egg_id]["found"] = True
+                        unlocked_count += 1
+                        if unlocked_count >= reward["eggs_unlocked"]:
+                            break
+                self.add_chat_message(f"🥚 解锁了 {unlocked_count} 个彩蛋！")
+            
+            if "all_achievements" in reward and reward["all_achievements"]:
+                for achievement in self.achievements:
+                    self.achievements[achievement]["unlocked"] = True
+                self.add_chat_message("🏆 所有成就已解锁！")
+            
+            if "all_eggs" in reward and reward["all_eggs"]:
+                for egg_id in self.eggs:
+                    self.eggs[egg_id]["found"] = True
+                self.add_chat_message("🥚 所有彩蛋已解锁！")
+            
+            if "full_inventory" in reward and reward["full_inventory"]:
+                for item_type in self.item_types:
+                    for item in self.item_types[item_type]:
+                        self.add_item_to_inventory(item, 64)
+                self.add_chat_message("📦 背包已填满所有物品！")
+            
+            if "random" in reward and reward["random"]:
+                random_rewards = [
+                    {"health": 100, "message": "💖 随机奖励：恢复生命！"},
+                    {"experience": 1000, "message": "⭐ 随机奖励：获得经验！"},
+                    {"item": "神秘宝箱", "message": "🎁 随机奖励：神秘宝箱！"},
+                    {"speed": 2.0, "message": "⚡ 随机奖励：速度提升！"},
+                    {"egg_unlock": True, "message": "🥚 随机奖励：解锁一个彩蛋！"}
+                ]
+                chosen = random.choice(random_rewards)
+                if "health" in chosen:
+                    self.health = min(self.health + chosen["health"], self.max_health * 10)
+                if "experience" in chosen:
+                    self.experience += chosen["experience"]
+                if "item" in chosen:
+                    self.add_item_to_inventory(chosen["item"], 1)
+                if "speed" in chosen:
+                    self.camera["speed"] = chosen["speed"]
+                if "egg_unlock" in chosen:
+                    for egg_id in self.eggs:
+                        if not self.eggs[egg_id]["found"]:
+                            self.eggs[egg_id]["found"] = True
+                            break
+                self.add_chat_message(chosen["message"])
+            
+            if "pet" in reward:
+                self.add_chat_message(f"🐉 获得宠物：{reward['pet']}！")
+            
+            if "weather_control" in reward and reward["weather_control"]:
+                self.add_chat_message("🌤️ 天气控制已激活！使用 /weather 命令")
+            
+            if "time_control" in reward and reward["time_control"]:
+                self.add_chat_message("⏰ 时间控制已激活！使用 /time 命令")
+            
+            if "developer_mode" in reward and reward["developer_mode"]:
+                self.active_cheat_effects["developer_mode"] = True
+                self.add_chat_message("🔧 开发者模式已激活！")
+                self.add_chat_message("可用隐藏命令: /dev, /spawn, /effect")
+            
+            if "particle_effects" in reward and reward["particle_effects"]:
+                self.spawn_effect_particle(self.player_pos[0], self.player_pos[1] + 2, self.player_pos[2], "magic")
+            
+            self.cheat_stats["total_rewards"] += 1
+            
+            egg_key = f"cheat_{code_id}"
+            if egg_key not in self.eggs:
+                self.eggs[egg_key] = {"found": False, "hint": f"输入作弊码: {code_data['name']}"}
+            if not self.eggs[egg_key]["found"]:
+                self.eggs[egg_key]["found"] = True
+                self.add_chat_message(f"🎉 解锁彩蛋: {code_data['name']}！")
+            
+            self.spawn_effect_particle(self.player_pos[0], self.player_pos[1] + 2, self.player_pos[2], "enchant")
+            
+        except Exception as e:
+            logger.info(f"[错误] 激活作弊码失败: {e}")
+            self.add_chat_message(f"❌ 作弊码激活失败: {str(e)}")
+    
+    def check_secret_location_triggers(self):
+        """检测特定位置触发彩蛋"""
+        try:
+            for loc_id, loc_data in self.secret_locations.items():
+                pos = loc_data["pos"]
+                radius = loc_data["radius"]
+                
+                distance = math.sqrt(
+                    (self.player_pos[0] - pos[0]) ** 2 +
+                    (self.player_pos[1] - pos[1]) ** 2 +
+                    (self.player_pos[2] - pos[2]) ** 2
+                )
+                
+                if distance <= radius:
+                    egg_id = loc_data["egg"]
+                    if not self.eggs.get(egg_id, {}).get("found", False):
+                        self.eggs[egg_id]["found"] = True
+                        self.add_chat_message(f"📍 {loc_data['message']}")
+                        self.spawn_effect_particle(pos[0], pos[1] + 2, pos[2], "magic")
+                        
+        except Exception as e:
+            logger.info(f"[错误] 检测位置彩蛋失败: {e}")
+    
+    def draw_command_input(self):
+        """绘制命令输入框"""
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+        glDisable(GL_DEPTH_TEST)
+        
+        input_width = 400
+        input_height = 30
+        input_x = SCREEN_WIDTH // 2 - input_width // 2
+        input_y = SCREEN_HEIGHT - 50
+        
+        input_bg = pygame.Surface((input_width, input_height), pygame.SRCALPHA)
+        input_bg.fill((0, 0, 0, 200))
+        pygame.draw.rect(input_bg, (50, 50, 50), (0, 0, input_width, input_height), 1)
+        self.screen.blit(input_bg, (input_x, input_y))
+        
+        cmd_text = self.font_main.render("/" + self.command_input, True, (255, 255, 255))
+        self.screen.blit(cmd_text, (input_x + 5, input_y + 5))
+        
+        glEnable(GL_DEPTH_TEST)
+    
+    def draw_crafting_table(self):
+        """绘制合成台界面（MC风格）"""
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+        glDisable(GL_DEPTH_TEST)
+        
+        craft_width = 400
+        craft_height = 350
+        craft_x = SCREEN_WIDTH // 2 - craft_width // 2
+        craft_y = SCREEN_HEIGHT // 2 - craft_height // 2
+        
+        bg_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        bg_surf.fill((0, 0, 0, 150))
+        self.screen.blit(bg_surf, (0, 0))
+        
+        craft_surf = pygame.Surface((craft_width, craft_height), pygame.SRCALPHA)
+        craft_surf.fill((60, 60, 80, 240))
+        pygame.draw.rect(craft_surf, (100, 100, 120), (0, 0, craft_width, craft_height), 3, border_radius=10)
+        self.screen.blit(craft_surf, (craft_x, craft_y))
+        
+        title_surf = self.font_main.render("合成台", True, COLORS["accent_gold"])
+        title_rect = title_surf.get_rect(center=(SCREEN_WIDTH // 2, craft_y + 25))
+        self.screen.blit(title_surf, title_rect)
+        
+        slot_size = 50
+        slot_spacing = 5
+        
+        grid_x = craft_x + 30
+        grid_y = craft_y + 50
+        
+        for row in range(3):
+            for col in range(3):
+                slot_x = grid_x + col * (slot_size + slot_spacing)
+                slot_y = grid_y + row * (slot_size + slot_spacing)
+                
+                slot_surf = pygame.Surface((slot_size, slot_size), pygame.SRCALPHA)
+                slot_surf.fill((50, 50, 70, 255))
+                pygame.draw.rect(slot_surf, (80, 80, 100), (0, 0, slot_size, slot_size), 2)
+                self.screen.blit(slot_surf, (slot_x, slot_y))
+                
+                item = self.crafting_grid[row][col]
+                if item:
+                    item_color = self.get_item_color(item)
+                    item_surf = pygame.Surface((40, 40), pygame.SRCALPHA)
+                    item_surf.fill(item_color)
+                    self.screen.blit(item_surf, (slot_x + 5, slot_y + 5))
+        
+        arrow_x = grid_x + 3 * (slot_size + slot_spacing) + 20
+        arrow_y = craft_y + craft_height // 2 - 20
+        
+        arrow_surf = pygame.Surface((40, 40), pygame.SRCALPHA)
+        pygame.draw.polygon(arrow_surf, (255, 215, 0), [(35, 20), (5, 5), (5, 35)])
+        self.screen.blit(arrow_surf, (arrow_x, arrow_y))
+        
+        result_x = arrow_x + 60
+        result_y = craft_y + craft_height // 2 - slot_size // 2
+        
+        result_slot = pygame.Surface((slot_size, slot_size), pygame.SRCALPHA)
+        result_slot.fill((50, 70, 50, 255))
+        pygame.draw.rect(result_slot, COLORS["accent_green"], (0, 0, slot_size, slot_size), 2)
+        self.screen.blit(result_slot, (result_x, result_y))
+        
+        if self.crafting_result:
+            result_color = self.get_item_color(self.crafting_result)
+            result_surf = pygame.Surface((40, 40), pygame.SRCALPHA)
+            result_surf.fill(result_color)
+            self.screen.blit(result_surf, (result_x + 5, result_y + 5))
+        
+        hint_surf = self.font_small.render("拖拽物品到格子中 | C: 关闭", True, (150, 150, 150))
+        hint_rect = hint_surf.get_rect(center=(SCREEN_WIDTH // 2, craft_y + craft_height - 20))
+        self.screen.blit(hint_surf, hint_rect)
+        
+        glEnable(GL_DEPTH_TEST)
+    
+    def handle_crafting_input(self):
+        """处理合成台输入"""
+        craft_width = 400
+        craft_height = 350
+        craft_x = SCREEN_WIDTH // 2 - craft_width // 2
+        craft_y = SCREEN_HEIGHT // 2 - craft_height // 2
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return "quit"
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE or event.key == pygame.K_c:
+                    self.show_crafting = False
+                    self.is_mouse_locked = True
+                    pygame.mouse.set_visible(False)
+                    pygame.event.set_grab(True)
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mx, my = event.pos
+                
+                slot_size = 50
+                slot_spacing = 5
+                grid_x = craft_x + 30
+                grid_y = craft_y + 50
+                
+                for row in range(3):
+                    for col in range(3):
+                        slot_x = grid_x + col * (slot_size + slot_spacing)
+                        slot_y = grid_y + row * (slot_size + slot_spacing)
+                        
+                        if slot_x <= mx <= slot_x + slot_size and slot_y <= my <= slot_y + slot_size:
+                            if event.button == 1:
+                                if self.dragging_item:
+                                    self.crafting_grid[row][col] = self.dragging_item["name"]
+                                    self.dragging_item = None
+                                else:
+                                    item = self.crafting_grid[row][col]
+                                    if item:
+                                        self.dragging_item = {"name": item, "count": 1}
+                                        self.crafting_grid[row][col] = None
+                            
+                result_x = grid_x + 3 * (slot_size + slot_spacing) + 80
+                result_y = craft_y + craft_height // 2 - slot_size // 2
+                
+                if result_x <= mx <= result_x + slot_size and result_y <= my <= result_y + slot_size:
+                    if self.crafting_result:
+                        self.craft_item()
+        
+        self.check_crafting()
+        return "continue"
+    
+    def check_crafting(self):
+        """检查合成配方"""
+        items = {}
+        for row in self.crafting_grid:
+            for item in row:
+                if item:
+                    items[item] = items.get(item, 0) + 1
+        
+        for result, recipe in self.crafting_recipes.items():
+            match = True
+            for item, count in recipe.items():
+                if items.get(item, 0) < count:
+                    match = False
+                    break
+            
+            if match:
+                self.crafting_result = result
+                return
+        
+        self.crafting_result = None
+    
+    def craft_item(self):
+        """执行合成（安全版本）"""
+        if not self.crafting_result:
+            return
+        
+        recipe = self.crafting_recipes.get(self.crafting_result)
+        if not recipe:
+            return
+        
+        for item, count in recipe.items():
+            if not self.remove_item_from_inventory(item, count):
+                self.message = f"材料不足: {item}"
+                self.message_timer = 2000
+                return
+        
+        for item, count in recipe.items():
+            for _ in range(count):
+                found = False
+                for row in range(3):
+                    for col in range(3):
+                        if self.crafting_grid[row][col] == item:
+                            self.crafting_grid[row][col] = None
+                            found = True
+                            break
+                    if found:
+                        break
+        
+        self.add_item_to_inventory(self.crafting_result)
+        self.message = f"合成了 {self.crafting_result}！"
+        self.message_timer = 2000
+        self.check_crafting()
+    
+    def main(self):
+        """主循环"""
         if not self.initialize():
             return
         
         running = True
         while running:
-            self.clock.tick(60)
+            if self.is_paused:
+                result = self.handle_pause_input()
+                if result == "quit":
+                    running = False
+                elif result == "main_menu":
+                    return "main_menu"
+                
+                self.draw_3d_scene()
+                self.draw_pause_menu()
+                pygame.display.flip()
+                self.clock.tick(60)
+                continue
+            
+            if self.show_inventory:
+                result = self.handle_inventory_input()
+                if result == "quit":
+                    running = False
+                
+                self.draw_3d_scene()
+                self.draw_inventory()
+                pygame.display.flip()
+                self.clock.tick(60)
+                continue
+            
+            if self.show_crafting:
+                result = self.handle_crafting_input()
+                if result == "quit":
+                    running = False
+                
+                self.draw_3d_scene()
+                self.draw_crafting_table()
+                pygame.display.flip()
+                self.clock.tick(60)
+                continue
             
             running = self.handle_input()
             
-            self.update_physics()
-            self.update_npcs()
-            self.update_followers()
-            self.update_enemies()
-            self.update_marketplace()
-            self.update_projectiles()
-            self.update_pickups()
-            self.update_auto_fire()
-            self.update_recoil()
-            self.update_hit_markers()
-            self.update_damage_numbers()
+            if self.show_command:
+                self.draw_3d_scene()
+                self.draw_command_input()
+                pygame.display.flip()
+                self.clock.tick(60)
+                continue
             
+            # 物理更新
+            if not self.flying:
+                self.velocity[1] += self.gravity
+            
+            self.handle_flying()
+            
+            # 🎮 作弊码位置彩蛋检测
+            self.check_secret_location_triggers()
+            
+            # 更新位置
+            self.player_pos[0] += self.velocity[0]
+            self.player_pos[1] += self.velocity[1]
+            self.player_pos[2] += self.velocity[2]
+            
+            # 地面碰撞检测（贴合起伏地形表面）
+            ground_y = self.terrain_height(self.player_pos[0], self.player_pos[2])
+            if self.player_pos[1] <= ground_y:
+                self.player_pos[1] = ground_y
+                if self.velocity[1] < 0:
+                    self.velocity[1] = 0
+                self.on_ground = True
+            else:
+                self.on_ground = False
+            
+            # 建筑碰撞检测
+            player_radius = 0.8
+            player_height = 2.0
+            for loc in self.locations:
+                if "collision_box" in loc:
+                    box = loc["collision_box"]
+                    px, py, pz = self.player_pos[0], self.player_pos[1], self.player_pos[2]
+                    
+                    inside_x = box["min_x"] - player_radius < px < box["max_x"] + player_radius
+                    inside_z = box["min_z"] - player_radius < pz < box["max_z"] + player_radius
+                    inside_vertical = 0 < py < box["max_y"]
+                    
+                    if inside_x and inside_z and inside_vertical:
+                        overlap_left = px - (box["min_x"] - player_radius)
+                        overlap_right = (box["max_x"] + player_radius) - px
+                        overlap_front = pz - (box["min_z"] - player_radius)
+                        overlap_back = (box["max_z"] + player_radius) - pz
+                        
+                        min_overlap = min(overlap_left, overlap_right, overlap_front, overlap_back)
+                        
+                        if min_overlap == overlap_left:
+                            self.player_pos[0] = box["min_x"] - player_radius
+                            self.velocity[0] = 0
+                        elif min_overlap == overlap_right:
+                            self.player_pos[0] = box["max_x"] + player_radius
+                            self.velocity[0] = 0
+                        elif min_overlap == overlap_front:
+                            self.player_pos[2] = box["min_z"] - player_radius
+                            self.velocity[2] = 0
+                        elif min_overlap == overlap_back:
+                            self.player_pos[2] = box["max_z"] + player_radius
+                            self.velocity[2] = 0
+            
+            # 摩擦力
+            self.velocity[0] *= 0.9
+            self.velocity[2] *= 0.9
+            
+            # 更新昼夜系统
+            self.update_day_night()
+            
+            # 更新天气系统
+            self.update_weather()
+            
+            # 更新粒子系统
+            self.update_effect_particles()
+            self.update_dust_particles()
+            
+            # 更新生物系统
+            self.spawn_entity()
+            self.update_entities()
+            
+            # 更新Herobrine彩蛋
+            self.update_herobrine()
+            
+            # 检测彩蛋触发
+            self.check_egg_triggers()
+            
+            # 更新海浪效果
+            self.update_waves()
+            
+            # 更新相机
+            self.update_camera()
+            
+            # 自动存档
+            current_time = time.time()
+            if current_time - self.last_auto_save_time >= self.auto_save_interval:
+                self.save_mc_world_data()
+                self.last_auto_save_time = current_time
+                self.add_chat_message("游戏已自动保存")
+            
+            # 更新跟随者
+            self.update_followers()
+            
+            # 绘制3D场景
             self.draw_3d_scene()
             
-            if not self.inventory_open:
-                self.draw_hud()
-                self.draw_minimap()
-                self.draw_hotbar()
-            else:
-                self.draw_inventory()
+            # 绘制HUD
+            self.draw_mc_hud()
+            self.draw_hotbar()
             
-            pygame.display.flip()
+            # 限制帧率
+            self.clock.tick(60)
         
-        pygame.quit()
+        self.save_mc_world_data()
+        # 正常返回主菜单，不调用 pygame.quit()（会销毁主菜单的 pygame 状态导致闪退）
+        return None
 
 def main():
-    game = GameMap3D()
-    game.run()
+    """3D地图主函数"""
+    game_map_3d = GameMap3D()
+    game_map_3d.main()
+
+if __name__ == "__main__":
+    main()

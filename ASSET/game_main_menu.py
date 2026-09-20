@@ -1100,6 +1100,7 @@ def clear():
 
 def run_module(module_file):
     """运行子模块（通过 importlib 动态导入 ASSET.<模块名> 并调用其 main 函数）"""
+    global screen
     try:
         # 文件名去 .py 即模块名，统一动态导入，避免冗长的 if/elif 分支
         module_name = module_file[:-3] if module_file.endswith('.py') else module_file
@@ -1107,6 +1108,29 @@ def run_module(module_file):
         mod = importlib.import_module("ASSET." + module_name)
         if hasattr(mod, 'main'):
             mod.main()
+
+        # 子模块退出后可能调用了 safe_exit（会 pygame.quit + pygame.init），
+        # 需要重新创建 screen 对象，否则主菜单无法继续绘制
+        try:
+            if screen is None or not screen.get_enabled():
+                raise ValueError("screen invalid")
+            screen.get_size()
+        except Exception:
+            # 重新创建屏幕
+            if is_android():
+                sw, sh = _get_physical_resolution()
+                screen = pygame.display.set_mode((sw, sh))
+            else:
+                fullscreen = data['settings']['graphics'].get('fullscreen', False)
+                if fullscreen:
+                    screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+                else:
+                    try:
+                        w, h = map(int, data['settings']['graphics']['resolution'].split('x'))
+                        screen = pygame.display.set_mode((w, h))
+                    except Exception:
+                        screen = pygame.display.set_mode((800, 600))
+            pygame.display.set_caption("游戏主菜单")
 
         pygame.event.clear()
 
@@ -1201,7 +1225,7 @@ def mini_games_menu():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 save()
-                safe_exit("小游戏中心")
+                running = False
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 for btn, code in mini_games_buttons:
@@ -1356,7 +1380,7 @@ def setting_menu():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 save()
-                safe_exit("主菜单")
+                running = False
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 for i, btn in enumerate(setting_buttons):
@@ -1839,7 +1863,7 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 save()
-                safe_exit("主菜单")
+                running = False
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 try:
@@ -1917,7 +1941,7 @@ def main():
                                 if exit_choice == "exit_game":
                                     save()
                                     show_message("感谢游玩！")
-                                    safe_exit("主菜单")
+                                    running = False
                                 elif exit_choice == "exit_login":
                                     save()
                                     data["username"] = ""
@@ -1932,7 +1956,7 @@ def main():
                                         env = os.environ.copy()
                                         env['PYTHONPATH'] = project_root
                                         subprocess.Popen([sys.executable, login_path], cwd=project_root, env=env)
-                                    safe_exit("主菜单")
+                                    running = False
                             break
 
         clock.tick(60)
