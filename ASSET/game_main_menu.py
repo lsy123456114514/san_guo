@@ -1,4 +1,17 @@
-"""游戏主入口 - 登录后主菜单、顶部横幅、子系统调度"""
+"""游戏主菜单模块 — 登录后主菜单系统
+
+提供以下核心功能：
+  · 三国主题主菜单界面（带下拉菜单分组导航）
+  · 启动动画（科技感 + 三国风格）
+  · 游戏设置菜单（分辨率、全屏、音效等）
+  · 子模块动态调度（通过 importlib 按需加载 ASSET 下各子系统）
+  · 小游戏中心、退出确认菜单
+  · 鼠标拖尾、粒子系统、浮动文字等视觉特效
+"""
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 导入
+# ═══════════════════════════════════════════════════════════════════════════════
 
 import os
 import sys
@@ -25,6 +38,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 常量
+# ═══════════════════════════════════════════════════════════════════════════════
+
+MENU_FPS = 60
+STARTUP_DURATION_MS = 5000
+MOUSE_TRAIL_MAX = 20
+PARTICLE_MAX = 50
+CLOUD_COUNT = 10
+COMET_MAX = 5
+
 # 全局变量（延迟初始化）
 screen = None
 clock = None
@@ -32,9 +56,13 @@ FONT_MAIN = None
 FONT_SMALL = None
 FONT_BIG = None
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 粒子/特效类
+# ═══════════════════════════════════════════════════════════════════════════════
+
 class MouseTrail:
-    """鼠标跟随效果"""
-    def __init__(self, max_trails=20):
+    """鼠标跟随特效 — 在光标周围生成渐隐彩色圆形拖尾，营造动态光迹效果。"""
+    def __init__(self, max_trails=MOUSE_TRAIL_MAX):
         self.trails = []
         self.max_trails = max_trails
         self.colors = [
@@ -76,7 +104,7 @@ class MouseTrail:
                 logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class DynamicLight:
-    """动态光效类"""
+    """动态光效 — 一个会脉冲缩放、微幅飘动的径向渐变光源。"""
     def __init__(self, x, y, radius=100, color=(255, 215, 0)):
         self.x = x
         self.y = y
@@ -108,8 +136,12 @@ class DynamicLight:
         except Exception as _e:
             logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# UI控件类
+# ═══════════════════════════════════════════════════════════════════════════════
+
 class ScrollableContainer:
-    """通用滚动容器类"""
+    """可滚动容器 — 在有限区域内显示长列表，支持鼠标滚轮和拖拽滚动。"""
     def __init__(self, x, y, width, height, item_height, items, render_func):
         self.x = x
         self.y = y
@@ -177,7 +209,7 @@ class ScrollableContainer:
                            border_radius=4)
 
 class AnimatedSprite:
-    """动画精灵类 - 用于创建流畅的动画效果"""
+    """动画精灵 — 按帧序列播放动画，支持自动循环和降级渲染。"""
     def __init__(self, x, y, frames, frame_duration=100):
         self.x = x
         self.y = y
@@ -214,7 +246,7 @@ class AnimatedSprite:
                     logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class FloatingText:
-    """浮动文字效果"""
+    """浮动文字 — 从指定位置缓缓上浮并淡出的文字标签，常用于提示信息。"""
     def __init__(self, text, x, y, color=(255, 215, 0), font=None, speed=-1):
         self.text = text
         self.x = x
@@ -256,7 +288,7 @@ class FloatingText:
                     logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class GlowingEffect:
-    """发光效果类"""
+    """发光效果 — 在指定矩形区域周围绘制脉冲式辉光。"""
     def __init__(self, surface, x, y, width, height, color=(255, 215, 0), intensity=1.0):
         self.surface = surface
         self.x = x
@@ -292,8 +324,8 @@ class GlowingEffect:
                     logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 class ParticleSystem:
-    """粒子系统 - 更稳定和有趣的粒子效果"""
-    def __init__(self, max_particles=50):
+    """粒子系统 — 管理多个 Particle 实例的生成、更新与回收，支持多种粒子类型。"""
+    def __init__(self, max_particles=PARTICLE_MAX):
         self.particles = []
         self.max_particles = max_particles
         self.types = ['gold', 'fire', 'water', 'nature', 'magic']
@@ -349,7 +381,7 @@ class ParticleSystem:
         self.particles = alive
 
 class SafeSurface:
-    """安全表面类 - 防止绘制错误"""
+    """安全绘表面 — 对 pygame.Surface 操作做异常兜底，防止绘制错误导致崩溃。"""
     def __init__(self, size, flags=0):
         self.size = size
         self.flags = flags
@@ -397,7 +429,7 @@ def is_ios():
 
 
 def _get_physical_resolution():
-    """获取屏幕真实物理像素分辨率（Windows下不受DPI缩放影响）"""
+    """获取屏幕真实物理像素分辨率，Windows 下通过 ctypes 绕过 DPI 缩放。"""
     if platform.system() == "Windows":
         try:
             import ctypes
@@ -511,7 +543,7 @@ def test_font_renderable(font, text="测试"):
         return False
 
 def init_fonts():
-    """初始化字体 - 增强兼容性版本"""
+    """按平台优先级尝试加载中文字体，失败时回退到 Pygame 默认字体。"""
     global FONT_MAIN, FONT_SMALL, FONT_BIG
 
     current_platform = get_platform()
@@ -579,7 +611,7 @@ COLORS = {
 }
 
 class Particle:
-    """粒子效果 - 基础视觉粒子单元"""
+    """基础粒子 — 具有位置、速度、颜色、大小和寿命属性的视觉粒子单元。"""
     def __init__(self, x, y, color, speed, size, life):
         self.x = x
         self.y = y
@@ -602,7 +634,7 @@ class Particle:
         pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
 
 class Button:
-    """按钮控件 - 悬停缩放、点击粒子与发光特效"""
+    """按钮控件 — 带悬停缩放、点击反馈、发光特效和粒子装饰的交互按钮。"""
     def __init__(self, text, x, y, width, height, font,
                  normal_color=None,
                  hover_color=None,
@@ -733,7 +765,7 @@ class Button:
         self.click_particles[:] = [p for p in self.click_particles if p.life > 0]
 
 class DropdownMenu:
-    """下拉菜单 - 可展开的选项列表"""
+    """下拉菜单 — 可展开/收起的选项列表，支持左右自适应弹出方向。"""
     def __init__(self, text, x, y, width, height, font, items):
         self.text = text
         self.rect = pygame.Rect(x, y, width, height)
@@ -841,7 +873,7 @@ class DropdownMenu:
 
 clouds = []
 
-for i in range(10):
+for i in range(CLOUD_COUNT):
     clouds.append({
         'x': random.randint(-100, 900),
         'y': random.randint(-100, 700),
@@ -850,9 +882,12 @@ for i in range(10):
         'speed_x': random.uniform(-0.1, 0.1),
         'speed_y': random.uniform(-0.05, 0.05)
     })
+# ═══════════════════════════════════════════════════════════════════════════════
+# 菜单功能函数
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def draw_three_kingdoms_background(surface, screen_width, screen_height):
-    """绘制三国主题背景"""
+    """绘制三国主题背景 — 渐变天空、飘动金色云层、散落星光、装饰边框与中式印章。"""
     try:
         for y in range(screen_height):
             ratio = y / max(screen_height, 1)
@@ -1099,7 +1134,7 @@ def clear():
         screen.fill(COLORS["bg_dark"])
 
 def run_module(module_file):
-    """运行子模块（通过 importlib 动态导入 ASSET.<模块名> 并调用其 main 函数）"""
+    """动态加载并运行 ASSET 目录下的子模块，调用其 main() 函数；退出后重建 screen。"""
     global screen
     try:
         # 文件名去 .py 即模块名，统一动态导入，避免冗长的 if/elif 分支
@@ -1150,7 +1185,7 @@ def run_module(module_file):
             input("按回车返回...")
 
 def mini_games_menu():
-    """小游戏中心菜单"""
+    """小游戏中心菜单 — 展示所有小游戏入口按钮并处理启动。"""
     global screen, clock
     screen_width = screen.get_width()
     screen_height = screen.get_height()
@@ -1237,7 +1272,11 @@ def mini_games_menu():
                             if update_achievement_progress:
                                 update_achievement_progress("mini_game_played")
 
-        clock.tick(60)
+        clock.tick(MENU_FPS)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 模块调度
+# ═══════════════════════════════════════════════════════════════════════════════
 
 # ============ 模块路由表 ============
 # 所有下拉菜单项统一在此注册，避免冗长的 if/elif 分支。
@@ -1286,7 +1325,7 @@ SPECIAL_HANDLERS = {
 }
 
 def setting_menu():
-    """设置菜单"""
+    """游戏设置菜单 — 分辨率、全屏、地图容量、音效等选项的循环切换与即时生效。"""
     global screen, clock
 
     try:
@@ -1412,7 +1451,7 @@ def setting_menu():
                         elif i == 4:
                             running = False
 
-        clock.tick(60)
+        clock.tick(MENU_FPS)
 
 def input_save_name(screen, font_title, font_input):
     """输入存档名称"""
@@ -1456,8 +1495,12 @@ def show_message(message):
             pygame.display.flip()
             pygame.time.wait(2000)
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 主入口
+# ═══════════════════════════════════════════════════════════════════════════════
+
 def main():
-    """主菜单主循环"""
+    """主菜单主循环 — 创建窗口、初始化字体、构建下拉菜单和按钮、渲染背景特效并处理用户交互。"""
     global screen, clock, FONT_MAIN, FONT_SMALL, FONT_BIG, data
 
     if not pygame.get_init():
@@ -1620,7 +1663,7 @@ def main():
 
         draw_three_kingdoms_background(screen, screen_width, screen_height)
         
-        if random.random() < 0.005 and len(comet_trails) < 5:
+        if random.random() < 0.005 and len(comet_trails) < COMET_MAX:
             comet_trails.append({
                 'x': screen_width + 50,
                 'y': random.randint(0, screen_height // 2),
@@ -1959,10 +2002,10 @@ def main():
                                     running = False
                             break
 
-        clock.tick(60)
+        clock.tick(MENU_FPS)
 
 def show_exit_menu():
-    """显示退出选择菜单"""
+    """退出确认弹窗 — 提供「退出游戏」「退出登录」「取消」三个选项。"""
     global screen, clock
     screen_width = screen.get_width()
     screen_height = screen.get_height()
@@ -2045,10 +2088,14 @@ def show_exit_menu():
                 elif cancel_btn.check_click(mouse_pos):
                     return "cancel"
 
-        clock.tick(60)
+        clock.tick(MENU_FPS)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 启动动画
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def startup_animation():
-    """启动动画 - 科技感增强版（三国主题）
+    """启动动画 — 科技感 + 三国主题的开场动画，含网格、数字雨、HUD刻度环、标题揭示和进度条。
 
     效果组成：
         · 透视科技网格 + 全屏扫描线
@@ -2081,7 +2128,7 @@ def startup_animation():
     BG_TOP = (4, 8, 20)
     BG_BOTTOM = (10, 18, 38)
 
-    DURATION = 5000.0
+    DURATION = STARTUP_DURATION_MS
     GRID_STEP = 48
 
     # ── 预生成静态科技网格（中间亮、两侧暗，带纵深感）──
@@ -2330,7 +2377,7 @@ def startup_animation():
     start_time = pygame.time.get_ticks()
 
     while running:
-        dt = min(clock.tick(60) / 1000.0, 0.05)
+        dt = min(clock.tick(MENU_FPS) / 1000.0, 0.05)
         elapsed = pygame.time.get_ticks() - start_time
         progress = min(elapsed / DURATION, 1.0)
         t = elapsed / 1000.0
@@ -2362,4 +2409,4 @@ def startup_animation():
         flash.set_alpha(int(200 * (1 - i / 10.0)))
         screen.blit(flash, (0, 0))
         pygame.display.flip()
-        clock.tick(60)
+        clock.tick(MENU_FPS)

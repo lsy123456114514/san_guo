@@ -1,4 +1,11 @@
-"""3D 世界地图（MC 模式）- 方块放置、摄像机、热键栏"""
+"""3D OpenGL Minecraft-style world with terrain, weather, day/night, entities.
+
+Provides a full 3D voxel-inspired game map using pygame + OpenGL. Features
+procedural terrain generation, block placement, a hotbar / inventory system,
+crafting, mob spawning, day/night cycle, weather (rain / snow / thunder),
+a first/third-person camera, HUD overlays, cheat codes, easter eggs, and
+persistent world saving via the game_data store.
+"""
 
 import pygame
 import math
@@ -10,6 +17,10 @@ from ASSET.game_data import data, save, get_system_font_name, load_sound, logger
 from ASSET import safe_exit
 
 MC_WORLD_KEY = "mc_world"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Optional Imports (OpenGL, C++ Renderer)
+# ═══════════════════════════════════════════════════════════════════════════════
 
 # 尝试导入OpenGL
 try:
@@ -29,7 +40,10 @@ except Exception as e:
     logger.info(f"无法加载C++渲染器: {e}")
     cpp_renderer_available = False
 
-# 颜色定义
+# ═══════════════════════════════════════════════════════════════════════════════
+# Constants & Color Definitions
+# ═══════════════════════════════════════════════════════════════════════════════
+
 COLORS = {
     "bg_dark": (20, 20, 30),
     "bg_light": (30, 30, 50),
@@ -48,7 +62,18 @@ SCREEN_WIDTH = 1024
 SCREEN_HEIGHT = 768
 
 class GameMap3D:
-    """3D游戏地图系统"""
+    """3D game map system with Minecraft-inspired mechanics.
+
+    Manages the full lifecycle of a 3D world: OpenGL initialisation,
+    procedural terrain and tree generation, player physics (gravity,
+    jumping, collision), block placement / breaking, hotbar & inventory,
+    crafting with MC 1.12.2-style recipes, mob spawning and AI, a day/night
+    cycle, weather effects, a HUD, pause menu, cheat codes, easter eggs,
+    and world persistence via save/load.
+    """
+
+    # ── Initialisation ──────────────────────────────────────────────────
+
     def __init__(self):
         self.screen = None
         self.clock = None
@@ -1214,8 +1239,14 @@ class GameMap3D:
             "调试棒": (0.3, 0.8, 0.3)
         }
         
-    def initialize(self):
-        """初始化3D地图"""
+    # ── Core Lifecycle ──────────────────────────────────────────────────
+
+    def initialize(self) -> bool:
+        """Set up pygame, OpenGL, fonts, map data, trees, and player position.
+
+        Returns True on success; returns False and logs the error if OpenGL
+        is unavailable or initialisation fails.
+        """
         global SCREEN_WIDTH, SCREEN_HEIGHT
         if not opengl_available:
             logger.info("错误: OpenGL不可用，无法启动3D地图")
@@ -1395,8 +1426,13 @@ class GameMap3D:
             logger.info(f"[错误] 加载MC世界数据失败: {e}")
             self.validate_all()
     
-    def save_mc_world_data(self):
-        """保存MC世界存档数据"""
+    # ── World Persistence ───────────────────────────────────────────────
+
+    def save_mc_world_data(self) -> None:
+        """Persist the current MC world state (blocks, hotbar, player pos, camera, stats) to game_data.
+
+        Called automatically every auto_save_interval seconds and on exit.
+        """
         try:
             mc_world = {
                 "placed_blocks": self.placed_blocks,
@@ -1486,8 +1522,19 @@ class GameMap3D:
             if not too_close:
                 self.trees.append((x, z))
     
-    def handle_input(self):
-        """处理输入"""
+    # ── Input Handling ──────────────────────────────────────────────────
+
+    def handle_input(self) -> bool:
+        """Poll keyboard, mouse, and pygame events for one frame.
+
+        Handles WASD movement, space-bar jumping, shift sneaking, mouse-
+        look (yaw / pitch), hotbar selection (1-9), inventory (E),
+        crafting table (C), command input (/), pause (Esc), camera mode
+        toggle (F5), follow mode (F), game-mode toggle (Ctrl+G), and
+        block placement / breaking (left / right click).
+
+        Returns False when the window close event is received.
+        """
         keys = pygame.key.get_pressed()
         
         # 相机移动
@@ -1623,8 +1670,10 @@ class GameMap3D:
         
         return True
     
+    # ── Movement Helpers ────────────────────────────────────────────────
+
     def move_forward(self):
-        """向前移动"""
+        """Move the player forward along the current yaw direction."""
         yaw_rad = math.radians(self.camera["yaw"])
         self.player_pos[0] += math.cos(yaw_rad) * self.camera["speed"]
         self.player_pos[2] += math.sin(yaw_rad) * self.camera["speed"]
@@ -1651,8 +1700,10 @@ class GameMap3D:
         self.player_pos[2] -= math.cos(yaw_rad) * self.camera["speed"]
         self.update_camera()
     
+    # ── Block Placement & Breaking ──────────────────────────────────────
+
     def place_block(self):
-        """放置方块（类似MC左键）"""
+        """Place the currently selected hotbar block 5 units ahead of the camera."""
         yaw_rad = math.radians(self.camera["yaw"])
         pitch_rad = math.radians(self.camera["pitch"])
         
@@ -1677,7 +1728,7 @@ class GameMap3D:
             self.message_timer = 1000
     
     def break_block(self):
-        """破坏方块（类似MC右键）"""
+        """Remove the block at the camera's aim target (5 units ahead)."""
         yaw_rad = math.radians(self.camera["yaw"])
         pitch_rad = math.radians(self.camera["pitch"])
         
@@ -1700,8 +1751,13 @@ class GameMap3D:
         self.message = "没有可破坏的方块"
         self.message_timer = 1000
     
+    # ── Camera System ───────────────────────────────────────────────────
+
     def update_camera(self):
-        """更新相机位置（MC风格三种视角）"""
+        """Recompute camera position based on player_pos, yaw, pitch, and camera mode.
+
+        Supports first-person, third-person back, and third-person front views.
+        """
         yaw_rad = math.radians(self.camera["yaw"])
         pitch_rad = math.radians(self.camera["pitch"])
         distance = 5.0
@@ -1743,8 +1799,10 @@ class GameMap3D:
                     follower["x"] += dx / distance * 0.3
                     follower["z"] += dz / distance * 0.3
     
-    def draw_3d_scene(self):
-        """绘制3D场景"""
+    # ── Rendering (3D Scene) ────────────────────────────────────────────
+
+    def draw_3d_scene(self) -> None:
+        """Dispatch to the C++ renderer or fall back to the pure-Python path."""
         if cpp_renderer_available:
             self.draw_3d_scene_cpp()
         else:
@@ -1927,8 +1985,15 @@ class GameMap3D:
         except Exception as e:
             logger.info(f"Python渲染错误: {e}")
     
-    def terrain_height(self, x, z):
-        """地形高度函数（渲染与碰撞共用，保证角色踩在地面上）"""
+    # ── Terrain Generation ──────────────────────────────────────────────
+
+    def terrain_height(self, x, z) -> int:
+        """Return the terrain surface Y for a given (x, z) world position.
+
+        Uses a combination of sine/cosine waves to produce smooth, rolling
+        hills. This function is shared by both rendering and collision so
+        the player always stands on the visible ground.
+        """
         try:
             x = float(x)
             z = float(z)
@@ -2112,8 +2177,10 @@ class GameMap3D:
         except Exception as e:
             logger.info(f"绘制放置方块错误: {e}")
     
+    # ── Day / Night Cycle ───────────────────────────────────────────────
+
     def update_day_night(self):
-        """更新昼夜系统"""
+        """Advance the 24000-tick MC-style day clock and compute sun/moon angles."""
         self.day_time += self.day_speed
         if self.day_time >= 24000:
             self.day_time = 0
@@ -2210,8 +2277,14 @@ class GameMap3D:
         except Exception as e:
             logger.info(f"绘制太阳月亮错误: {e}")
     
-    def update_weather(self):
-        """更新天气系统"""
+    # ── Weather System ──────────────────────────────────────────────────
+
+    def update_weather(self) -> None:
+        """Advance weather state: randomly change weather every ~3000 ticks.
+
+        Spawns rain / snow particles and triggers lightning during thunder
+        storms.
+        """
         try:
             self.weather_timer += 1
             
@@ -2273,8 +2346,8 @@ class GameMap3D:
         except Exception as e:
             logger.info(f"更新天气错误: {e}")
     
-    def draw_weather(self):
-        """绘制天气效果"""
+    def draw_weather(self) -> None:
+        """Render active weather particles (rain lines or snow quads) in OpenGL."""
         try:
             glDisable(GL_LIGHTING)
             
@@ -2301,8 +2374,13 @@ class GameMap3D:
         except Exception as e:
             logger.info(f"绘制天气错误: {e}")
     
+    # ── Particle System ─────────────────────────────────────────────────
+
     def spawn_effect_particle(self, x, y, z, effect_type="explosion"):
-        """生成特效粒子"""
+        """Emit 20 coloured particles at (x, y, z) for the given effect type.
+
+        Supported types: explosion, enchant, heal, magic, fire.
+        """
         try:
             colors = {
                 "explosion": [(1.0, 0.5, 0.0), (1.0, 0.2, 0.0), (1.0, 1.0, 0.0)],
@@ -2409,8 +2487,16 @@ class GameMap3D:
         except Exception as e:
             logger.info(f"[错误] 绘制尘埃粒子失败: {e}")
     
-    def spawn_entity(self):
-        """生成生物"""
+    # ── Entity System ───────────────────────────────────────────────────
+
+    def spawn_entity(self) -> None:
+        """Spawn passive animals during the day or hostile monsters at night.
+
+        Uses a spawn timer (ticks every 30 frames) and probabilistic
+        selection. Entities are placed within 80 blocks of the player on
+        the terrain surface. Hostile mobs go to self.monsters; passive
+        mobs go to self.animals.
+        """
         self.spawn_timer += 1
         
         if self.spawn_timer > 30:
@@ -2440,8 +2526,13 @@ class GameMap3D:
                 else:
                     self.animals.append(entity)
     
-    def update_entities(self):
-        """更新生物位置"""
+    def update_entities(self) -> None:
+        """Move all active animals and monsters.
+
+        Animals wander with random direction changes. Monsters chase the
+        player. Both are despawned when they stray more than 120 blocks
+        from the player.
+        """
         for animal in self.animals:
             animal["direction"] += random.uniform(-5, 5)
             animal["x"] += math.cos(math.radians(animal["direction"])) * animal["speed"]
@@ -2460,8 +2551,12 @@ class GameMap3D:
                             if self.player_pos[0] - 120 <= m["x"] <= self.player_pos[0] + 120
                             and self.player_pos[2] - 120 <= m["z"] <= self.player_pos[2] + 120]
     
-    def draw_entities(self):
-        """绘制生物"""
+    def draw_entities(self) -> None:
+        """Render all active animals, monsters, and the Herobrine easter-egg.
+
+        Each entity is drawn as a simple coloured quad-cube at its current
+        world position. Herobrine is rendered only when active.
+        """
         try:
             glDisable(GL_LIGHTING)
             
@@ -3220,8 +3315,10 @@ class GameMap3D:
         
         glEnable(GL_DEPTH_TEST)
     
-    def draw_mc_hud(self):
-        """绘制MC风格HUD（生命值、饥饿值等）"""
+    # ── HUD & UI Rendering ──────────────────────────────────────────────
+
+    def draw_mc_hud(self) -> None:
+        """Draw the Minecraft-style HUD overlay (health, hunger, oxygen, XP bar, crosshair, chat)."""
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
         glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
@@ -3372,8 +3469,15 @@ class GameMap3D:
             achievement = self.achievements[achievement_id]
             self.add_chat_message(f"[成就] {achievement['name']}: {achievement['description']}")
     
+    # ── Easter Egg System ───────────────────────────────────────────────
+
     def check_egg_triggers(self):
-        """检测彩蛋触发条件"""
+        """Evaluate all easter-egg unlock conditions each frame.
+
+        Checks block counts, craft/kills stats, day/night cycle, altitude,
+        weather, Herobrine state, creative flight, swimming, jump count,
+        sneaking, sprinting, and tool-crafting milestones.
+        """
         try:
             # 检测放置方块彩蛋
             if len(self.placed_blocks) >= 1 and not self.eggs.get("first_block", {}).get("found", False):
@@ -3673,8 +3777,10 @@ class GameMap3D:
         }
         return colors.get(block_type, (128, 128, 128))
     
+    # ── Inventory System ────────────────────────────────────────────────
+
     def draw_inventory(self):
-        """绘制背包界面（类似旅行者背包）"""
+        """Render the inventory UI (3x9 grid + hotbar + category tabs + drag preview)."""
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
         glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
@@ -3986,8 +4092,10 @@ class GameMap3D:
                     return False
         return False
     
+    # ── Data Validation ─────────────────────────────────────────────────
+
     def clamp_value(self, value, min_val, max_val):
-        """限制值在范围内（安全保护）"""
+        """Clamp a numeric value to [min_val, max_val], returning min_val for non-numeric input."""
         if not isinstance(value, (int, float)):
             return min_val
         return max(min_val, min(max_val, value))
@@ -4115,8 +4223,14 @@ class GameMap3D:
         else:
             self.flying = False
     
+    # ── Command System ──────────────────────────────────────────────────
+
     def execute_command(self, command):
-        """执行命令"""
+        """Execute a slash-command string (e.g. /gamemode, /give, /tp, /help).
+
+        Supports gamemode switching, item giving, teleportation, time / weather
+        control, kill, heal, feed, easter egg commands, and developer tools.
+        """
         command = command.strip().lower()
         args = command.split()
         
@@ -4318,8 +4432,15 @@ class GameMap3D:
         else:
             self.add_chat_message("未知命令: " + cmd)
     
+    # ── Cheat Code System ───────────────────────────────────────────────
+
     def check_cheat_code_sequence(self, key):
-        """检测按键序列作弊码"""
+        """Append a key to the cheat buffer and check for matching sequences.
+
+        Uses a rolling buffer of up to cheat_code_max_length entries.
+        Resets the buffer if more than cheat_code_input_timeout seconds
+        elapse between key presses.
+        """
         try:
             current_time = time.time()
             
@@ -4570,8 +4691,10 @@ class GameMap3D:
         
         glEnable(GL_DEPTH_TEST)
     
+    # ── Crafting System ─────────────────────────────────────────────────
+
     def draw_crafting_table(self):
-        """绘制合成台界面（MC风格）"""
+        """Render the 3x3 crafting grid UI with result slot and arrow."""
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
         glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
@@ -4750,8 +4873,17 @@ class GameMap3D:
         self.message_timer = 2000
         self.check_crafting()
     
+    # ── Main Game Loop ──────────────────────────────────────────────────
+
     def main(self):
-        """主循环"""
+        """Entry point for the 3D world map.
+
+        Initialises the OpenGL viewport, then runs the primary game loop at
+        60 FPS. Each frame: handles input, applies physics (gravity,
+        collision, friction), updates day/night, weather, particles, mobs,
+        easter eggs, auto-save, followers, renders the 3D scene and HUD,
+        and ticks the clock.
+        """
         if not self.initialize():
             return
         
@@ -4911,6 +5043,10 @@ class GameMap3D:
         self.save_mc_world_data()
         # 正常返回主菜单，不调用 pygame.quit()（会销毁主菜单的 pygame 状态导致闪退）
         return None
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Module Entry Point
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def main():
     """3D地图主函数"""

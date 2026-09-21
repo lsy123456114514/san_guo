@@ -1,10 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""统一 UI 组件库 - 过渡动画、面板、按钮、进度条、Toast、文字特效"""
+"""Unified UI Component Library for the San Guo game engine.
+
+Provides reusable UI elements with smooth transitions, styled panels,
+animated buttons, progress bars, toast notifications, and text reveal
+effects:
+
+* **TransitionManager** – screen fade and slide transitions.
+* **UIPanel** – rounded-corner panel with optional title.
+* **UIButton** – styled button with hover/press animations.
+* **ProgressBar** – animated progress bar with percentage display.
+* **ToastNotification** – temporary top-of-screen notification.
+* **TextReveal** – typewriter-style text reveal effect.
+"""
 
 import math
 import time
 import logging
+from typing import Optional, Tuple
 import pygame
 
 logger = logging.getLogger(__name__)
@@ -31,46 +44,90 @@ COLORS = {
 
 
 # ═══════════════════════════════════════════════════════════
-# 过渡动画管理器
+# Transition Manager
 # ═══════════════════════════════════════════════════════════
 
 class TransitionManager:
-    """屏幕过渡效果：淡入淡出、滑动"""
+    """Screen transition effects: fade-in, fade-out, slide-left, slide-right.
+
+    Manages the lifecycle of a single active transition. Call :meth:`update`
+    each frame to advance the animation, then :meth:`apply` to composite
+    the effect onto the target surface.
+
+    Attributes:
+        FADE_IN: Fade-in transition type.
+        FADE_OUT: Fade-out transition type.
+        SLIDE_LEFT: Slide-left transition type.
+        SLIDE_RIGHT: Slide-right transition type.
+    """
 
     FADE_IN = 'fade_in'
     FADE_OUT = 'fade_out'
     SLIDE_LEFT = 'slide_left'
     SLIDE_RIGHT = 'slide_right'
 
-    def __init__(self):
-        self._active = False
-        self._type = None
-        self._duration = 500
-        self._start_time = 0
-        self._progress = 0.0
-        self._callback = None
+    def __init__(self) -> None:
+        self._active: bool = False
+        self._type: Optional[str] = None
+        self._duration: int = 500
+        self._start_time: int = 0
+        self._progress: float = 0.0
+        self._callback: Optional[callable] = None
 
     @property
-    def is_active(self):
+    def is_active(self) -> bool:
+        """Whether a transition is currently in progress."""
         return self._active
 
     @property
-    def progress(self):
+    def progress(self) -> float:
+        """Current transition progress from 0.0 to 1.0."""
         return self._progress
 
-    def fade_in(self, duration=500, callback=None):
+    def fade_in(self, duration: int = 500, callback: Optional[callable] = None) -> None:
+        """Start a fade-in transition.
+
+        Args:
+            duration: Transition duration in milliseconds.
+            callback: Optional function called when the transition completes.
+        """
         self._start(self.FADE_IN, duration, callback)
 
-    def fade_out(self, duration=500, callback=None):
+    def fade_out(self, duration: int = 500, callback: Optional[callable] = None) -> None:
+        """Start a fade-out transition.
+
+        Args:
+            duration: Transition duration in milliseconds.
+            callback: Optional function called when the transition completes.
+        """
         self._start(self.FADE_OUT, duration, callback)
 
-    def slide_left(self, duration=400, callback=None):
+    def slide_left(self, duration: int = 400, callback: Optional[callable] = None) -> None:
+        """Start a slide-left transition.
+
+        Args:
+            duration: Transition duration in milliseconds.
+            callback: Optional function called when the transition completes.
+        """
         self._start(self.SLIDE_LEFT, duration, callback)
 
-    def slide_right(self, duration=400, callback=None):
+    def slide_right(self, duration: int = 400, callback: Optional[callable] = None) -> None:
+        """Start a slide-right transition.
+
+        Args:
+            duration: Transition duration in milliseconds.
+            callback: Optional function called when the transition completes.
+        """
         self._start(self.SLIDE_RIGHT, duration, callback)
 
-    def _start(self, t, duration, callback):
+    def _start(self, t: str, duration: int, callback: Optional[callable]) -> None:
+        """Initialize and begin a new transition.
+
+        Args:
+            t: Transition type constant.
+            duration: Duration in milliseconds.
+            callback: Optional completion callback.
+        """
         self._active = True
         self._type = t
         self._duration = max(1, duration)
@@ -78,7 +135,12 @@ class TransitionManager:
         self._progress = 0.0
         self._callback = callback
 
-    def update(self):
+    def update(self) -> bool:
+        """Advance the transition by one frame.
+
+        Returns:
+            ``True`` when the transition has finished.
+        """
         if not self._active:
             return True
         elapsed = pygame.time.get_ticks() - self._start_time
@@ -90,7 +152,12 @@ class TransitionManager:
             return True
         return False
 
-    def apply(self, surface):
+    def apply(self, surface: pygame.Surface) -> None:
+        """Composite the current transition effect onto *surface*.
+
+        Args:
+            surface: The target surface to apply the effect to.
+        """
         if not self._active:
             return
         w, h = surface.get_size()
@@ -123,23 +190,46 @@ class TransitionManager:
             surface.blit(overlay, (offset, 0))
 
     @staticmethod
-    def _ease(t):
+    def _ease(t: float) -> float:
+        """Apply smooth-step easing to a progress value.
+
+        Args:
+            t: Progress value in [0.0, 1.0].
+
+        Returns:
+            Eased value in [0.0, 1.0].
+        """
         return t * t * (3.0 - 2.0 * t)
 
 
 # ═══════════════════════════════════════════════════════════
-# UI 面板
+# UI Panel
 # ═══════════════════════════════════════════════════════════
 
 class UIPanel:
-    """带标题的圆角面板"""
+    """Rounded-corner panel with an optional title header.
 
-    def __init__(self, x, y, width, height, title=None, style='dark'):
-        self.rect = pygame.Rect(x, y, width, height)
-        self.title = title
-        self.style = style
+    Args:
+        x: Horizontal pixel position.
+        y: Vertical pixel position.
+        width: Panel width in pixels.
+        height: Panel height in pixels.
+        title: Optional title text displayed at the top.
+        style: Visual style key (currently only ``'dark'`` is used).
+    """
 
-    def draw(self, surface):
+    def __init__(self, x: int, y: int, width: int, height: int,
+                 title: Optional[str] = None, style: str = 'dark') -> None:
+        self.rect: pygame.Rect = pygame.Rect(x, y, width, height)
+        self.title: Optional[str] = title
+        self.style: str = style
+
+    def draw(self, surface: pygame.Surface) -> None:
+        """Render the panel onto *surface*.
+
+        Args:
+            surface: Destination surface.
+        """
         x, y, w, h = self.rect.x, self.rect.y, self.rect.w, self.rect.h
         bg = COLORS.get('bg_panel', (25, 25, 50, 220))
         panel = pygame.Surface((w, h), pygame.SRCALPHA)
@@ -156,16 +246,36 @@ class UIPanel:
             except Exception:
                 pass
 
-    def contains(self, point):
+    def contains(self, point: Tuple[int, int]) -> bool:
+        """Check whether a point lies inside the panel.
+
+        Args:
+            point: ``(x, y)`` screen coordinate.
+
+        Returns:
+            ``True`` if the point is within the panel bounds.
+        """
         return self.rect.collidepoint(point)
 
 
 # ═══════════════════════════════════════════════════════════
-# 按钮
+# UI Button
 # ═══════════════════════════════════════════════════════════
 
 class UIButton:
-    """风格化按钮，支持 hover/press 动画"""
+    """Styled button with hover/press scale animations.
+
+    Supports four visual styles: ``'primary'``, ``'secondary'``,
+    ``'danger'``, and ``'success'``.
+
+    Args:
+        x: Horizontal pixel position.
+        y: Vertical pixel position.
+        width: Button width in pixels.
+        height: Button height in pixels.
+        text: Button label.
+        style: Visual style key.
+    """
 
     STYLE_COLORS = {
         'primary': ((0, 180, 230), (0, 200, 255)),
@@ -174,15 +284,24 @@ class UIButton:
         'success': ((40, 170, 60), (50, 200, 80)),
     }
 
-    def __init__(self, x, y, width, height, text, style='primary'):
-        self.rect = pygame.Rect(x, y, width, height)
-        self.text = text
-        self.style = style
-        self._hover = False
-        self._pressed = False
-        self._scale = 1.0
+    def __init__(self, x: int, y: int, width: int, height: int,
+                 text: str, style: str = 'primary') -> None:
+        self.rect: pygame.Rect = pygame.Rect(x, y, width, height)
+        self.text: str = text
+        self.style: str = style
+        self._hover: bool = False
+        self._pressed: bool = False
+        self._scale: float = 1.0
 
-    def handle_event(self, event):
+    def handle_event(self, event: pygame.event.Event) -> bool:
+        """Process a pygame event for hover/click detection.
+
+        Args:
+            event: A pygame event object.
+
+        Returns:
+            ``True`` when the button has been clicked (mouse-up inside).
+        """
         if event.type == pygame.MOUSEMOTION:
             self._hover = self.rect.collidepoint(event.pos)
             self._pressed = False
@@ -196,11 +315,17 @@ class UIButton:
             self._pressed = False
         return False
 
-    def update(self):
+    def update(self) -> None:
+        """Animate the button scale based on hover/press state."""
         target = 0.95 if self._pressed else (1.05 if self._hover else 1.0)
         self._scale += (target - self._scale) * 0.2
 
-    def draw(self, surface):
+    def draw(self, surface: pygame.Surface) -> None:
+        """Render the button onto *surface*.
+
+        Args:
+            surface: Destination surface.
+        """
         self.update()
         colors = self.STYLE_COLORS.get(self.style, self.STYLE_COLORS['primary'])
         base_color = colors[1] if self._hover else colors[0]
@@ -227,31 +352,52 @@ class UIButton:
 
 
 # ═══════════════════════════════════════════════════════════
-# 进度条
+# Progress Bar
 # ═══════════════════════════════════════════════════════════
 
 class ProgressBar:
-    """带动画的进度条"""
+    """Animated progress bar with percentage text display.
 
-    def __init__(self, x, y, width, height, max_value=100, color=None):
-        self.rect = pygame.Rect(x, y, width, height)
-        self.max_value = max(1, max_value)
-        self.target_value = 0
-        self.display_value = 0
-        self.color = color or COLORS['accent_cyan']
-        self.show_text = True
+    Args:
+        x: Horizontal pixel position.
+        y: Vertical pixel position.
+        width: Bar width in pixels.
+        height: Bar height in pixels.
+        max_value: Maximum value representing 100%.
+        color: Fill colour as an RGB tuple.
+    """
 
-    def set_value(self, val):
+    def __init__(self, x: int, y: int, width: int, height: int,
+                 max_value: int = 100, color: Optional[Tuple[int, int, int]] = None) -> None:
+        self.rect: pygame.Rect = pygame.Rect(x, y, width, height)
+        self.max_value: int = max(1, max_value)
+        self.target_value: float = 0
+        self.display_value: float = 0
+        self.color: Tuple[int, int, int] = color or COLORS['accent_cyan']
+        self.show_text: bool = True
+
+    def set_value(self, val: float) -> None:
+        """Set the target progress value (clamped to [0, max_value]).
+
+        Args:
+            val: Desired progress value.
+        """
         self.target_value = max(0, min(self.max_value, val))
 
-    def update(self):
+    def update(self) -> None:
+        """Smoothly animate the display value toward the target."""
         diff = self.target_value - self.display_value
         if abs(diff) < 0.5:
             self.display_value = self.target_value
         else:
             self.display_value += diff * 0.15
 
-    def draw(self, surface):
+    def draw(self, surface: pygame.Surface) -> None:
+        """Render the progress bar onto *surface*.
+
+        Args:
+            surface: Destination surface.
+        """
         self.update()
         x, y, w, h = self.rect
         # 背景
@@ -279,11 +425,22 @@ class ProgressBar:
 
 
 # ═══════════════════════════════════════════════════════════
-# Toast 通知
+# Toast Notification
 # ═══════════════════════════════════════════════════════════
 
 class ToastNotification:
-    """顶部弹出通知"""
+    """Temporary notification that slides in at the top of the screen.
+
+    Supports four styles: ``'info'``, ``'success'``, ``'warning'``, and
+    ``'error'``.  The notification automatically fades in, stays visible
+    for *duration* milliseconds, then fades out.
+
+    Args:
+        text: Message text.
+        duration: Display duration in milliseconds.
+        style: Visual style key.
+        screen_width: Width of the screen for horizontal centering.
+    """
 
     STYLE_COLORS = {
         'info': COLORS['accent_cyan'],
@@ -292,25 +449,37 @@ class ToastNotification:
         'error': COLORS['red'],
     }
 
-    def __init__(self, text, duration=2000, style='info', screen_width=800):
-        self.text = text
-        self.duration = max(1, duration)
-        self.color = self.STYLE_COLORS.get(style, COLORS['accent_cyan'])
-        self.screen_width = screen_width
-        self._start = pygame.time.get_ticks()
-        self._alive = True
-        self.font = get_font(18)
+    def __init__(self, text: str, duration: int = 2000, style: str = 'info',
+                 screen_width: int = 800) -> None:
+        self.text: str = text
+        self.duration: int = max(1, duration)
+        self.color: Tuple[int, int, int] = self.STYLE_COLORS.get(style, COLORS['accent_cyan'])
+        self.screen_width: int = screen_width
+        self._start: int = pygame.time.get_ticks()
+        self._alive: bool = True
+        self.font: pygame.font.Font = get_font(18)
 
     @property
-    def is_alive(self):
+    def is_alive(self) -> bool:
+        """Whether the notification is still visible."""
         return self._alive
 
-    def update(self):
+    def update(self) -> bool:
+        """Advance the notification timer.
+
+        Returns:
+            ``True`` if the notification is still alive.
+        """
         if pygame.time.get_ticks() - self._start > self.duration:
             self._alive = False
         return self._alive
 
-    def draw(self, surface):
+    def draw(self, surface: pygame.Surface) -> None:
+        """Render the notification onto *surface*.
+
+        Args:
+            surface: Destination surface.
+        """
         if not self._alive:
             return
         elapsed = pygame.time.get_ticks() - self._start
@@ -341,24 +510,34 @@ class ToastNotification:
 
 
 # ═══════════════════════════════════════════════════════════
-# 打字机文字特效
+# Text Reveal Effect
 # ═══════════════════════════════════════════════════════════
 
 class TextReveal:
-    """逐字显示文字效果"""
+    """Typewriter-style text reveal effect.
 
-    def __init__(self, text, speed=30):
-        self.text = text
-        self.speed = speed  # 字/秒
-        self._start = pygame.time.get_ticks()
-        self._revealed = 0
-        self._done = False
+    Characters appear one at a time at a configurable speed.  Call
+    :meth:`skip` to instantly reveal all text.
+
+    Args:
+        text: Full text to display.
+        speed: Characters revealed per second.
+    """
+
+    def __init__(self, text: str, speed: int = 30) -> None:
+        self.text: str = text
+        self.speed: int = speed  # 字/秒
+        self._start: int = pygame.time.get_ticks()
+        self._revealed: int = 0
+        self._done: bool = False
 
     @property
-    def is_complete(self):
+    def is_complete(self) -> bool:
+        """Whether all text has been revealed."""
         return self._done
 
-    def update(self):
+    def update(self) -> None:
+        """Advance the reveal animation by one frame."""
         if self._done:
             return
         elapsed = (pygame.time.get_ticks() - self._start) / 1000.0
@@ -366,11 +545,25 @@ class TextReveal:
         if self._revealed >= len(self.text):
             self._done = True
 
-    def skip(self):
+    def skip(self) -> None:
+        """Immediately reveal all text without animation."""
         self._revealed = len(self.text)
         self._done = True
 
-    def draw(self, surface, x, y, font=None, color=None):
+    def draw(self, surface: pygame.Surface, x: int, y: int,
+             font: Optional[pygame.font.Font] = None,
+             color: Optional[Tuple[int, int, int]] = None) -> None:
+        """Render the revealed portion of the text onto *surface*.
+
+        Supports newline characters for multi-line display.
+
+        Args:
+            surface: Destination surface.
+            x: Horizontal pixel position.
+            y: Vertical pixel position.
+            font: Optional pygame font.  Defaults to size 20.
+            color: Text colour.  Defaults to white.
+        """
         self.update()
         if font is None:
             font = get_font(20)

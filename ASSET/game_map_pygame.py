@@ -1,4 +1,10 @@
-"""Pygame 2D 世界地图经典版"""
+"""2D pygame-based game map with location capture system.
+
+Provides a scrollable 2D world map rendered with pygame, featuring procedurally
+generated resource locations, hostile units, a location capture mechanic with
+timed progression, time card items, particle effects, and a top-bar HUD with
+a return button. Supports both desktop and Android display modes.
+"""
 
 import os
 import pygame
@@ -8,7 +14,10 @@ import platform
 from ASSET.game_data import data, save, get_system_font_name, load_sound, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 
-# 颜色主题
+# ═══════════════════════════════════════════════════════════════════════════════
+# Color Theme
+# ═══════════════════════════════════════════════════════════════════════════════
+
 COLORS = {
     "bg_dark": (10, 15, 30),
     "bg_light": (20, 25, 45),
@@ -19,7 +28,10 @@ COLORS = {
     "panel_bg": (40, 40, 70, 200)
 }
 
-# 地点类型配置
+# ═══════════════════════════════════════════════════════════════════════════════
+# Location Type Configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+
 LOCATION_TYPES = {
     "矿产": {
         "color": (180, 180, 190),
@@ -58,8 +70,20 @@ LOCATION_TYPES = {
     }
 }
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Visual Effect Classes
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
 class Particle:
-    def __init__(self, x, y, color, speed, size, life):
+    """A single particle used for visual effects (selection, capture, combat).
+
+    Particles have a position, color, velocity, size, and finite lifetime.
+    They drift outward in random directions and shrink over time before being
+    removed from the scene.
+    """
+
+    def __init__(self, x: float, y: float, color: tuple, speed: float, size: int, life: int):
         self.x = x
         self.y = y
         self.color = color
@@ -75,14 +99,20 @@ class Particle:
         self.life -= 1
         self.size = max(0.5, self.size - 0.05)
     
-    def draw(self, surface):
+    def draw(self, surface: pygame.Surface):
         alpha = int(255 * (self.life / self.max_life))
         # 只使用RGB部分，确保颜色参数有效
         color = self.color[:3]  # 只取RGB值，去掉alpha通道
         pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
 
+
 class FloatingText:
-    def __init__(self, text, x, y, color, font):
+    """A label that floats upward and fades out over its lifetime.
+
+    Used for damage numbers, resource gains, and status messages.
+    """
+
+    def __init__(self, text: str, x: float, y: float, color: tuple, font: pygame.font.Font):
         self.text = text
         self.x = x
         self.y = y
@@ -96,14 +126,35 @@ class FloatingText:
         self.y += self.speed_y
         self.life -= 1
     
-    def draw(self, surface):
+    def draw(self, surface: pygame.Surface):
         alpha = int(255 * (self.life / self.max_life))
         text_surf = self.font.render(self.text, True, self.color)
         text_surf.set_alpha(alpha)
         surface.blit(text_surf, (int(self.x), int(self.y)))
 
-def draw_grid(surface, offset_x, offset_y, screen_width, screen_height, grid_size=100):
-    """绘制网格背景"""
+# ═══════════════════════════════════════════════════════════════════════════════
+# Grid & Location Rendering
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def draw_grid(
+    surface: pygame.Surface,
+    offset_x: int,
+    offset_y: int,
+    screen_width: int,
+    screen_height: int,
+    grid_size: int = 100,
+) -> None:
+    """Draw a scrolling grid background behind the map.
+
+    Args:
+        surface: The target surface to draw on.
+        offset_x: Horizontal scroll offset in pixels.
+        offset_y: Vertical scroll offset in pixels.
+        screen_width: Width of the viewport.
+        screen_height: Height of the viewport.
+        grid_size: Spacing between grid lines in pixels.
+    """
     grid_color = (40, 45, 65)
     
     start_x = offset_x % grid_size
@@ -115,8 +166,37 @@ def draw_grid(surface, offset_x, offset_y, screen_width, screen_height, grid_siz
     for y in range(start_y, screen_height, grid_size):
         pygame.draw.line(surface, grid_color, (0, y), (screen_width, y))
 
-def draw_location(surface, x, y, loc_type, level, radius, font, selected=False, hover=False, capturing=False, capture_progress=0):
-    """绘制地点"""
+
+def draw_location(
+    surface: pygame.Surface,
+    x: int,
+    y: int,
+    loc_type: str,
+    level: int,
+    radius: int,
+    font: pygame.font.Font,
+    selected: bool = False,
+    hover: bool = False,
+    capturing: bool = False,
+    capture_progress: float = 0,
+) -> None:
+    """Draw a single map location with glow, level text, and capture overlay.
+
+    Renders concentric circles for the body, an optional glow ring when
+    selected/hovered, and a circular progress arc during capture.
+
+    Args:
+        surface: Target draw surface.
+        x, y: Screen coordinates of the location center.
+        loc_type: Key into LOCATION_TYPES (e.g. '矿产', '敌对单位').
+        level: Numeric level displayed inside the circle.
+        radius: Base radius of the location circle.
+        font: Font used for the level number and capture text.
+        selected: Whether this location is currently selected.
+        hover: Whether the mouse is hovering over this location.
+        capturing: Whether capture is in progress for this location.
+        capture_progress: Float 0.0-1.0 indicating capture completion.
+    """
     config = LOCATION_TYPES[loc_type]
     color = config["color"]
     glow_color = config["glow"]
@@ -164,8 +244,39 @@ def draw_location(surface, x, y, loc_type, level, radius, font, selected=False, 
         capture_rect = capture_text.get_rect(center=(x, y + radius + 20))
         surface.blit(capture_text, capture_rect)
 
-def draw_popup(surface, x, y, loc, font_small, font_main, capturing=False, time_card_count=0):
-    """绘制地点信息弹窗"""
+# ═══════════════════════════════════════════════════════════════════════════════
+# Popup & UI Panel Rendering
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def draw_popup(
+    surface: pygame.Surface,
+    x: int,
+    y: int,
+    loc: tuple,
+    font_small: pygame.font.Font,
+    font_main: pygame.font.Font,
+    capturing: bool = False,
+    time_card_count: int = 0,
+) -> tuple:
+    """Draw an information popup for a selected location.
+
+    Shows the location type, level, resource output, and action buttons
+    (occupy, time card, or attack depending on hostility).
+
+    Args:
+        surface: Target draw surface.
+        x, y: Top-left corner of the popup.
+        loc: Location tuple (x, y, loc_type, level, output).
+        font_small: Small font for labels.
+        font_main: Larger font for the title.
+        capturing: Whether capture is currently in progress.
+        time_card_count: Number of time cards the player owns.
+
+    Returns:
+        A tuple of (occupy_button_rect, time_card_button_rect).
+        time_card_button_rect is None when not applicable.
+    """
     loc_type = loc[2]
     level = loc[3]
     output = loc[4]
@@ -281,8 +392,24 @@ def draw_popup(surface, x, y, loc, font_small, font_main, capturing=False, time_
     
     return btn_rect, time_card_btn
 
-def draw_ui_panel(surface, screen_width, screen_height, font):
-    """绘制UI面板"""
+
+def draw_ui_panel(
+    surface: pygame.Surface,
+    screen_width: int,
+    screen_height: int,
+    font: pygame.font.Font,
+) -> pygame.Rect:
+    """Draw the top UI bar with title, hint text, and return button.
+
+    Args:
+        surface: Target draw surface.
+        screen_width: Width of the viewport.
+        screen_height: Height of the viewport.
+        font: Font for text rendering.
+
+    Returns:
+        The Rect of the return button for hit-testing.
+    """
     # 顶部信息栏
     panel_height = 50
     panel_surf = pygame.Surface((screen_width, panel_height), pygame.SRCALPHA)
@@ -311,8 +438,21 @@ def draw_ui_panel(surface, screen_width, screen_height, font):
     
     return return_btn
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Map Generation & Capture Logic
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
 def main():
-    """地图主函数"""
+    """Entry point for the 2D world map module.
+
+    Initialises pygame, sets up the viewport, generates map locations,
+    and runs the main event loop handling drag/zoom, location selection,
+    capture timers, time card usage, and hostile unit combat.
+
+    Returns:
+        None (always returns None; exceptions are logged).
+    """
     try:
         # 初始化
         if not pygame.get_init():
@@ -337,7 +477,7 @@ def main():
         DRAW_RADIUS = 18 if not 'ANDROID_DATA' in os.environ else 28
 
         # 字体初始化
-        def init_font(size):
+        def init_font(size: int) -> pygame.font.Font:
             return get_font(size)
 
         font_small = init_font(16 if not 'ANDROID_DATA' in os.environ else 22)
@@ -354,7 +494,18 @@ def main():
                     logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
         # 生成地图地点
-        def generate_map(num_locations):
+        def generate_map(num_locations: int) -> list:
+            """Generate random non-overlapping map locations.
+
+            Each location is placed at least 150 units apart and assigned
+            a random type and level.
+
+            Args:
+                num_locations: How many locations to place on the map.
+
+            Returns:
+                A list of (x, y, loc_type, level, output) tuples.
+            """
             locations = []
             map_w, map_h = MAP_SIZE
 
@@ -378,7 +529,18 @@ def main():
             return locations
 
         # 占领地点
-        def occupy_location(loc):
+        def occupy_location(loc: tuple) -> tuple:
+            """Capture a friendly location, adding its resources to the player.
+
+            Hostile locations cannot be occupied through this function.
+
+            Args:
+                loc: A location tuple (x, y, loc_type, level, output).
+
+            Returns:
+                (success, output) where success is bool and output is the
+                resource dict on success, or an empty dict on failure.
+            """
             x, y, loc_type, level, output = loc
             if not LOCATION_TYPES[loc_type]["hostile"]:
                 for res, amt in output.items():

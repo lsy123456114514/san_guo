@@ -1,4 +1,29 @@
-"""全局存档/配置/字体/音效数据与 load/save 工具"""
+"""Central data module for the Three Kingdoms game.
+
+This module serves as the single source of truth for all game state and
+configuration. It provides:
+
+- **Global save/load** -- JSON-based persistence with atomic writes, hidden
+  file attributes (Windows), and automatic retry on permission errors.
+- **Auto-save** -- time-gated periodic saves triggered from the game loop.
+- **Resource config** -- definitions for resources, guns, hero skills,
+  equipment, tasks, achievements, fashion, tech tree, buildings, talents.
+- **Default save template** -- ``default_save`` dict that every new game
+  starts from and that ``load()`` merges into for forward compatibility.
+- **Font & text rendering cache** -- ``get_font()``, ``render_text()``,
+  ``draw_gradient_bg()`` with LRU eviction to keep memory bounded.
+- **Sound cache** -- ``load_sound()`` avoids repeated disk decoding.
+- **Utility helpers** -- ``cull_dead()``, ``calculate_passive_income()``,
+  ``hide_file()`` / ``unhide_file()``, ``get_system_font_name()``.
+
+All game subsystems import this module to read or mutate the shared ``data``
+dict.  No logic should live here; keep this file as a **data + cache layer**
+only.
+"""
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Imports
+# ═══════════════════════════════════════════════════════════════════════════════
 
 import json
 import os
@@ -8,8 +33,30 @@ import sys
 import logging
 import pygame
 
-# ── 统一日志器（所有模块共享，写入 game.log）──
-# 避免重复配置：仅当无 handler 时添加
+# ═══════════════════════════════════════════════════════════════════════════════
+# Constants -- named magic numbers
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Cache size limits (LRU eviction thresholds)
+CACHE_MAX_FONTS: int = 64        # maximum cached pygame.font.Font objects
+CACHE_MAX_RENDERS: int = 4000    # maximum cached render_text surfaces
+CACHE_MAX_GRADIENTS: int = 16    # maximum cached gradient backgrounds
+CACHE_MAX_SOUNDS: int = 64       # maximum cached pygame.mixer.Sound objects
+
+# Auto-save interval in seconds (5 minutes)
+AUTO_SAVE_INTERVAL: int = 300
+
+# Windows file attribute constants
+HIDDEN_ATTR: int = 0x02          # FILE_ATTRIBUTE_HIDDEN
+NORMAL_ATTR: int = 0x80          # FILE_ATTRIBUTE_NORMAL
+SYSTEM_OR_READONLY_ATTRS: int = 0x07  # HIDDEN | READONLY | SYSTEM bitmask
+
+# Minimum idle seconds before passive income is credited
+PASSIVE_INCOME_THRESHOLD: int = 60
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Logger setup (shared across all modules, writes to game.log)
+# ═══════════════════════════════════════════════════════════════════════════════
 _logger = logging.getLogger("sanguo")
 if not _logger.handlers:
     _logger.setLevel(logging.INFO)
@@ -30,25 +77,11 @@ if not _logger.handlers:
 logger = _logger
 
 
-def hide_file(filepath):
-    """隐藏文件（仅Windows）"""
-    if platform.system() == "Windows":
-        try:
-            if not filepath or not isinstance(filepath, str):
-                return
-            if not os.path.exists(filepath):
-                return
-            import ctypes
-            ctypes.windll.kernel32.SetFileAttributesW(filepath, 0x02)  # FILE_ATTRIBUTE_HIDDEN
-        except Exception as _e:
-            logger.debug("[异常静默] hide_file %s %s: %s", type(_e).__name__, filepath, _e)
+def hide_file(filepath: str) -> None:
+    """Mark a file as hidden on Windows (``FILE_ATTRIBUTE_HIDDEN``).
 
-
-def unhide_file(filepath):
-    """清除隐藏/只读属性，确保文件可写（仅Windows）。
-
-    部分 Windows 环境下 `open(path, "w")` 无法写入隐藏或只读文件，
-    因此每次写入前先恢复为普通属性，写完再由 hide_file 重新隐藏。
+    On non-Windows platforms this is a silent no-op.  If *filepath* is
+    empty, not a string, or does not exist, the call is also ignored.
     """
     if platform.system() == "Windows":
         try:
@@ -57,12 +90,33 @@ def unhide_file(filepath):
             if not os.path.exists(filepath):
                 return
             import ctypes
-            # 先获取当前属性，再强制设为 NORMAL（清除 HIDDEN / READONLY / SYSTEM）
+            ctypes.windll.kernel32.SetFileAttributesW(filepath, HIDDEN_ATTR)
+        except Exception as _e:
+            logger.debug("[异常静默] hide_file %s %s: %s", type(_e).__name__, filepath, _e)
+
+
+def unhide_file(filepath: str) -> None:
+    """Clear hidden / read-only attributes so the file is writable (Windows).
+
+    Some Windows environments prevent ``open(path, "w")`` on hidden or
+    read-only files.  Call this before writing and ``hide_file`` afterwards.
+    """
+    if platform.system() == "Windows":
+        try:
+            if not filepath or not isinstance(filepath, str):
+                return
+            if not os.path.exists(filepath):
+                return
+            import ctypes
             attrs = ctypes.windll.kernel32.GetFileAttributesW(filepath)
-            if attrs != -1 and (attrs & 0x07):  # HIDDEN=0x02, READONLY=0x01, SYSTEM=0x04
-                ctypes.windll.kernel32.SetFileAttributesW(filepath, 0x80)  # FILE_ATTRIBUTE_NORMAL
+            if attrs != -1 and (attrs & SYSTEM_OR_READONLY_ATTRS):
+                ctypes.windll.kernel32.SetFileAttributesW(filepath, NORMAL_ATTR)
         except Exception as _e:
             logger.debug("[异常静默] unhide_file %s %s: %s", type(_e).__name__, filepath, _e)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Resource config
+# ═══════════════════════════════════════════════════════════════════════════════
 
 # 基础配置
 RESOURCES = ["水", "煤炭", "木头", "食物", "金元宝", "时间卡", "宠物食物", "普通子弹", "高级子弹", "稀有子弹"]
@@ -107,6 +161,10 @@ GUNS = {
         "level": 2
     }
 }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Hero config -- bonds, skills, elements, synergies, weaknesses, energy
+# ═══════════════════════════════════════════════════════════════════════════════
 
 # 武将羁绊配置 - 三国历史特色
 HERO_BONDS = {
@@ -199,6 +257,10 @@ ELEMENT_ENERGY = {
     "earth": {"color": (180, 140, 100), "max": 100},
     "wind": {"color": (200, 200, 100), "max": 100}
 }
+# ═══════════════════════════════════════════════════════════════════════════════
+# Path & global settings
+# ═══════════════════════════════════════════════════════════════════════════════
+
 # 路径适配：安卓用内部存储，PC用本地
 if 'ANDROID_DATA' in os.environ:
     from android.storage import app_storage_path
@@ -206,6 +268,10 @@ if 'ANDROID_DATA' in os.environ:
 else:
     SAVE_PATH = os.path.join(os.path.dirname(__file__), "save.json")
 SOUND_DIR = os.path.join(os.path.dirname(__file__), "sounds")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Global settings
+# ═══════════════════════════════════════════════════════════════════════════════
 
 # 全局设置
 SETTINGS = {
@@ -231,10 +297,12 @@ SETTINGS = {
     }
 }
 
-def _font_has_chinese(font, size=24):
-    """判断字体是否真正包含中文字形。
-    pygame 默认字体（及无中文字形的字体）会把中文画成“方框”，
-    方框宽度只有约 1/3 字号，而真实中文字体字宽接近字号大小。"""
+def _font_has_chinese(font: pygame.font.Font, size: int = 24) -> bool:
+    """Check whether *font* can render Chinese characters.
+
+    Pygame's default font renders CJK glyphs as narrow "boxes" (~1/3 of *size*).
+    A real Chinese-capable font produces glyphs whose width is close to *size*.
+    """
     try:
         w = font.render("中", True, (255, 255, 255)).get_width()
         return w >= size * 0.5
@@ -242,9 +310,16 @@ def _font_has_chinese(font, size=24):
         return False
 
 
-def get_system_font_name():
-    """跨系统中文字体适配（含安卓）—— 返回能真正显示中文的字体来源
-    （字体文件路径或系统字体名），找不到可用中文字体时返回 None"""
+def get_system_font_name() -> str | None:
+    """Locate a system font that can render Chinese characters.
+
+    Search order:
+    1. Bundled ``.ttf``/``.otf`` files in the ``fonts/`` subdirectory.
+    2. OS-specific font name lists (Windows / macOS / Linux+Android).
+    3. ``None`` if nothing suitable is found (UI will show "boxes" for CJK).
+
+    Returns a file path or a system font name, or ``None``.
+    """
     # 1) 优先使用随游戏打包的字体文件（任何设备都能显示中文）
     try:
         if hasattr(sys, '_MEIPASS'):
@@ -414,6 +489,10 @@ HERO_SKILLS = {
     }
 }
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Equipment config
+# ═══════════════════════════════════════════════════════════════════════════════
+
 # 装备技能对应关系
 EQUIP_SKILLS = {
     "weapon": {
@@ -465,6 +544,10 @@ EQUIP_SKILLS = {
         9: {"name": "南华真经", "critical": 0.5, "description": "仙术暴击"}
     }
 }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Task config
+# ═══════════════════════════════════════════════════════════════════════════════
 
 # 任务系统配置
 DAILY_TASKS = [
@@ -536,6 +619,10 @@ WEEKLY_TASKS = [
         "type": "hero_unlocked"
     }
 ]
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Achievement config
+# ═══════════════════════════════════════════════════════════════════════════════
 
 # 成就系统配置
 ACHIEVEMENTS = {
@@ -610,6 +697,10 @@ ACHIEVEMENTS = {
         }
     ]
 }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Fashion config
+# ═══════════════════════════════════════════════════════════════════════════════
 
 # 时装系统配置
 FASHION_ITEMS = {
@@ -725,6 +816,10 @@ FASHION_ITEMS = {
         }
     }
 }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Tech tree
+# ═══════════════════════════════════════════════════════════════════════════════
 
 # 科技树配置 (树状结构)
 TECH_TREE = {
@@ -1140,6 +1235,10 @@ TECH_TREE = {
     }
 }
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Building & talent config
+# ═══════════════════════════════════════════════════════════════════════════════
+
 # 建筑系统配置
 BUILDINGS = {
     "resource_center": {
@@ -1242,6 +1341,10 @@ TALENT_TREE = {
         ]
     }
 }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Default save template
+# ═══════════════════════════════════════════════════════════════════════════════
 
 # 存档模板
 default_save = {
@@ -1483,14 +1586,9 @@ default_save = {
 data = default_save.copy()
 
 
-# ─────────────────────────────────────────────────────────────────────────
-# 性能缓存层（所有子系统共享）
-#   1. get_font(size)          : 全局字体对象缓存（减少 SysFont/Font 反复创建）
-#   2. render_text(...)        : 字体渲染 surface 缓存（每帧避免同文本重新光栅化）
-#   3. draw_gradient_bg(...)   : 渐变背景缓存（按宽/色号缓存，分辨率不变时复用）
-#   4. load_sound              : 同文件不重复从磁盘解码 WAV
-#   5. cull_dead(lst, key)     : 粒子批量死亡清理 O(n)（代替 for x in lst: lst.remove(x) 的 O(n^2)）
-# ─────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# Performance cache -- fonts, renders, gradients, sounds
+# ═══════════════════════════════════════════════════════════════════════════════
 
 _FONT_CACHE = {}          # (font_key_or_path, size) -> Font
 _FONT_NAME_CACHED = None  # get_system_font_name 结果缓存（一次性调用）
@@ -1498,11 +1596,14 @@ _RENDER_CACHE = {}        # (text, size, color_tuple, bg_or_None) -> Surface
 _GRADIENT_CACHE = {}      # (w, h, c1, c2) -> Surface
 _SOUND_CACHE = {}         # filename -> Sound / None
 
-_CACHE_MAX = 4000  # 防止内存持续上涨的简单 LRU（通过 dict 有序）
+_CACHE_MAX = CACHE_MAX_RENDERS  # LRU limit for render cache
 
 
-def _evict_if_full(d, max_):
-    """简易 dict-LRU：超限时删除最早（最旧）的 20% 键"""
+def _evict_if_full(d: dict, max_: int) -> None:
+    """Evict the oldest 20 % of entries when the dict exceeds *max_*.
+
+    Uses insertion-order (Python 3.7+) to decide which keys are "oldest".
+    """
     if len(d) > max_:
         drop = max(1, max_ // 5)
         keys = list(d.keys())[:drop]
@@ -1513,10 +1614,12 @@ def _evict_if_full(d, max_):
                 logger.debug("[异常静默] cache_evict %s: %s", type(_e).__name__, _e)
 
 
-def get_font(size):
-    """
-    获取指定字号的字体对象（跨模块共享，缓存命中后 O(1)）。
-    优先使用打包字体路径，否则按系统字体名。
+def get_font(size: int) -> pygame.font.Font:
+    """Return a cached ``pygame.font.Font`` for *size* pixels.
+
+    The font source is resolved once (bundled ``.ttf``/``.otf`` files first,
+    then OS-specific Chinese-capable fonts, finally pygame's default).
+    Subsequent calls for the same *size* are O(1) dict lookups.
     """
     global _FONT_NAME_CACHED
     if _FONT_NAME_CACHED is None:
@@ -1537,20 +1640,26 @@ def get_font(size):
                      font_key, int(size), _e)
         font = _PYGAME_FONT_ORIGINAL(None, int(size))
     _FONT_CACHE[cache_key] = font
-    _evict_if_full(_FONT_CACHE, 500)
+    _evict_if_full(_FONT_CACHE, CACHE_MAX_FONTS)
     return font
 
 
-# ────────────────────────────────────────────────────────────────────────
-# 兜底补丁：很多模块直接写 pygame.font.Font(None, size) 或
-# pygame.font.SysFont(None, size)，而默认字体没有中文字形，中文会全部
-# 画成“方框”。这里把这类调用统一替换为可显示中文的字体。
+# ═══════════════════════════════════════════════════════════════════════════════
+# Font patching -- intercept pygame.font.Font / SysFont for Chinese support
+# ═══════════════════════════════════════════════════════════════════════════════
+
 _PYGAME_FONT_ORIGINAL = pygame.font.Font
 _PYGAME_SYSFONT_ORIGINAL = pygame.font.SysFont
 _zh_font_active = False
 
 
-def _zh_font(path=None, size=None, bold=False, italic=False):
+def _zh_font(path: str | None = None, size: int | None = None, bold: bool = False, italic: bool = False) -> pygame.font.Font:
+    """Drop-in replacement for ``pygame.font.Font`` with Chinese font fallback.
+
+    When called as ``Font(None, size)`` (the common pattern), delegates to
+    ``get_font(size)`` which returns a Chinese-capable font.  Otherwise falls
+    through to the original ``pygame.font.Font``.
+    """
     global _zh_font_active
     if path is None and size is not None and not _zh_font_active:
         _zh_font_active = True
@@ -1565,7 +1674,13 @@ def _zh_font(path=None, size=None, bold=False, italic=False):
     return _PYGAME_FONT_ORIGINAL(path, size)
 
 
-def _zh_sysfont(name=None, size=None, bold=False, italic=False, wrap=True):
+def _zh_sysfont(name: str | None = None, size: int | None = None, bold: bool = False, italic: bool = False, wrap: bool = True) -> pygame.font.Font:
+    """Drop-in replacement for ``pygame.font.SysFont`` with Chinese font fallback.
+
+    When *name* is ``None`` and *size* is given, uses ``get_font(size)``.
+    Otherwise tries the original ``SysFont`` and falls back to ``get_font``
+    if the result cannot render Chinese.
+    """
     global _zh_font_active
     if name is None and size is not None:
         return get_font(size)
@@ -1590,10 +1705,18 @@ pygame.font.Font = _zh_font
 pygame.font.SysFont = _zh_sysfont
 
 
-def render_text(text, size, color, bg_color=None, antialias=True):
-    """
-    按(文本, 字号, 颜色, 背景色)键缓存渲染结果。
-    适用于几乎静态的 UI 文本（如标题、按钮、状态文本）。
+def render_text(
+    text: object,
+    size: int,
+    color: tuple[int, int, int],
+    bg_color: tuple[int, int, int] | None = None,
+    antialias: bool = True,
+) -> pygame.Surface:
+    """Render *text* to a cached ``pygame.Surface``.
+
+    Keyed by ``(text, size, color, bg_color, antialias)`` so repeated calls
+    with identical parameters return the pre-rasterised surface in O(1).
+    Ideal for mostly-static UI elements (titles, labels, status text).
     """
     if text is None:
         text = ""
@@ -1617,17 +1740,28 @@ def render_text(text, size, color, bg_color=None, antialias=True):
     return surf
 
 
-def invalidate_render_cache_text(text):
-    """当某个文本内容变化时（如资源数量）可以主动删除对应 key。"""
+def invalidate_render_cache_text(text: object) -> None:
+    """Remove all cached surfaces whose text content matches *text*.
+
+    Call this when a dynamic value (resource count, HP bar, etc.) changes
+    so the next ``render_text`` call re-rasterises with the new string.
+    """
     to_drop = [k for k in _RENDER_CACHE.keys() if k[0] == str(text)]
     for k in to_drop:
         _RENDER_CACHE.pop(k, None)
 
 
-def draw_gradient_bg(surface, color1, color2, vertical=True):
-    """
-    在 surface 上绘制渐变背景（根据 (宽, 高, 两色) 键缓存 pre-blit surface）。
-    分辨率/配色不变时，直接 blit 一张预渲染 Surface，避免每帧 1000 次 draw.line。
+def draw_gradient_bg(
+    surface: pygame.Surface,
+    color1: tuple[int, int, int],
+    color2: tuple[int, int, int],
+    vertical: bool = True,
+) -> None:
+    """Blit a gradient from *color1* to *color2* onto *surface*.
+
+    The pre-rendered gradient is cached by ``(width, height, c1, c2, vertical)``
+    so that repeated blits on identically-sized surfaces avoid the per-line
+    ``draw.line`` loop entirely.
     """
     w = surface.get_width()
     h = surface.get_height()
@@ -1655,12 +1789,18 @@ def draw_gradient_bg(surface, color1, color2, vertical=True):
             else:
                 pygame.draw.line(bg, (r, g, b), (i, 0), (i, h))
         _GRADIENT_CACHE[key] = bg
-        _evict_if_full(_GRADIENT_CACHE, 16)  # 渐变种类极少，8~16 个顶破天
+        _evict_if_full(_GRADIENT_CACHE, CACHE_MAX_GRADIENTS)
     surface.blit(_GRADIENT_CACHE[key], (0, 0))
 
 
-def load_sound(file_name: str):
-    """加载音效（带 LRU 缓存）：无文件/静音则跳过。"""
+def load_sound(file_name: str) -> pygame.mixer.Sound | None:
+    """Load a sound effect from ``SOUND_DIR`` with LRU caching.
+
+    Returns the ``pygame.mixer.Sound`` object, or ``None`` when sound is
+    disabled globally, the file does not exist, or loading fails.
+    Non-existent filenames are cached as ``None`` to avoid repeated
+    ``os.path.exists`` calls.
+    """
     if not SETTINGS["sound"]["enable"]:
         return None
     if file_name in _SOUND_CACHE:
@@ -1676,12 +1816,15 @@ def load_sound(file_name: str):
     except Exception as _e:
         _SOUND_CACHE[file_name] = None
         return None
-    _evict_if_full(_SOUND_CACHE, 64)
+    _evict_if_full(_SOUND_CACHE, CACHE_MAX_SOUNDS)
     return sound
 
 
-def refresh_sound_volume():
-    """设置里音量变化后，重新给所有已缓存 Sound 对象 set_volume。"""
+def refresh_sound_volume() -> None:
+    """Re-apply the current volume setting to all cached ``Sound`` objects.
+
+    Call this after the user changes the volume slider in the settings menu.
+    """
     vol = SETTINGS["sound"]["volume"]
     for snd in _SOUND_CACHE.values():
         if snd is not None:
@@ -1691,12 +1834,18 @@ def refresh_sound_volume():
                 logger.debug("[异常静默] set_volume %s: %s", type(_e).__name__, _e)
 
 
-def cull_dead(particles, is_dead=lambda p: p.life <= 0):
-    """
-    把 list.remove 从 O(n^2) 降到 O(n) 一次过。
-        for p in ps: ... if dead: ps.remove(p)   →  O(n^2)
-        cull_dead(ps)                             →  O(n)
-    is_dead(p) 判断函数可按需传入（默认按 life 属性 <=0）。
+def cull_dead(
+    particles: list,
+    is_dead: callable = lambda p: p.life <= 0,
+) -> int:
+    """Remove dead particles from *particles* in O(n) instead of O(n^2).
+
+    The naive ``for p in ps: ps.remove(p)`` pattern is quadratic because
+    ``list.remove`` shifts elements on every call.  This builds a ``kept``
+    list in one pass, then splices it back.
+
+    *is_dead* is an optional predicate; default checks ``p.life <= 0``.
+    Returns the new length of *particles*.
     """
     kept = []
     for p in particles:
@@ -1712,13 +1861,20 @@ def cull_dead(particles, is_dead=lambda p: p.life <= 0):
 
 # ─────────────────────────────────────────────────────────────────────────
 
-def calculate_passive_income():
-    """计算并添加被动收入"""
+def calculate_passive_income() -> None:
+    """Credit offline passive resource income based on elapsed time.
+
+    Compares ``time.time()`` against ``data['last_login']`` and adds
+    ``(seconds × rate × resource_bonus)`` for each resource listed in
+    ``data['passive_income']``.  A minimum of ``PASSIVE_INCOME_THRESHOLD``
+    seconds must have elapsed.  Always updates ``last_login`` and calls
+    ``save()``.
+    """
     current_time = int(time.time())
     last_login = data.get('last_login', 0)
     if last_login > 0:
         time_diff = current_time - last_login
-        if time_diff > 60:  # 至少1分钟
+        if time_diff > PASSIVE_INCOME_THRESHOLD:
             # 计算被动收入
             for resource, rate in data.get('passive_income', {}).items():
                 income = int(time_diff * rate * data.get('resource_bonus', 1.0))
@@ -1729,8 +1885,15 @@ def calculate_passive_income():
     data['last_login'] = current_time
     save()
 
-def load():
-    """加载存档"""
+def load() -> None:
+    """Load the save file from ``SAVE_PATH`` into the global ``data`` dict.
+
+    If the file does not exist or is corrupt, ``data`` falls back to
+    ``default_save``.  After loading, every expected key is merged in from
+    ``default_save`` so that new features are forward-compatible with older
+    save files.  Finally ``calculate_passive_income()`` is called to credit
+    any offline earnings.
+    """
     global data
     if os.path.exists(SAVE_PATH):
         try:
@@ -1888,8 +2051,14 @@ def load():
             data = default_save.copy()
             calculate_passive_income()
 
-def save():
-    """保存存档（带重试和原子写入）"""
+def save() -> None:
+    """Persist the global ``data`` dict to ``SAVE_PATH`` as JSON.
+
+    Uses atomic write (write to ``.tmp`` then ``os.replace``) to prevent
+    corruption if the process is killed mid-write.  Retries up to 3 times
+    on ``PermissionError`` (common on Windows when the file is hidden).
+    The file is hidden again after a successful write.
+    """
     import time as _time
     max_retries = 3
     for attempt in range(max_retries):
@@ -1919,18 +2088,26 @@ def save():
             logger.error("[存档] 保存失败: %s", e, exc_info=True)
             return
 
-def auto_save():
-    """自动保存功能"""
-    # 每5分钟自动保存一次
+def auto_save() -> bool:
+    """Save the game if at least ``AUTO_SAVE_INTERVAL`` seconds have passed.
+
+    Returns ``True`` if a save was triggered, ``False`` otherwise.
+    Designed to be called every frame from the main game loop.
+    """
+    # 每 AUTO_SAVE_INTERVAL 秒自动保存一次
     current_time = int(time.time())
     if 'last_auto_save' not in data:
         data['last_auto_save'] = 0
     
-    if current_time - data['last_auto_save'] > 300:  # 5分钟
+    if current_time - data['last_auto_save'] > AUTO_SAVE_INTERVAL:
         save()
         data['last_auto_save'] = current_time
         return True
     return False
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Data init -- load save on import
+# ═══════════════════════════════════════════════════════════════════════════════
 
 # 初始化加载存档
 load()
