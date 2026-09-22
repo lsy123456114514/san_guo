@@ -1,10 +1,12 @@
+"""每日签到与连续签到奖励系统"""
+
 import os
 import pygame
 import json
 import random
 import math
 from datetime import datetime, timedelta
-from ASSET.game_data import data, save, get_system_font_name
+from ASSET.game_data import data, save, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 
 # 颜色主题
@@ -111,23 +113,13 @@ class Particle:
         self.size = max(0.5, self.size - 0.05)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
+        alpha = int(255 * (self.life / self.max_life))
         color = (*self.color[:3], alpha)
         pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
 
-def draw_gradient_background(surface, color1, color2):
-    """绘制渐变背景"""
-    width, height = surface.get_size()
-    for y in range(height):
-        ratio = y / height
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
-
 def draw_title(surface, text, y, screen_width):
     """绘制标题"""
-    font = pygame.font.Font(None, 60)
+    font = get_font(48)
     title_surf = font.render(text, True, COLORS["accent_gold"])
     title_rect = title_surf.get_rect(center=(screen_width // 2, y))
     surface.blit(title_surf, title_rect)
@@ -210,17 +202,11 @@ def check_in():
     
     # 发放奖励
     if "金元宝" in reward:
-        try:
-            amount = int(reward.split("×")[1].split()[0])
-        except (IndexError, ValueError):
-            amount = 50
+        amount = int(reward.split("×")[1].split()[0])
         data['resources']['金元宝'] = data['resources'].get('金元宝', 0) + amount
-
+    
     if "时间卡" in reward:
-        try:
-            amount = int(reward.split("+")[-1].split("×")[1])
-        except (IndexError, ValueError):
-            amount = 1
+        amount = int(reward.split("+")[-1].split("×")[1])
         data['resources']['时间卡'] = data['resources'].get('时间卡', 0) + amount
     
     # 记录奖励
@@ -266,13 +252,7 @@ def main():
 
         # 字体初始化（根据屏幕大小自适应）
         def init_font(size):
-            font_name = get_system_font_name()
-            # 根据屏幕大小调整字体
-            adjusted_size = int(size * scale)
-            try:
-                return pygame.font.SysFont(font_name, adjusted_size)
-            except Exception:
-                return pygame.font.Font(None, adjusted_size)
+            return get_font(size)
 
         font_title = init_font(36 if not 'ANDROID_DATA' in os.environ else 52)
         font_normal = init_font(24 if not 'ANDROID_DATA' in os.environ else 36)
@@ -336,7 +316,7 @@ def main():
             mx, my = pygame.mouse.get_pos()
             
             # 渐变背景
-            draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+            draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
             
             # 装饰粒子
             if random.random() < 0.1:
@@ -349,15 +329,11 @@ def main():
             for p in particles[:]:
                 p.update()
                 p.draw(screen)
-                if p.life <= 0:
-                    particles.remove(p)
 
             # 签到特效粒子
             for p in checkin_particles[:]:
                 p.update()
                 p.draw(screen)
-                if p.life <= 0:
-                    checkin_particles.remove(p)
 
             # 标题
             draw_title(screen, "每日签到", SCREEN_HEIGHT * 0.12, SCREEN_WIDTH)
@@ -443,7 +419,7 @@ def main():
 
         safe_exit("每日签到")
     except Exception as e:
-        print(f"异常：{str(e)}")
+        logger.info(f"异常：{str(e)}")
         safe_exit("每日签到", str(e))
 
 if __name__ == "__main__":

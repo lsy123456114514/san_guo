@@ -8,7 +8,7 @@ import sys
 import pygame
 import math
 import random
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET.game_main_menu import Button, COLORS, init_fonts
 
 # 全局变量
@@ -58,6 +58,7 @@ STORY_CHAPTERS = [
 ]
 
 class Particle:
+    """背景故事粒子 - 装饰用粒子的位置/速度/生命周期管理"""
     def __init__(self, x, y, color, speed, size, life):
         self.x = x
         self.y = y
@@ -75,7 +76,7 @@ class Particle:
         self.size = max(1, self.size - 0.1)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
+        alpha = int(255 * (self.life / self.max_life))
         color = self.color[:3]
         pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
 
@@ -104,8 +105,6 @@ def main():
     global screen, clock, FONT_MAIN, FONT_SMALL, FONT_BIG
     
     # 确保pygame已导入
-    import pygame
-    
     # 初始化pygame
     if not pygame.get_init():
         pygame.init()
@@ -164,8 +163,6 @@ def main():
             p.update()
             p.x += math.sin(p.y * 0.02) * 0.5
             p.draw(screen)
-            if p.life <= 0:
-                particles.remove(p)
         
         # 绘制故事内容
         chapter = STORY_CHAPTERS[current_chapter]

@@ -9,6 +9,7 @@ position, with a 20% chance of a weighted random override).
 """
 
 import math
+import os
 import random
 import logging
 from typing import Optional, Dict, List, Tuple, Any
@@ -381,12 +382,30 @@ class LuckyWheel:
 # ---------------------------------------------------------------------------
 
 
-def main(screen: pygame.Surface) -> None:
+def main(screen: Optional[pygame.Surface] = None) -> None:
     """Convenience entry point: create a LuckyWheel and run it.
 
     Args:
-        screen: The pygame display surface to use.
+        screen: The pygame display surface to use.  When ``None`` (the
+            case when launched from the main menu's module router, which
+            calls ``main()`` with no arguments) a display surface is
+            created from the saved graphics settings.
     """
+    if screen is None:
+        if not pygame.get_init():
+            pygame.init()
+        if 'ANDROID_DATA' in os.environ:
+            info = pygame.display.Info()
+            size = (info.current_w, info.current_h)
+        else:
+            resolution = data.get('settings', {}).get('graphics', {}).get('resolution', '900x700')
+            try:
+                size = tuple(map(int, str(resolution).split('x')))
+            except (ValueError, TypeError):
+                size = (900, 700)
+        screen = pygame.display.set_mode(size)
+        pygame.display.set_caption("幸运转盘")
+
     wheel = LuckyWheel(screen)
     wheel.main()
     return None

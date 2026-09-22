@@ -1577,7 +1577,14 @@ default_save = {
         "camera_pitch": -20,
         "camera_mode": "first",
         "inventory": [],
-        "world_seed": 0
+        "world_seed": 0,
+        "game_mode": "survival",
+        "health": 20,
+        "hunger": 20,
+        "oxygen": 10,
+        "experience": 0,
+        "level": 0,
+        "armor": 0
     },
     "lucky_tickets": 3,
     "lucky_spins": 0
@@ -1597,6 +1604,21 @@ _GRADIENT_CACHE = {}      # (w, h, c1, c2) -> Surface
 _SOUND_CACHE = {}         # filename -> Sound / None
 
 _CACHE_MAX = CACHE_MAX_RENDERS  # LRU limit for render cache
+
+
+def clear_caches() -> None:
+    """Drop all cached pygame Font / Surface / Sound objects.
+
+    ``pygame.quit()`` invalidates every object created before it.  Modules
+    call :func:`ASSET.safe_exit`, which quits and re-initialises pygame, so
+    the caches must be emptied afterwards or the next module will reuse
+    stale (invalid) fonts and surfaces.  ``_FONT_NAME_CACHED`` is kept
+    because it only stores a font *path*/name string, not a pygame object.
+    """
+    _FONT_CACHE.clear()
+    _RENDER_CACHE.clear()
+    _GRADIENT_CACHE.clear()
+    _SOUND_CACHE.clear()
 
 
 def _evict_if_full(d: dict, max_: int) -> None:

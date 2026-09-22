@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""FAQ 常见问题面板 - 顶部资源条渲染与点击回答逻辑"""
+
 import pygame
 import os
-from ASSET.game_data import data, save, get_system_font_name
-from ASSET.game_main_menu import Button, draw_gradient_background, COLORS
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_main_menu import Button, COLORS
 
 # 字体变量
 FONT_MAIN = None
@@ -116,7 +118,7 @@ def draw_resource_panel(surface, x, y, width, height):
         ("食物", data['resources']['食物'], (200, 150, 100))
     ]
     
-    spacing = width // len(resources)
+    spacing = width // max(1, len(resources))
     for i, (icon, value, color) in enumerate(resources):
         icon_x = x + i * spacing + spacing // 2
         icon_y = y + height // 2
@@ -165,7 +167,7 @@ def main():
             FONT_MAIN = pygame.font.Font(None, 40)
             FONT_SMALL = pygame.font.Font(None, 28)
             FONT_BIG = pygame.font.Font(None, 60)
-    except Exception:
+    except Exception as _e:
         FONT_MAIN = pygame.font.Font(None, 40)
         FONT_SMALL = pygame.font.Font(None, 28)
         FONT_BIG = pygame.font.Font(None, 60)
@@ -174,11 +176,10 @@ def main():
     running = True
     selected_faq = None
     scroll_y = 0
-    dragging = False
     
     while running:
         # 渐变背景
-        draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+        draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
         
         # 标题
         draw_title(screen, "疑难解答", screen_height * 0.1, screen_width)
@@ -293,19 +294,16 @@ def main():
                     scroll_bar_height = (faq_list_area.height / (len(FAQs) * 60 + (220 if selected_faq else 0))) * faq_list_area.height
                     scroll_bar = pygame.Rect(faq_list_area.right - 15, faq_list_area.y, 10, faq_list_area.height)
                     if scroll_bar.collidepoint(mouse_pos):
-                        # 开始拖动滚动条
+                        # 拖动滚动条
                         dragging = True
-
-            # 鼠标释放：停止拖动
-            if event.type == pygame.MOUSEBUTTONUP:
-                dragging = False
-
-            # 鼠标拖动：更新滚动位置
-            if event.type == pygame.MOUSEMOTION and dragging:
-                drag_y = event.pos[1]
-                if faq_list_area.height > 0:
-                    scroll_ratio = (drag_y - faq_list_area.y) / faq_list_area.height
-                    scroll_y = max(0, min(max_scroll, scroll_ratio * max_scroll))
+                        while dragging:
+                            for drag_event in pygame.event.get():
+                                if drag_event.type == pygame.MOUSEBUTTONUP:
+                                    dragging = False
+                                elif drag_event.type == pygame.MOUSEMOTION:
+                                    drag_y = drag_event.pos[1]
+                                    scroll_ratio = (drag_y - faq_list_area.y) / faq_list_area.height
+                                    scroll_y = max(0, min(max_scroll, scroll_ratio * max_scroll))
                         
             # 鼠标滚轮滚动
             if event.type == pygame.MOUSEWHEEL:

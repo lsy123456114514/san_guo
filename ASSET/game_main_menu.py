@@ -1203,6 +1203,7 @@ def mini_games_menu():
         ("2048", "game_2048.py"),
         ("俄罗斯方块", "tetris.py"),
         ("五子棋", "gobang.py"),
+        ("三国知识问答", "quiz_system.py"),
         ("返回主菜单", "back")
     ]
 
@@ -1317,12 +1318,142 @@ MODULE_ROUTES = {
     "37": "limited_time_events.py",     # 限时活动
     "38": "pet_arena.py",               # 宠物竞技场
     "39": "lucky_wheel.py",             # 幸运转盘
+    "40": "escort_system.py",           # 镖局押运（新增玩法）
 }
 
 # 需要特殊处理逻辑的菜单项（不走 run_module 动态导入）
 SPECIAL_HANDLERS = {
     "10": mini_games_menu,   # 小游戏中心
 }
+
+def custom_resolution_dialog(settings_lines, current_w, current_h):
+    """打开一个仿设置界面的 tkinter 窗口，让玩家拖动窗口边缘调整分辨率。
+
+    该窗口在视觉上尽量贴近 pygame 的设置界面（深色背景、金色标题、
+    相同的设置项），玩家拖动窗口边缘改变尺寸后点击「应用」或「确定」，
+    函数会读取窗口的客户区大小并返回，交由调用方应用到真正的 pygame 屏幕。
+
+    Args:
+        settings_lines: 当前设置项的展示文本列表（用于仿制界面）。
+        current_w: 当前屏幕宽度，用作窗口初始尺寸。
+        current_h: 当前屏幕高度，用作窗口初始尺寸。
+
+    Returns:
+        ``(width, height)`` 元组；若玩家取消或 tkinter 不可用则返回 ``None``。
+    """
+    try:
+        import tkinter as tk
+    except Exception as _e:
+        logger.info("[设置] tkinter 不可用，无法使用自定义分辨率：%s", _e)
+        return None
+
+    # 隐藏 pygame 窗口，营造“界面被替换”的视觉效果
+    try:
+        pygame.display.iconify()
+    except Exception as _e:
+        logger.debug("[设置] iconify 失败: %s", _e)
+
+    def _restore_window():
+        """还原被最小化的 pygame 窗口（Windows 下用 ShowWindow(SW_RESTORE)）。"""
+        try:
+            if sys.platform == "win32":
+                import ctypes
+                hwnd = pygame.display.get_wm_info().get("window")
+                if hwnd:
+                    ctypes.windll.user32.ShowWindow(hwnd, 9)       # SW_RESTORE
+                    ctypes.windll.user32.SetForegroundWindow(hwnd)
+        except Exception as _e:
+            logger.debug("[设置] 还原 pygame 窗口失败: %s", _e)
+
+    result = {"size": None}
+
+    try:
+        root = tk.Tk()
+    except Exception as _e:
+        logger.info("[设置] 创建 tkinter 窗口失败：%s", _e)
+        _restore_window()
+        return None
+
+    root.title("游戏设置")
+    root.configure(bg="#141428")
+    root.minsize(480, 360)
+    root.resizable(True, True)
+    try:
+        root.geometry(f"{current_w}x{current_h}")
+        root.update_idletasks()
+        screen_w = root.winfo_screenwidth()
+        screen_h = root.winfo_screenheight()
+        pos_x = max(0, (screen_w - current_w) // 2)
+        pos_y = max(0, (screen_h - current_h) // 2)
+        root.geometry(f"{current_w}x{current_h}+{pos_x}+{pos_y}")
+    except Exception as _e:
+        logger.debug("[设置] 设置 tkinter 几何尺寸失败: %s", _e)
+
+    font_title = ("Microsoft YaHei", 20, "bold")
+    font_text = ("Microsoft YaHei", 12)
+    font_btn = ("Microsoft YaHei", 12, "bold")
+
+    tk.Label(root, text="游戏设置", fg="#FFD700", bg="#141428",
+             font=font_title).pack(pady=(22, 6))
+    tk.Label(root, text="拖动窗口边缘即可调整分辨率", fg="#B0B0C8", bg="#141428",
+             font=font_text).pack(pady=(0, 10))
+
+    size_var = tk.StringVar()
+
+    def refresh_size(_event=None):
+        try:
+            size_var.set(f"当前分辨率：{root.winfo_width()} x {root.winfo_height()}")
+        except Exception:
+            pass
+
+    tk.Label(root, textvariable=size_var, fg="#FFFFFF", bg="#141428",
+             font=font_text).pack(pady=(0, 12))
+    root.bind("<Configure>", refresh_size)
+
+    # 仿制设置项
+    for line in settings_lines:
+        tk.Label(root, text=line, fg="#FFFFFF", bg="#20203A", font=font_text,
+                 width=30, pady=8).pack(pady=3)
+
+    btn_frame = tk.Frame(root, bg="#141428")
+    btn_frame.pack(side="bottom", pady=18)
+
+    def confirm():
+        try:
+            result["size"] = (root.winfo_width(), root.winfo_height())
+        except Exception:
+            result["size"] = None
+        root.destroy()
+
+    def cancel():
+        result["size"] = None
+        root.destroy()
+
+    tk.Button(btn_frame, text="应用", command=confirm, bg="#4A8CC7", fg="white",
+              font=font_btn, width=8, relief="flat").pack(side="left", padx=8)
+    tk.Button(btn_frame, text="确定", command=confirm, bg="#50B450", fg="white",
+              font=font_btn, width=8, relief="flat").pack(side="left", padx=8)
+    tk.Button(btn_frame, text="取消", command=cancel, bg="#C85050", fg="white",
+              font=font_btn, width=8, relief="flat").pack(side="left", padx=8)
+
+    try:
+        root.update()
+    except Exception:
+        pass
+    refresh_size()
+    try:
+        root.attributes("-topmost", True)
+    except Exception:
+        pass
+
+    try:
+        root.mainloop()
+    except Exception as _e:
+        logger.info("[设置] tkinter 主循环异常：%s", _e)
+
+    _restore_window()
+    return result["size"]
+
 
 def setting_menu():
     """游戏设置菜单 — 分辨率、全屏、地图容量、音效等选项的循环切换与即时生效。"""
@@ -1372,8 +1503,7 @@ def setting_menu():
             f"分辨率：{data['settings']['graphics']['resolution']}",
             f"全屏模式：{'开' if data['settings']['graphics']['fullscreen'] else '关'}",
             f"地图最大元素：{data['settings']['map']['max_locations']}",
-            f"音效：{'开' if data['settings']['sound']['enable'] else '关'}",
-            "返回主菜单"
+            f"音效：{'开' if data['settings']['sound']['enable'] else '关'}"
         ]
 
     running = True
@@ -1382,15 +1512,27 @@ def setting_menu():
         screen_height = screen.get_height()
 
         button_width = min(400, screen_width * 0.5)
-        button_height = min(60, screen_height * 0.08)
-        button_spacing = min(25, screen_height * 0.035)
-        start_y = screen_height * 0.3
+        button_height = min(56, screen_height * 0.075)
+        button_spacing = min(18, screen_height * 0.022)
+
+        setting_items = get_settings_text() + ["应用", "确定", "返回主菜单"]
+        total_height = len(setting_items) * button_height + (len(setting_items) - 1) * button_spacing
+        start_y = max(screen_height * 0.18, (screen_height - total_height) / 2)
 
         setting_buttons = []
-        for i, text in enumerate(get_settings_text()):
+        for i, text in enumerate(setting_items):
             x = (screen_width - button_width) // 2
             y = start_y + i * (button_height + button_spacing)
-            btn = Button(text, x, y, button_width, button_height, FONT_SMALL)
+            if text == "应用":
+                normal_color = COLORS["accent_blue"]
+            elif text == "确定":
+                normal_color = COLORS["accent_green"]
+            elif text == "返回主菜单":
+                normal_color = (100, 100, 150)
+            else:
+                normal_color = COLORS["accent_blue"]
+            btn = Button(text, x, y, button_width, button_height, FONT_SMALL,
+                         normal_color=normal_color)
             setting_buttons.append(btn)
 
         draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
@@ -1425,16 +1567,38 @@ def setting_menu():
                 for i, btn in enumerate(setting_buttons):
                     if btn.rect.collidepoint(event.pos):
                         if i == 0:
-                            resolutions = ["600x500", "800x600", "1024x768", "1280x720", "1366x768", "1920x1080"]
+                            resolutions = ["600x500", "800x600", "1024x768", "1280x720",
+                                           "1366x768", "1920x1080", "自定义"]
                             current = data['settings']['graphics']['resolution']
                             try:
                                 idx = resolutions.index(current)
                                 next_idx = (idx + 1) % len(resolutions)
                             except ValueError:
                                 next_idx = 0
-                            data['settings']['graphics']['resolution'] = resolutions[next_idx]
-                            save()
-                            apply_display()
+                            chosen = resolutions[next_idx]
+                            if chosen == "自定义":
+                                size = custom_resolution_dialog(
+                                    get_settings_text(),
+                                    screen.get_width(), screen.get_height()
+                                )
+                                if size:
+                                    cw, ch = size
+                                    try:
+                                        desktop_w, desktop_h = pygame.display.get_desktop_sizes()[0]
+                                    except Exception:
+                                        desktop_w, desktop_h = 1920, 1080
+                                    cw = max(320, min(cw, desktop_w))
+                                    ch = max(240, min(ch, desktop_h))
+                                    data['settings']['graphics']['resolution'] = f"{cw}x{ch}"
+                                    save()
+                                    apply_display()
+                                    show_message(f"已应用自定义分辨率 {cw}x{ch}")
+                                else:
+                                    show_message("已取消自定义分辨率")
+                            else:
+                                data['settings']['graphics']['resolution'] = chosen
+                                save()
+                                apply_display()
                         elif i == 1:
                             data['settings']['graphics']['fullscreen'] = not data['settings']['graphics']['fullscreen']
                             save()
@@ -1449,6 +1613,14 @@ def setting_menu():
                             data['settings']['sound']['enable'] = not data['settings']['sound']['enable']
                             save()
                         elif i == 4:
+                            apply_display()
+                            save()
+                            show_message("设置已应用")
+                        elif i == 5:
+                            apply_display()
+                            save()
+                            running = False
+                        elif i == 6:
                             running = False
 
         clock.tick(MENU_FPS)
@@ -1576,6 +1748,7 @@ def main():
         ("时装系统", "30"),
         ("任务系统", "20"),
         ("钓鱼系统", "23"),
+        ("镖局押运", "40"),
         ("炼金系统", "24"),
         ("游戏内AI", "25"),
         ("疑难解答", "26"),

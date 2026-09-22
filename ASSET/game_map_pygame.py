@@ -691,6 +691,37 @@ def main():
                                 scaled_radius, font_small, is_selected, is_hover, 
                                 is_capturing, current_progress)
 
+            # ── 3D世界标记（从mc_world读取玩家位置，显示在2D地图上）──
+            mc_world = data.get("mc_world", {})
+            mc_blocks = mc_world.get("placed_blocks", [])
+            mc_pos = mc_world.get("player_pos", [0, 0, 0])
+            if mc_blocks or (mc_pos != [0, 0, 0] and mc_pos != [0, 0, 0]):
+                # 3D玩家位置映射到2D地图（x, z → 2D坐标）
+                mc_2d_x = (mc_pos[0] * 10 + 5000 + offset_x) * zoom_level
+                mc_2d_y = (mc_pos[2] * 10 + 5000 + offset_y) * zoom_level
+                if -30 <= mc_2d_x <= SCREEN_WIDTH + 30 and -30 <= mc_2d_y <= SCREEN_HEIGHT + 30:
+                    # 绘制3D玩家标记（蓝色菱形）
+                    marker_size = 8
+                    pygame.draw.polygon(screen, (50, 150, 255), [
+                        (mc_2d_x, mc_2d_y - marker_size),
+                        (mc_2d_x + marker_size, mc_2d_y),
+                        (mc_2d_x, mc_2d_y + marker_size),
+                        (mc_2d_x - marker_size, mc_2d_y),
+                    ])
+                    pygame.draw.polygon(screen, (200, 230, 255), [
+                        (mc_2d_x, mc_2d_y - marker_size),
+                        (mc_2d_x + marker_size, mc_2d_y),
+                        (mc_2d_x, mc_2d_y + marker_size),
+                        (mc_2d_x - marker_size, mc_2d_y),
+                    ], 2)
+                    # 标注文字
+                    mc_label = font_small.render(f"3D({int(mc_pos[0])},{int(mc_pos[2])})", True, (100, 200, 255))
+                    screen.blit(mc_label, (mc_2d_x + 12, mc_2d_y - 8))
+                    # 方块数信息
+                    if mc_blocks:
+                        mc_info = font_small.render(f"[{len(mc_blocks)}方块]", True, (180, 200, 220))
+                        screen.blit(mc_info, (mc_2d_x + 12, mc_2d_y + 8))
+
             # 绘制选中弹窗
             occupy_btn = None
             time_card_btn = None

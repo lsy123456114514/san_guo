@@ -7,11 +7,11 @@
 """
 
 import socket
-import sys
 import threading
 import json
 import time
 from typing import Dict, List, Any, Set
+from ASSET.game_data import draw_gradient_bg, cull_dead, get_font, logger
 
 
 class ChatServer:
@@ -214,8 +214,8 @@ class ChatServer:
         if self.sock:
             try:
                 self.sock.close()
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
         print("\n🛑 服务器已停止")
 
 

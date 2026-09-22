@@ -1,17 +1,19 @@
+"""成就系统 - 成就解锁、进度追踪与奖励领取"""
+
+import os
 import time
-from ASSET.game_data import data, save
+import pygame
+from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font
 
 class AchievementSystem:
     """成就系统 - 给予玩家成就感和目标感"""
     
     def __init__(self):
-        # 确保数据存在
+        # 确保数据存在（兼容旧存档可能缺少子键的情况）
         if "achievements" not in data:
-            data["achievements"] = {
-                "unlocked": [],
-                "progress": {},
-                "claimed_rewards": []
-            }
+            data["achievements"] = {}
+        for _key, _default in (("unlocked", []), ("progress", {}), ("claimed_rewards", [])):
+            data["achievements"].setdefault(_key, _default)
         
         self.achievements = self._load_achievements()
     
@@ -376,3 +378,156 @@ class AchievementSystem:
     def get_achievement_by_id(self, achievement_id):
         """根据ID获取成就"""
         return next((a for a in self.achievements if a["id"] == achievement_id), None)
+
+
+_RARITY_COLORS = {
+    "common": (160, 160, 170),
+    "rare": (80, 150, 240),
+    "legendary": (255, 190, 60),
+}
+
+
+def update_achievement_progress(event=None):
+    """任意玩法事件后调用：重新检测并解锁已达成的成就。
+
+    传入 event 仅为兼容调用方，当前成就判定完全基于存档统计值，
+    因此无需区分具体事件类型，统一重新检测即可。
+    返回本次新解锁的成就列表。
+    """
+    try:
+        system = AchievementSystem()
+        return system.check_achievements()
+    except Exception as e:
+        logger.debug("[成就] 更新进度失败: %s", e)
+        return []
+
+
+def main():
+    """成就系统界面：展示成就列表、进度与奖励领取。"""
+    try:
+        if not pygame.get_init():
+            pygame.init()
+
+        if 'ANDROID_DATA' in os.environ:
+            info = pygame.display.Info()
+            screen_width, screen_height = info.current_w, info.current_h
+        else:
+            try:
+                screen_width, screen_height = map(
+                    int, data['settings']['graphics']['resolution'].split('x'))
+            except (ValueError, KeyError, AttributeError):
+                screen_width, screen_height = 900, 700
+
+        screen = pygame.display.set_mode((screen_width, screen_height))
+        pygame.display.set_caption("成就")
+        clock = pygame.time.Clock()
+
+        font_title = get_font(34)
+        font_main = get_font(22)
+        font_small = get_font(16)
+
+        system = AchievementSystem()
+        system.check_achievements()
+
+        scroll = 0
+        row_height = 96
+        top = 110
+        visible_height = max(100, screen_height - top - 80)
+        max_scroll = max(0, len(system.achievements) * row_height - visible_height)
+
+        running = True
+        message = ""
+        message_time = 0
+
+        while running:
+            mx, my = pygame.mouse.get_pos()
+            now = time.time()
+            draw_gradient_bg(screen, (12, 16, 30), (26, 34, 56))
+
+            title = font_title.render("🏆 成就", True, (255, 210, 0))
+            screen.blit(title, ((screen_width - title.get_width()) // 2, 30))
+
+            achievements = system.get_all_achievements()
+
+            prev_clip = screen.get_clip()
+            screen.set_clip(pygame.Rect(0, top, screen_width, visible_height))
+
+            for i, ach in enumerate(achievements):
+                y = top + i * row_height - scroll
+                if y + row_height < top or y > top + visible_height:
+                    continue
+                rect = pygame.Rect(40, y, screen_width - 80, row_height - 10)
+                pygame.draw.rect(screen, (30, 36, 58), rect, border_radius=10)
+                border = _RARITY_COLORS.get(ach["rarity"], (120, 120, 130))
+                pygame.draw.rect(screen, border, rect, 2, border_radius=10)
+
+                icon = font_main.render(ach["icon"], True, (255, 255, 255))
+                screen.blit(icon, (rect.x + 16, rect.y + 14))
+
+                name_color = (255, 255, 255) if ach["unlocked"] else (170, 170, 185)
+                name = font_main.render(ach["name"], True, name_color)
+                screen.blit(name, (rect.x + 70, rect.y + 12))
+                desc = font_small.render(ach["description"], True, (170, 175, 195))
+                screen.blit(desc, (rect.x + 70, rect.y + 42))
+
+                bar = pygame.Rect(rect.x + 70, rect.y + 66, rect.width - 250, 10)
+                pygame.draw.rect(screen, (18, 22, 38), bar, border_radius=5)
+                fill = int(bar.width * ach["progress"] / 100)
+                if fill > 0:
+                    pygame.draw.rect(screen, border, (bar.x, bar.y, fill, bar.height), border_radius=5)
+
+                status_rect = pygame.Rect(rect.right - 160, rect.y + 26, 140, 40)
+                if ach["claimed"]:
+                    txt = font_small.render("已领取", True, (140, 200, 140))
+                    screen.blit(txt, txt.get_rect(center=status_rect.center))
+                elif ach["unlocked"]:
+                    hover = status_rect.collidepoint(mx, my)
+                    pygame.draw.rect(screen, (100, 210, 110) if hover else (80, 180, 90),
+                                     status_rect, border_radius=8)
+                    txt = font_small.render("领取奖励", True, (10, 20, 10))
+                    screen.blit(txt, txt.get_rect(center=status_rect.center))
+                    ach["_btn"] = status_rect
+                else:
+                    txt = font_small.render(f'{ach["current"]}/{ach["goal"]}', True, (150, 155, 175))
+                    screen.blit(txt, txt.get_rect(center=status_rect.center))
+
+            screen.set_clip(prev_clip)
+
+            back_rect = pygame.Rect((screen_width - 160) // 2, screen_height - 60, 160, 42)
+            hover = back_rect.collidepoint(mx, my)
+            pygame.draw.rect(screen, (80, 120, 200) if hover else (60, 90, 160), back_rect, border_radius=8)
+            back = font_small.render("返回", True, (255, 255, 255))
+            screen.blit(back, back.get_rect(center=back_rect.center))
+
+            if message and now - message_time < 2.0:
+                msg = font_main.render(message, True, (255, 220, 120))
+                screen.blit(msg, ((screen_width - msg.get_width()) // 2, screen_height - 100))
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    running = False
+                elif event.type == pygame.MOUSEWHEEL:
+                    scroll = max(0, min(max_scroll, scroll - event.y * 40))
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if back_rect.collidepoint(mx, my):
+                        running = False
+                    else:
+                        for ach in achievements:
+                            btn = ach.get("_btn")
+                            if btn and btn.collidepoint(mx, my):
+                                ok, reward = system.claim_reward(ach["id"])
+                                message = f'领取成功：{reward}' if ok else reward
+                                message_time = now
+                                break
+
+            pygame.display.flip()
+            clock.tick(30)
+    except Exception as e:
+        logger.error("[成就] 界面异常: %s", e)
+        logger.error("%s", __import__("traceback").format_exc())
+
+
+if __name__ == "__main__":
+    main()

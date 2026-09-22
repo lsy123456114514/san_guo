@@ -105,6 +105,19 @@ def safe_exit(
                 _e,
             )
 
+    # --- drop caches holding objects invalidated by pygame.quit() ---------
+    # Cached Font/Surface objects cannot be reused after pygame is torn
+    # down, otherwise the next module fails with "Invalid font".
+    try:
+        from ASSET import game_data as _game_data
+        _game_data.clear_caches()
+    except Exception as _e:
+        logger.debug(
+            "[异常静默] clear_caches: %s: %s",
+            type(_e).__name__,
+            _e,
+        )
+
     # --- Android-specific exit --------------------------------------------
     if _ANDROID_ENV_KEY in os.environ:
         try:

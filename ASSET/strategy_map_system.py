@@ -1,9 +1,11 @@
+"""策略地图系统 - 领土管理与资源产出"""
+
 import pygame
 import math
 import random
 import json
 import time
-from ASSET.game_data import data, save, get_system_font_name
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 
 class TerritoryManager:
@@ -293,7 +295,10 @@ class SeasonSystem:
         """获取赛季进度（0-100）"""
         elapsed = time.time() - data["season"]["season_start_time"]
         total = data["season"]["season_duration"]
-        return min(100, int((elapsed / total) * 100)) if total > 0 else 0
+        if total <= 0:
+            logger.warning("[阵法] 赛季 duration=%s 异常，进度置 0", total)
+            return 0
+        return min(100, int((elapsed / total) * 100))
     
     def get_time_remaining(self):
         """获取剩余时间（秒）"""

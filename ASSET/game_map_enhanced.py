@@ -1,10 +1,12 @@
+"""增强版 2D 世界地图 - 多地形、NPC、移动"""
+
 import pygame
 import math
 import random
 import json
 import os
 import time
-from ASSET.game_data import data, save, get_system_font_name, load_sound
+from ASSET.game_data import data, save, get_system_font_name, load_sound, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 
 # 简单的Perlin噪声实现
@@ -116,7 +118,7 @@ class Particle:
     def draw(self, surface):
         if self.life <= 0:
             return
-        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
+        alpha = int(255 * (self.life / self.max_life))
         color = self.color[:3] if len(self.color) > 3 else self.color
         pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
 
@@ -834,7 +836,6 @@ def show_building_menu(surface, x, y, building_id, font_main, font_small, clock)
                         apply_building_effects()
                         
                         # 保存数据
-                        from ASSET.game_data import save
                         save()
                         
                         waiting = False
@@ -904,7 +905,6 @@ def show_hospital_menu(surface, font_main, font_small, clock):
                         data["player_power_max"] = 1000
                     
                     # 保存数据
-                    from ASSET.game_data import save
                     save()
                     
                     waiting = False
@@ -979,11 +979,7 @@ def main():
         
         # 字体初始化
         def init_font(size):
-            font_name = get_system_font_name()
-            try:
-                return pygame.font.SysFont(font_name, size)
-            except Exception:
-                return pygame.font.Font(None, size)
+            return get_font(size)
 
         font_small = init_font(12)
         font_main = init_font(16)
@@ -1052,7 +1048,7 @@ def main():
                 username = data.get("username", "")
                 password = data.get("password", "")
                 if not username or not password:
-                    print("错误: 未登录，无法保存地图数据")
+                    logger.info("错误: 未登录，无法保存地图数据")
                     return False
                 
                 # 保存地图数据
@@ -1066,10 +1062,10 @@ def main():
                 with open(map_path, 'w', encoding='utf-8') as f:
                     json.dump(map_data, f, ensure_ascii=False, indent=2)
                 
-                print(f"地图数据已保存到: {map_path}")
+                logger.info(f"地图数据已保存到: {map_path}")
                 return True
             except Exception as e:
-                print(f"保存地图数据失败: {e}")
+                logger.info(f"保存地图数据失败: {e}")
                 return False
         
         # 加载地图数据
@@ -1079,12 +1075,12 @@ def main():
                 username = data.get("username", "")
                 password = data.get("password", "")
                 if not username or not password:
-                    print("错误: 未登录，无法加载地图数据")
+                    logger.info("错误: 未登录，无法加载地图数据")
                     return None
                 
                 map_path = get_map_data_path()
                 if not os.path.exists(map_path):
-                    print("地图数据文件不存在，将生成新地图")
+                    logger.info("地图数据文件不存在，将生成新地图")
                     return None
                 
                 with open(map_path, 'r', encoding='utf-8') as f:
@@ -1092,23 +1088,23 @@ def main():
                 
                 # 验证用户名
                 if map_data.get("username") != username:
-                    print("错误: 地图数据与当前用户不匹配")
+                    logger.info("错误: 地图数据与当前用户不匹配")
                     return None
                 
-                print(f"成功加载地图数据，包含 {len(map_data.get('locations', []))} 个地点")
+                logger.info(f"成功加载地图数据，包含 {len(map_data.get('locations', []))} 个地点")
                 return map_data.get("locations")
             except Exception as e:
-                print(f"加载地图数据失败: {e}")
+                logger.info(f"加载地图数据失败: {e}")
                 return None
         
         # 加载或生成地图数据
         locations = load_map_data()
         if locations is None:
-            print(f"生成新地图，大小: {MAP_SIZE[0]}x{MAP_SIZE[1]}, 地点数量: {MAX_LOCATIONS}")
+            logger.info(f"生成新地图，大小: {MAP_SIZE[0]}x{MAP_SIZE[1]}, 地点数量: {MAX_LOCATIONS}")
             locations = generate_locations(MAX_LOCATIONS)
             save_map_data(locations)
         else:
-            print(f"加载现有地图，包含 {len(locations)} 个地点")
+            logger.info(f"加载现有地图，包含 {len(locations)} 个地点")
         
         # 计算玩家综合战力
         def calculate_player_power():
@@ -1415,7 +1411,34 @@ def main():
                             loc["type"], loc["level"], zoom, font_small,
                             selected=(i == selected_location),
                             hover=(i == hover_location))
-            
+
+            # ── 3D世界标记（从mc_world读取玩家位置）──
+            mc_world = data.get("mc_world", {})
+            mc_blocks = mc_world.get("placed_blocks", [])
+            mc_pos = mc_world.get("player_pos", [0, 0, 0])
+            if mc_blocks or (mc_pos[0] != 0 or mc_pos[2] != 0):
+                mc_2d_x = (mc_pos[0] * zoom + MAP_SIZE[0] // 2) * zoom
+                mc_2d_y = (mc_pos[2] * zoom + MAP_SIZE[1] // 2) * zoom
+                if -30 <= mc_2d_x <= SCREEN_WIDTH + 30 and -30 <= mc_2d_y <= SCREEN_HEIGHT + 30:
+                    marker_size = 8
+                    pygame.draw.polygon(screen, (50, 150, 255), [
+                        (mc_2d_x, mc_2d_y - marker_size),
+                        (mc_2d_x + marker_size, mc_2d_y),
+                        (mc_2d_x, mc_2d_y + marker_size),
+                        (mc_2d_x - marker_size, mc_2d_y),
+                    ])
+                    pygame.draw.polygon(screen, (200, 230, 255), [
+                        (mc_2d_x, mc_2d_y - marker_size),
+                        (mc_2d_x + marker_size, mc_2d_y),
+                        (mc_2d_x, mc_2d_y + marker_size),
+                        (mc_2d_x - marker_size, mc_2d_y),
+                    ], 2)
+                    mc_label = font_small.render(f"3D({int(mc_pos[0])},{int(mc_pos[2])})", True, (100, 200, 255))
+                    screen.blit(mc_label, (mc_2d_x + 12, mc_2d_y - 8))
+                    if mc_blocks:
+                        mc_info = font_small.render(f"[{len(mc_blocks)}方块]", True, (180, 200, 220))
+                        screen.blit(mc_info, (mc_2d_x + 12, mc_2d_y + 8))
+
             # 绘制粒子
             for p in particles:
                 p.draw(screen)
@@ -1549,7 +1572,7 @@ def main():
             clock.tick(60)
 
     except Exception as e:
-        print(f"地图系统错误: {e}")
+        logger.info(f"地图系统错误: {e}")
         import traceback
         traceback.print_exc()
     finally:

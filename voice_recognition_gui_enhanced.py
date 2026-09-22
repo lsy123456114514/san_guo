@@ -474,7 +474,7 @@ class VoiceprintGUI:
                 self.root.after(0, self.on_register_complete, name)
             except Exception as e:
                 print(f"录入错误: {e}")
-                self.root.after(0, lambda: self.on_register_error(str(e)))
+                self.root.after(0, lambda msg=str(e): self.on_register_error(msg))
         
         threading.Thread(target=recording, daemon=True).start()
     
@@ -518,7 +518,7 @@ class VoiceprintGUI:
                 self.root.after(0, self.on_recognize_complete, best_match, best_score)
             except Exception as e:
                 print(f"识别错误: {e}")
-                self.root.after(0, lambda: self.on_recognize_error(str(e)))
+                self.root.after(0, lambda msg=str(e): self.on_recognize_error(msg))
         
         threading.Thread(target=recognizing, daemon=True).start()
     

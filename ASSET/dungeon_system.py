@@ -1,6 +1,8 @@
+"""副本系统 - 副本挑战、关卡推进与奖励结算"""
+
 import time
 import random
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, logger, draw_gradient_bg, cull_dead, get_font
 
 class DungeonSystem:
     """副本挑战系统"""

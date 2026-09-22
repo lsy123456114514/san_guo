@@ -189,4 +189,29 @@ def main():
     current_platform = platform.system()
     
     print(f"当前平台: {current_platform}")
-    print("
+    print("=" * 60)
+    print("三国霸业 多平台构建工具")
+    print("=" * 60)
+
+    create_build_scripts()
+
+    if current_platform == "Windows":
+        success = build_windows()
+    elif current_platform == "Darwin":
+        success = build_macos()
+    elif current_platform == "Linux":
+        success = build_linux()
+    else:
+        print(f"不支持的平台: {current_platform}")
+        success = False
+
+    if success:
+        print("\n构建完成！输出目录: dist/")
+    else:
+        print("\n构建失败，请检查上面的错误信息。")
+
+    return success
+
+
+if __name__ == "__main__":
+    sys.exit(0 if main() else 1)

@@ -8,7 +8,7 @@ import sys
 import pygame
 import random
 import math
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET.game_main_menu import Button, COLORS, init_fonts
 
 # 全局变量
@@ -83,7 +83,7 @@ class Particle:
         self.size = max(1, self.size - 0.1)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
+        alpha = int(255 * (self.life / self.max_life))
         color = self.color[:3]
         pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
 
@@ -158,10 +158,13 @@ def recruit_hero(recruit_type):
         "loyalty": 100
     }
     
-    # 添加到武将仓库
-    if "heroes" not in data:
-        data["heroes"] = []
-    data["heroes"].append(hero_data)
+    # 添加到武将仓库（data["heroes"] 为字典：key=武将名，value=武将数据，不能用 append）
+    if "heroes" not in data or not isinstance(data["heroes"], dict):
+        data["heroes"] = {}
+    # 重复招募同一武将时自动升星
+    hero_data["star"] = data["heroes"].get(hero["name"], {}).get("star", 0) + 1
+    hero_data["power"] = 100 * hero_data["star"]
+    data["heroes"][hero["name"]] = hero_data
     save()
     
     return hero_data, f"成功招募到{HERO_QUALITY[quality]['name']}武将：{hero['name']}"
@@ -199,8 +202,6 @@ def show_recruit_animation(hero_data):
         for p in particles[:]:
             p.update()
             p.draw(screen)
-            if p.life <= 0:
-                particles.remove(p)
         
         # 绘制武将信息
         if pygame.time.get_ticks() - start_time > 1000:
@@ -299,8 +300,6 @@ def main():
             p.update()
             p.x += math.sin(p.y * 0.02) * 0.5
             p.draw(screen)
-            if p.life <= 0:
-                particles.remove(p)
         
         # 标题
         title_surf = FONT_BIG.render("武将招募", True, (255, 215, 0))

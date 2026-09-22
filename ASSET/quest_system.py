@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
-"""
-任务系统 - 每日/每周/主线任务
-"""
+"""任务/主线/章节系统 - 每日/每周/主线任务调度与领取奖励"""
 import os
 import pygame
 import time
 from datetime import datetime, timedelta
-from ASSET.game_data import data, save, get_system_font_name
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET.task_chain_system import TaskChainSystem
 from ASSET import safe_exit
 
@@ -55,18 +53,6 @@ class Button:
 
 # ============ 绘制函数 ============
 
-def draw_gradient_background(surface, color1, color2):
-    """绘制渐变背景"""
-    width = surface.get_width()
-    height = surface.get_height()
-    for y in range(height):
-        ratio = y / height if height > 0 else 0
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
-
-
 # ============ 主入口 ============
 
 def main(screen=None):
@@ -98,7 +84,7 @@ def main(screen=None):
             FONT_MAIN = pygame.font.Font(font_name, 22) if font_name else pygame.font.SysFont(None, 26)
             FONT_SMALL = pygame.font.Font(font_name, 16) if font_name else pygame.font.SysFont(None, 20)
             FONT_BIG = pygame.font.Font(font_name, 32) if font_name else pygame.font.SysFont(None, 38)
-        except Exception:
+        except Exception as _e:
             FONT_MAIN = pygame.font.SysFont(None, 26)
             FONT_SMALL = pygame.font.SysFont(None, 20)
             FONT_BIG = pygame.font.SysFont(None, 38)
@@ -111,7 +97,7 @@ def main(screen=None):
             mx, my = pygame.mouse.get_pos()
 
             # 绘制背景
-            draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+            draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
 
             # 绘制标题
             title_surf = FONT_BIG.render("📋 任务系统", True, COLORS["accent_gold"])
@@ -152,7 +138,7 @@ def main(screen=None):
                     tasks = task_system.get_weekly_tasks() if hasattr(task_system, 'get_weekly_tasks') else []
                 else:
                     tasks = task_system.get_main_tasks() if hasattr(task_system, 'get_main_tasks') else []
-            except Exception:
+            except Exception as _e:
                 tasks = []
 
             if not isinstance(tasks, list):

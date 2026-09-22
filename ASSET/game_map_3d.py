@@ -101,6 +101,7 @@ class GameMap3D:
         self.gravity = -0.02      # 重力加速度
         self.jump_speed = 0.25    # 起跳初速度（约 1.5 格高）
         self.on_ground = True     # 是否站在地面上
+        self.player_health = 20   # 玩家生命值（MC风格 0-20）
         # 地形显示列表缓存（按玩家位置分块重建，避免每帧重复生成上百万个面）
         self._terrain_list = None
         self._terrain_origin = None
@@ -123,7 +124,103 @@ class GameMap3D:
         # 方块系统
         self.placed_blocks = []
         self.selected_block_type = 0
-        self.block_types = ["泥土", "石头", "木头", "草地", "沙子", "水", "玻璃", "砖块"]
+        self.block_types = [
+            # 自然方块 (0-14)
+            "泥土", "石头", "圆石", "草方块", "砂砾", "沙子", "粘土",
+            "灵魂沙", "菌丝", "灰化土", "浮冰", "冰", "雪块", "苔石", "苔石砖",
+            # 矿石 (15-23)
+            "煤炭矿石", "铁矿石", "金矿石", "钻石矿石", "红石矿石",
+            "绿宝石矿石", "青金石矿石", "下界石英矿石", "褐铁矿石",
+            # 木材系列 (24-33)
+            "橡木原木", "云杉原木", "白桦原木", "丛林原木", "金合欢原木", "深色橡木原木",
+            "橡木木板", "云杉木板", "白桦木板", "丛林木板",
+            # 石砖系列 (34-39)
+            "石砖", "裂石砖", "苔石砖", "錾制石砖", "磨制安山岩", "磨制闪长岩",
+            # 砂岩系列 (40-44)
+            "沙岩", "切制沙岩", "平滑沙岩", "红色沙岩", "切制红色沙岩",
+            # 花岗岩/闪长岩/安山岩 (45-50)
+            "花岗岩", "磨制花岗岩", "闪长岩", "磨制闪长岩", "安山岩", "磨制安山岩",
+            # 装饰方块 (51-70)
+            "玻璃", "玻璃板", "砖块", "萤石", "海晶石", "暗海晶石", "海晶石砖",
+            "红砖块", "书架", "南瓜", "雕刻南瓜", "西瓜",
+            "睡莲", "仙人掌", "甘蔗", "藤蔓", "橡树树叶", "云杉树叶", "白桦树叶", "丛林树叶",
+            # 羊毛 (71-86)
+            "白色羊毛", "橙色羊毛", "品红色羊毛", "淡蓝色羊毛", "黄色羊毛", "黄绿色羊毛",
+            "粉色羊毛", "灰色羊毛", "淡灰色羊毛", "青色羊毛", "紫色羊毛", "蓝色羊毛",
+            "棕色羊毛", "绿色羊毛", "红色羊毛", "黑色羊毛",
+            # 红石/机械 (87-99)
+            "活塞", "粘性活塞", "红石中继器", "红石比较器", "红石火把", "红石灯",
+            "发射器", "投掷器", "漏斗", "箱子", "陷阱箱", "木桶", "铁门",
+            # 下界/末地 (100-108)
+            "黑曜石", "哭泣的黑曜石", "下界砖块", "地狱岩", "下界疣块",
+            "末地石", "末地石砖", "末地烛", "龙蛋",
+            # 特殊 (109-114)
+            "铁砧", "砂轮", "织布机", "制图台", "烟熏炉", "高炉",
+        ]
+
+        # 射线检测状态（DDA）
+        self.targeted_block = None  # (x, y, z) 或 None
+
+        # 挖掘系统
+        self.mining = {"active": False, "progress": 0.0, "target": None}
+        self.block_hardness = {
+            # 自然
+            "泥土": 0.5, "草方块": 0.5, "砂砾": 0.6, "沙子": 0.5, "粘土": 0.6,
+            "灵魂沙": 0.5, "菌丝": 0.3, "灰化土": 0.5, "浮冰": 0.5, "冰": 0.5,
+            "雪块": 0.2, "石头": 1.5, "圆石": 2.0, "苔石": 2.0, "苔石砖": 2.0,
+            # 矿石
+            "煤炭矿石": 3.0, "铁矿石": 3.0, "金矿石": 3.0, "钻石矿石": 3.0,
+            "红石矿石": 3.0, "绿宝石矿石": 3.0, "青金石矿石": 3.0,
+            "下界石英矿石": 3.0, "褐铁矿石": 3.0,
+            # 木材
+            "橡木原木": 2.0, "云杉原木": 2.0, "白桦原木": 2.0,
+            "丛林原木": 2.0, "金合欢原木": 2.0, "深色橡木原木": 2.0,
+            "橡木木板": 2.0, "云杉木板": 2.0, "白桦木板": 2.0, "丛林木板": 2.0,
+            # 石砖
+            "石砖": 2.0, "裂石砖": 2.0, "錾制石砖": 2.0,
+            "磨制安山岩": 1.5, "磨制闪长岩": 1.5, "磨制花岗岩": 1.5,
+            "安山岩": 1.5, "闪长岩": 1.5, "花岗岩": 1.5,
+            # 砂岩
+            "沙岩": 0.8, "切制沙岩": 0.8, "平滑沙岩": 2.0,
+            "红色沙岩": 0.8, "切制红色沙岩": 0.8,
+            # 装饰
+            "玻璃": 0.3, "玻璃板": 0.3, "砖块": 2.0, "萤石": 0.3,
+            "海晶石": 1.5, "暗海晶石": 1.5, "海晶石砖": 1.5,
+            "红砖块": 2.0, "书架": 1.5, "南瓜": 1.0, "雕刻南瓜": 1.0, "西瓜": 1.0,
+            "睡莲": 0.1, "仙人掌": 0.2, "甘蔗": 0.0, "藤蔓": 0.2,
+            "橡树树叶": 0.2, "云杉树叶": 0.2, "白桦树叶": 0.2, "丛林树叶": 0.2,
+            # 羊毛
+            "白色羊毛": 0.8, "橙色羊毛": 0.8, "品红色羊毛": 0.8, "淡蓝色羊毛": 0.8,
+            "黄色羊毛": 0.8, "黄绿色羊毛": 0.8, "粉色羊毛": 0.8, "灰色羊毛": 0.8,
+            "淡灰色羊毛": 0.8, "青色羊毛": 0.8, "紫色羊毛": 0.8, "蓝色羊毛": 0.8,
+            "棕色羊毛": 0.8, "绿色羊毛": 0.8, "红色羊毛": 0.8, "黑色羊毛": 0.8,
+            # 红石
+            "活塞": 1.5, "粘性活塞": 1.5, "红石中继器": 0.0, "红石比较器": 0.0,
+            "红石火把": 0.0, "红石灯": 0.3, "发射器": 3.5, "投掷器": 3.5,
+            "漏斗": 3.5, "箱子": 2.5, "陷阱箱": 2.5, "木桶": 2.5, "铁门": 5.0,
+            # 下界/末地
+            "黑曜石": 50.0, "哭泣的黑曜石": 50.0,
+            "下界砖块": 2.0, "地狱岩": 0.4, "下界疣块": 1.0,
+            "末地石": 3.0, "末地石砖": 3.0, "末地烛": 0.0, "龙蛋": 45.0,
+            # 特殊
+            "铁砧": 5.0, "砂轮": 2.0, "织布机": 2.5, "制图台": 2.5,
+            "烟熏炉": 3.5, "高炉": 3.5,
+        }
+        self.tool_speeds = {
+            None: 1.0,
+            # 镐（矿石/石头最佳）
+            "木镐": 2.0, "石镐": 4.0, "铁镐": 6.0, "金镐": 12.0, "钻石镐": 8.0,
+            # 斧（木材最佳）
+            "木斧": 2.0, "石斧": 4.0, "铁斧": 6.0, "金斧": 12.0, "钻石斧": 8.0,
+            # 铲（泥土/沙最佳）
+            "木铲": 2.0, "石铲": 4.0, "铁铲": 6.0, "金铲": 12.0, "钻石铲": 8.0,
+            # 剑（也能挖掘，但效率低）
+            "木剑": 1.5, "石剑": 1.5, "铁剑": 1.5, "金剑": 1.5, "钻石剑": 1.5,
+        }
+
+        # 生物AI状态机常量
+        self.AI_IDLE, self.AI_WANDER, self.AI_CHASE, self.AI_FLEE = 0, 1, 2, 3
+        self.ATTACK_COOLDOWN = 60  # 攻击冷却（帧）
 
         # 默认填充快捷栏（进入游戏即可见，模拟《我的世界》快捷键栏）
         for _slot, _block in enumerate(self.block_types[:9]):
@@ -1418,6 +1515,7 @@ class GameMap3D:
                 self.experience = mc_world.get("experience", 0)
                 self.level = mc_world.get("level", 0)
                 self.armor = mc_world.get("armor", 0)
+                self.game_mode = mc_world.get("game_mode", "survival")
                 
                 self.update_camera()
                 self.validate_all()
@@ -1444,6 +1542,7 @@ class GameMap3D:
                 "camera_mode": self.camera["mode"],
                 "inventory": getattr(self, 'inventory', []),
                 "world_seed": getattr(self, 'world_seed', 0),
+                "game_mode": getattr(self, 'game_mode', 'survival'),
                 "health": self.health,
                 "hunger": self.hunger,
                 "oxygen": self.oxygen,
@@ -1653,6 +1752,7 @@ class GameMap3D:
                         self.message = "鼠标已锁定，按Tab键解锁"
                         self.message_timer = 3000
                     else:
+                        self.attack_mob()
                         self.place_block()
                 elif event.button == 3:
                     if self.is_mouse_locked:
@@ -1702,54 +1802,319 @@ class GameMap3D:
     
     # ── Block Placement & Breaking ──────────────────────────────────────
 
+    def _get_look_vector(self):
+        """返回玩家视线方向向量 (dx, dy, dz)。"""
+        yaw_rad = math.radians(self.camera["yaw"])
+        pitch_rad = math.radians(self.camera["pitch"])
+        return (math.cos(yaw_rad) * math.cos(pitch_rad),
+                math.sin(pitch_rad),
+                math.sin(yaw_rad) * math.cos(pitch_rad))
+
+    def raycast_voxel(self, max_dist=6.0):
+        """DDA 体素射线检测，返回 (hit_pos, face_normal) 或 (None, None)。
+
+        hit_pos = (x, y, z) 方块整数坐标
+        face_normal = (nx, ny, nz) 碰撞面法线（用于放置时偏移）
+        """
+        # 眼睛位置
+        ox = self.player_pos[0]
+        oy = self.player_pos[1] + 1.62
+        oz = self.player_pos[2]
+        dx, dy, dz = self._get_look_vector()
+
+        x, y, z = int(math.floor(ox)), int(math.floor(oy)), int(math.floor(oz))
+        step_x = 1 if dx >= 0 else -1
+        step_y = 1 if dy >= 0 else -1
+        step_z = 1 if dz >= 0 else -1
+
+        t_max_x = ((x + (1 if dx >= 0 else 0)) - ox) / dx if dx != 0 else 1e30
+        t_max_y = ((y + (1 if dy >= 0 else 0)) - oy) / dy if dy != 0 else 1e30
+        t_max_z = ((z + (1 if dz >= 0 else 0)) - oz) / dz if dz != 0 else 1e30
+        t_delta_x = abs(1.0 / dx) if dx != 0 else 1e30
+        t_delta_y = abs(1.0 / dy) if dy != 0 else 1e30
+        t_delta_z = abs(1.0 / dz) if dz != 0 else 1e30
+
+        face = (0, 0, 0)
+        dist = 0.0
+        for _ in range(int(max_dist * 3) + 10):
+            if self._block_at(x, y, z):
+                return (x, y, z), face
+            if t_max_x < t_max_y:
+                if t_max_x < t_max_z:
+                    dist = t_max_x
+                    if dist > max_dist:
+                        break
+                    x += step_x; t_max_x += t_delta_x
+                    face = (-step_x, 0, 0)
+                else:
+                    dist = t_max_z
+                    if dist > max_dist:
+                        break
+                    z += step_z; t_max_z += t_delta_z
+                    face = (0, 0, -step_z)
+            else:
+                if t_max_y < t_max_z:
+                    dist = t_max_y
+                    if dist > max_dist:
+                        break
+                    y += step_y; t_max_y += t_delta_y
+                    face = (0, -step_y, 0)
+                else:
+                    dist = t_max_z
+                    if dist > max_dist:
+                        break
+                    z += step_z; t_max_z += t_delta_z
+                    face = (0, 0, -step_z)
+        return None, None
+
+    def _block_at(self, x, y, z):
+        """判断 (x,y,z) 是否有方块（放置的 + 地形）。"""
+        for b in self.placed_blocks:
+            if b["x"] == x and b["y"] == y and b["z"] == z:
+                return True
+        terrain_y = self.terrain_height(x + 0.5, z + 0.5)
+        if y < 0 and terrain_y >= 0:
+            return True
+        return 0 <= y <= int(terrain_y)
+
     def place_block(self):
-        """Place the currently selected hotbar block 5 units ahead of the camera."""
-        yaw_rad = math.radians(self.camera["yaw"])
-        pitch_rad = math.radians(self.camera["pitch"])
-        
-        distance = 5.0
-        target_x = self.player_pos[0] + math.cos(yaw_rad) * math.cos(pitch_rad) * distance
-        target_y = self.player_pos[1] + 1.5 + math.sin(pitch_rad) * distance
-        target_z = self.player_pos[2] + math.sin(yaw_rad) * math.cos(pitch_rad) * distance
-        
-        block_x = int(target_x)
-        block_y = int(target_y)
-        block_z = int(target_z)
-        
-        selected_block = self.hotbar[self.hotbar_selected]
-        if selected_block:
-            self.placed_blocks.append({
-                "x": block_x,
-                "y": block_y,
-                "z": block_z,
-                "type": selected_block
-            })
-            self.message = f"放置 {selected_block} 在 ({block_x}, {block_y}, {block_z})"
+        """沿射线放置方块，从快捷栏消耗。"""
+        hit, face = self.raycast_voxel(5.0)
+        if hit is None:
+            return
+        bx = hit[0] + face[0]
+        by = hit[1] + face[1]
+        bz = hit[2] + face[2]
+        selected = self.hotbar[self.hotbar_selected]
+        if selected and selected != "水":
+            # 生存模式消耗背包数量
+            if self.game_mode == "survival":
+                if not self.remove_item_from_inventory(selected, 1):
+                    self.message = f"{selected} 数量不足"
+                    self.message_timer = 1000
+                    return
+            self.placed_blocks.append({"x": bx, "y": by, "z": bz, "type": selected})
+            self.message = f"放置 {selected} 在 ({bx}, {by}, {bz})"
             self.message_timer = 1000
-    
+
     def break_block(self):
-        """Remove the block at the camera's aim target (5 units ahead)."""
-        yaw_rad = math.radians(self.camera["yaw"])
-        pitch_rad = math.radians(self.camera["pitch"])
-        
-        distance = 5.0
-        target_x = self.player_pos[0] + math.cos(yaw_rad) * math.cos(pitch_rad) * distance
-        target_y = self.player_pos[1] + 1.5 + math.sin(pitch_rad) * distance
-        target_z = self.player_pos[2] + math.sin(yaw_rad) * math.cos(pitch_rad) * distance
-        
-        block_x = int(target_x)
-        block_y = int(target_y)
-        block_z = int(target_z)
-        
-        for i, block in enumerate(self.placed_blocks):
-            if block["x"] == block_x and block["y"] == block_y and block["z"] == block_z:
-                removed_block = self.placed_blocks.pop(i)
-                self.message = f"破坏 {removed_block['type']}"
-                self.message_timer = 1000
-                return
-        
-        self.message = "没有可破坏的方块"
-        self.message_timer = 1000
+        """右键按下时初始化挖掘目标。"""
+        hit, _ = self.raycast_voxel(5.0)
+        if hit is None:
+            self.mining = {"active": False, "progress": 0.0, "target": None}
+            return
+        if self.mining["target"] != hit:
+            self.mining = {"active": True, "progress": 0.0, "target": hit}
+
+    def _get_block_type(self, x, y, z):
+        """获取指定坐标方块类型名称。"""
+        for b in self.placed_blocks:
+            if b["x"] == x and b["y"] == y and b["z"] == z:
+                return b["type"]
+        terrain_y = self.terrain_height(x + 0.5, z + 0.5)
+        if 0 <= y <= int(terrain_y):
+            return "泥土" if y >= int(terrain_y) - 1 else "石头"
+        return None
+
+    def update_mining(self):
+        """每帧调用：持续按住右键时推进挖掘进度；松开则重置。"""
+        mouse_pressed = pygame.mouse.get_pressed()[2]
+        if not mouse_pressed or not self.is_mouse_locked:
+            if self.mining["active"]:
+                self.mining = {"active": False, "progress": 0.0, "target": None}
+            return
+        hit, _ = self.raycast_voxel(5.0)
+        if hit is None or hit != self.mining["target"]:
+            self.mining = {"active": True, "progress": 0.0, "target": hit}
+            return
+        block_type = self._get_block_type(*hit)
+        if block_type is None or block_type == "水":
+            return
+        hardness = self.block_hardness.get(block_type, 2.0)
+        if hardness < 0:
+            return
+        tool = self.hotbar[self.hotbar_selected]
+        speed = self.tool_speeds.get(tool, 1.0)
+        self.mining["progress"] += speed / max(hardness * 30.0, 1.0)
+        if self.mining["progress"] >= 1.0:
+            for i, b in enumerate(self.placed_blocks):
+                if b["x"] == hit[0] and b["y"] == hit[1] and b["z"] == hit[2]:
+                    self.placed_blocks.pop(i)
+                    self.add_item_to_inventory(block_type, 1)
+                    self.message = f"挖掘 {block_type}"
+                    self.message_timer = 1000
+                    break
+            self.mining = {"active": False, "progress": 0.0, "target": None}
+
+    # ── Mob AI ───────────────────────────────────────────────────────────
+
+    def update_mob_ai(self):
+        """MC 1.12.2 风格生物AI：空闲→游荡→追击→逃跑状态机 + 寻路。"""
+        px, pz = self.player_pos[0], self.player_pos[2]
+
+        for mob in self.monsters:
+            state = mob.get("ai_state", self.AI_IDLE)
+            timer = mob.get("ai_timer", 0)
+            dx = px - mob["x"]
+            dz = pz - mob["z"]
+            dist = math.sqrt(dx * dx + dz * dz)
+
+            if state == self.AI_IDLE:
+                mob["ai_timer"] = timer + 1
+                if timer > 60:
+                    mob["ai_state"] = self.AI_WANDER
+                    mob["ai_timer"] = 0
+                    mob["direction"] = random.uniform(0, 360)
+                elif dist < 16:
+                    mob["ai_state"] = self.AI_CHASE
+                    mob["ai_timer"] = 0
+            elif state == self.AI_WANDER:
+                mob["ai_timer"] = timer + 1
+                mob["x"] += math.cos(math.radians(mob["direction"])) * mob["speed"] * 0.5
+                mob["z"] += math.sin(math.radians(mob["direction"])) * mob["speed"] * 0.5
+                mob["y"] = self.terrain_height(mob["x"], mob["z"])
+                mob["direction"] += random.uniform(-15, 15)
+                if timer > 120 or dist < 16:
+                    mob["ai_state"] = self.AI_CHASE if dist < 24 else self.AI_IDLE
+                    mob["ai_timer"] = 0
+            elif state == self.AI_CHASE:
+                angle = math.degrees(math.atan2(dz, dx))
+                mob["direction"] = angle
+                mob["x"] += math.cos(math.radians(angle)) * mob["speed"]
+                mob["z"] += math.sin(math.radians(angle)) * mob["speed"]
+                mob["y"] = self.terrain_height(mob["x"], mob["z"])
+                # 接触伤害
+                if dist < 1.8:
+                    cd = mob.get("attack_cd", 0)
+                    if cd <= 0:
+                        mob["attack_cd"] = self.ATTACK_COOLDOWN
+                        self.player_health -= 3
+                        self.message = "受到怪物攻击！"
+                        self.message_timer = 1000
+                    else:
+                        mob["attack_cd"] = cd - 1
+                if mob.get("health", 20) < 6:
+                    mob["ai_state"] = self.AI_FLEE
+                    mob["ai_timer"] = 0
+                elif dist > 32:
+                    mob["ai_state"] = self.AI_IDLE
+                    mob["ai_timer"] = 0
+            elif state == self.AI_FLEE:
+                flee_angle = math.degrees(math.atan2(-dz, -dx))
+                mob["direction"] = flee_angle
+                mob["x"] += math.cos(math.radians(flee_angle)) * mob["speed"] * 1.2
+                mob["z"] += math.sin(math.radians(flee_angle)) * mob["speed"] * 1.2
+                mob["y"] = self.terrain_height(mob["x"], mob["z"])
+                mob["ai_timer"] = timer + 1
+                if timer > 100 or dist > 40:
+                    mob["ai_state"] = self.AI_IDLE
+                    mob["ai_timer"] = 0
+
+        # 动物AI：简单游荡 + 受伤逃跑
+        for animal in self.animals:
+            state = animal.get("ai_state", self.AI_WANDER)
+            timer = animal.get("ai_timer", 0)
+            dx = px - animal["x"]
+            dz = pz - animal["z"]
+            dist = math.sqrt(dx * dx + dz * dz)
+            if state == self.AI_WANDER:
+                animal["ai_timer"] = timer + 1
+                animal["x"] += math.cos(math.radians(animal["direction"])) * animal["speed"] * 0.3
+                animal["z"] += math.sin(math.radians(animal["direction"])) * animal["speed"] * 0.3
+                animal["y"] = self.terrain_height(animal["x"], animal["z"])
+                animal["direction"] += random.uniform(-10, 10)
+                if timer > 180 or (dist < 8 and animal.get("health", 10) < 10):
+                    animal["ai_state"] = self.AI_FLEE
+                    animal["ai_timer"] = 0
+            elif state == self.AI_FLEE:
+                flee_angle = math.degrees(math.atan2(-dz, -dx))
+                animal["direction"] = flee_angle
+                animal["x"] += math.cos(math.radians(flee_angle)) * animal["speed"] * 1.5
+                animal["z"] += math.sin(math.radians(flee_angle)) * animal["speed"] * 1.5
+                animal["y"] = self.terrain_height(animal["x"], animal["z"])
+                animal["ai_timer"] = timer + 1
+                if timer > 80 or dist > 30:
+                    animal["ai_state"] = self.AI_WANDER
+                    animal["ai_timer"] = 0
+                    animal["direction"] = random.uniform(0, 360)
+
+    def attack_mob(self):
+        """左键攻击视线内最近的生物（距离 < 3.5）。"""
+        hit, _ = self.raycast_voxel(3.5)
+        if hit is None:
+            return
+        closest, closest_dist = None, 999
+        for m in self.monsters + self.animals:
+            d = math.sqrt((m["x"] - hit[0]) ** 2 + (m["z"] - hit[2]) ** 2)
+            if d < 2.0 and d < closest_dist:
+                closest, closest_dist = m, d
+        if closest:
+            closest["health"] = closest.get("health", 20) - 5
+            self.message = f"攻击 {closest['type']}！"
+            self.message_timer = 1000
+            if closest["health"] <= 0:
+                if closest in self.monsters:
+                    self.monsters.remove(closest)
+                    self.stats["mobs_killed"] = self.stats.get("mobs_killed", 0) + 1
+                elif closest in self.animals:
+                    self.animals.remove(closest)
+                self.message = f"击杀 {closest['type']}"
+                # 掉落物
+                for mob_def in self.mob_types.get("passive", []) + self.mob_types.get("hostile", []):
+                    if mob_def["name"] == closest["type"]:
+                        for drop in mob_def.get("drop", [])[:1]:
+                            self.add_item_to_inventory(drop, 1)
+                        break
+
+    # ── 方块高亮 ─────────────────────────────────────────────────────────
+
+    def draw_block_highlight(self):
+        """在准星指向的方块上绘制高亮线框。"""
+        hit, _ = self.raycast_voxel(6.0)
+        if hit is None:
+            return
+        x, y, z = hit
+        glPushMatrix()
+        glTranslatef(x, y, z)
+        glDisable(GL_LIGHTING)
+        glDisable(GL_TEXTURE_2D)
+        glColor4f(1.0, 1.0, 1.0, 0.6)
+        glLineWidth(2.0)
+        glBegin(GL_LINE_LOOP)
+        glVertex3f(0, 0, 0); glVertex3f(1, 0, 0); glVertex3f(1, 1, 0); glVertex3f(0, 1, 0)
+        glEnd()
+        glBegin(GL_LINE_LOOP)
+        glVertex3f(0, 0, 1); glVertex3f(1, 0, 1); glVertex3f(1, 1, 1); glVertex3f(0, 1, 1)
+        glEnd()
+        glBegin(GL_LINES)
+        for vx, vy, vz in [(0,0,0,0,0,1),(1,0,0,1,0,1),(1,1,0,1,1,1),(0,1,0,0,1,1)]:
+            glVertex3f(vx, vy, vz); glVertex3f(vz, vy, vz)
+        glEnd()
+        glEnable(GL_TEXTURE_2D)
+        glEnable(GL_LIGHTING)
+        glPopMatrix()
+
+    def draw_mining_progress(self):
+        """在屏幕上绘制挖掘进度条。"""
+        if not self.mining["active"] or self.mining["progress"] <= 0:
+            return
+        try:
+            bar_w = 120
+            bar_h = 10
+            bar_x = SCREEN_WIDTH // 2 - bar_w // 2
+            bar_y = SCREEN_HEIGHT // 2 + 20
+            glMatrixMode(GL_PROJECTION); glLoadIdentity()
+            glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1)
+            glMatrixMode(GL_MODELVIEW); glLoadIdentity()
+            glDisable(GL_DEPTH_TEST)
+            s = pygame.Surface((bar_w, bar_h), pygame.SRCALPHA)
+            s.fill((0, 0, 0, 180))
+            fill = int(bar_w * self.mining["progress"])
+            pygame.draw.rect(s, (220, 180, 50), (0, 0, fill, bar_h))
+            pygame.display.get_surface().blit(s, (bar_x, bar_y))
+            glEnable(GL_DEPTH_TEST)
+        except Exception:
+            pass
     
     # ── Camera System ───────────────────────────────────────────────────
 
@@ -1889,6 +2254,7 @@ class GameMap3D:
             
             # 生物实体（动物/怪物/Herobrine，数量少，Python 兜底）
             self.draw_entities()
+            self.draw_block_highlight()
             
             # 特效/尘埃粒子（C++ 批量）
             self.render_particles_cpp()
@@ -1966,6 +2332,7 @@ class GameMap3D:
                 self.draw_location(loc)
             
             self.draw_entities()
+            self.draw_block_highlight()
             
             if self.camera["mode"] == "third":
                 self.draw_player()
@@ -2518,7 +2885,10 @@ class GameMap3D:
                     "max_health": 20,
                     "speed": random.uniform(0.1, 0.3),
                     "direction": random.uniform(0, 360),
-                    "texture": entity_type
+                    "texture": entity_type,
+                    "ai_state": self.AI_IDLE,
+                    "ai_timer": 0,
+                    "attack_cd": 0,
                 }
                 
                 if entity_type in ["僵尸", "骷髅", "苦力怕"]:
@@ -5007,6 +5377,8 @@ class GameMap3D:
             # 更新生物系统
             self.spawn_entity()
             self.update_entities()
+            self.update_mob_ai()
+            self.update_mining()
             
             # 更新Herobrine彩蛋
             self.update_herobrine()
@@ -5036,6 +5408,7 @@ class GameMap3D:
             # 绘制HUD
             self.draw_mc_hud()
             self.draw_hotbar()
+            self.draw_mining_progress()
             
             # 限制帧率
             self.clock.tick(60)

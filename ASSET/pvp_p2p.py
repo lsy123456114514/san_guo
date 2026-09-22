@@ -1,9 +1,11 @@
+"""PvP 点对点联机对战协议层"""
+
 import os
 import pygame
 import platform
 import random
 import math
-from ASSET.game_data import data, save, get_system_font_name
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 
 # 颜色主题
@@ -22,6 +24,7 @@ COLORS = {
 }
 
 class Particle:
+    """粒子效果 - 支持普通圆形与星形闪烁粒子"""
     def __init__(self, x, y, color, speed, size, life, particle_type="normal"):
         self.x = x
         self.y = y
@@ -61,6 +64,7 @@ class Particle:
             pygame.draw.circle(surface, self.color, (int(self.x), int(self.y)), int(self.size))
 
 class AnimatedButton:
+    """动画按钮 - 悬停缩放、发光与星形粒子特效"""
     def __init__(self, text, x, y, width, height, font, 
                  normal_color=COLORS["accent_blue"], 
                  hover_color=COLORS["accent_blue_light"], 
@@ -147,11 +151,11 @@ class AnimatedButton:
                 COLORS["accent_gold"], 1.5, random.randint(2, 4), 40, "sparkle"
             ))
         
-        for p in self.particles[:]:
+        for p in self.particles:
             p.update()
             p.draw(surface)
-            if p.life <= 0:
-                self.particles.remove(p)
+        self.particles[:] = [p for p in self.particles if p.life > 0]
+
     
     def check_hover(self, mouse_pos):
         self.is_hovered = self.rect.collidepoint(mouse_pos)
@@ -166,16 +170,6 @@ class AnimatedButton:
             if pygame.time.get_ticks() - self.click_timer > 200:
                 self.is_clicked = False
         return False
-
-def draw_gradient_background(surface, color1, color2):
-    """绘制渐变背景"""
-    width, height = surface.get_size()
-    for y in range(height):
-        ratio = y / height
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
 
 def draw_title(surface, text, y_pos, screen_width, font, color=COLORS["accent_gold"]):
     """绘制带特效的标题"""
@@ -258,11 +252,7 @@ def main():
 
         # 字体初始化
         def init_font(size):
-            font_name = get_system_font_name()
-            try:
-                return pygame.font.SysFont(font_name, size)
-            except Exception:
-                return pygame.font.Font(None, size)
+            return get_font(size)
 
         font_main = init_font(28 if not 'ANDROID_DATA' in os.environ else 40)
         font_small = init_font(22 if not 'ANDROID_DATA' in os.environ else 30)
@@ -338,7 +328,7 @@ def main():
         running = True
         while running:
             # 渐变背景
-            draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+            draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
             
             # 更新和绘制背景粒子
             for p in bg_particles:
@@ -525,7 +515,7 @@ def main():
 
         return
     except Exception as e:
-        print(f"PVP模块异常：{str(e)}")
+        logger.info(f"PVP模块异常：{str(e)}")
         return
 
 if __name__ == "__main__":

@@ -1,9 +1,11 @@
+"""武将仓库/背包系统 - 武将管理、分类筛选、一键上阵"""
+
 import os
 import pygame
 import platform
 import random
 import math
-from ASSET.game_data import data, save, get_system_font_name, load_sound, EQUIP_SKILLS, GUNS
+from ASSET.game_data import data, save, get_system_font_name, load_sound, EQUIP_SKILLS, GUNS, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 from ASSET.anti_decompile import protect_function
 
@@ -91,10 +93,10 @@ class AnimatedButton:
             self.scale = max(1.0, self.scale - 0.02)
             self.glow_alpha = max(0, self.glow_alpha - 8)
         
-        for p in self.particles[:]:
+        for p in self.particles:
             p.update()
-            if p.life <= 0:
-                self.particles.remove(p)
+        self.particles[:] = [p for p in self.particles if p.life > 0]
+
     
     def draw(self, surface):
         # 发光效果
@@ -133,16 +135,6 @@ class AnimatedButton:
         # 粒子
         for p in self.particles:
             p.draw(surface)
-
-def draw_gradient_background(surface, color1, color2):
-    """绘制渐变背景"""
-    width, height = surface.get_size()
-    for y in range(height):
-        ratio = y / height
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
 
 def draw_star(surface, x, y, size, filled=True):
     """绘制星星"""
@@ -308,11 +300,7 @@ def main():
 
         # 字体初始化
         def init_font(size):
-            font_name = get_system_font_name()
-            try:
-                return pygame.font.SysFont(font_name, size)
-            except Exception:
-                return pygame.font.Font(None, size)
+            return get_font(size)
 
         font_title = init_font(36 if not 'ANDROID_DATA' in os.environ else 52)
         font_normal = init_font(24 if not 'ANDROID_DATA' in os.environ else 36)
@@ -327,8 +315,8 @@ def main():
             if sound and data['settings']['sound']['enable']:
                 try:
                     sound.play()
-                except Exception:
-                    pass
+                except Exception as _e:
+                    logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
         # 解锁武将（10碎片）
         def unlock_hero(hero_name):
@@ -416,7 +404,7 @@ def main():
             mx, my = pygame.mouse.get_pos()
             
             # 渐变背景
-            draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+            draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
             
             # 绘制星星
             for star in stars:
@@ -606,8 +594,6 @@ def main():
             for p in particles[:]:
                 p.update()
                 p.draw(screen)
-                if p.life <= 0:
-                    particles.remove(p)
 
             # 事件处理
             for event in pygame.event.get():

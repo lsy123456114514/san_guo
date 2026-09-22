@@ -1,5 +1,7 @@
+"""任务链系统 - 日常/周常任务与奖励循环"""
+
 import time
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, logger, draw_gradient_bg, cull_dead, get_font
 
 class TaskChainSystem:
     """任务链系统 - 引导玩家持续游玩，形成循环"""

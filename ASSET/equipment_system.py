@@ -1,8 +1,11 @@
+"""装备系统 - 装备获取、穿戴、强化、套装属性"""
+
 import os
+import time
 import pygame
 import random
 import datetime
-from ASSET.game_data import data, save, get_system_font_name
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET.languages import get_text
 from ASSET import safe_exit
 
@@ -23,6 +26,7 @@ COLORS = {
 }
 
 class Button:
+    """按钮控件 - 渐变填充与悬停点击反馈"""
     def __init__(self, text, x, y, width, height, font, 
                  normal_color=COLORS["accent_blue"], 
                  hover_color=COLORS["accent_blue_light"], 
@@ -78,6 +82,7 @@ class Button:
         return False
 
 class ScrollableContainer:
+    """滚动容器 - 支持滚轮拖拽与项目定位的列表区域"""
     def __init__(self, x, y, width, height, item_height):
         self.x = x
         self.y = y
@@ -154,6 +159,7 @@ class ScrollableContainer:
                            border_radius=4)
 
 class EquipmentScrollContainer(ScrollableContainer):
+    """装备滚动容器 - 渲染装备名称、强化等级与属性的列表项"""
     def __init__(self, x, y, width, height, item_height, items, font_main, font_small, equip_type):
         super().__init__(x, y, width, height, item_height)
         self.items = items
@@ -176,16 +182,6 @@ class EquipmentScrollContainer(ScrollableContainer):
         surface.blit(name_surf, (x + 10, y + 5))
         surface.blit(level_surf, (x + 10, y + 30))
         surface.blit(attr_surf, (x + 10, y + 50))
-
-def draw_gradient_background(surface, color1, color2):
-    """绘制渐变背景"""
-    width, height = surface.get_size()
-    for y in range(height):
-        ratio = y / height
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
 
 def draw_title(surface, text, y_pos, screen_width, font_big):
     """绘制带特效的标题"""
@@ -349,7 +345,6 @@ class EquipmentSystem:
     
     def enhance_equipment(self, equipment):
         """强化装备"""
-        import time
         # 获取当前语言
         current_lang = data.get('settings', {}).get('language', {}).get('current', 'zh')
         
@@ -434,7 +429,6 @@ class MountSystem:
     
     def obtain_mount(self, mount_name):
         """获得坐骑"""
-        import time
         mount = self.get_mount_by_name(mount_name)
         if mount:
             # 检查是否已经拥有
@@ -472,7 +466,6 @@ class MountSystem:
     
     def activate_mount(self, mount_name):
         """激活坐骑"""
-        import time
         for mount in data["mounts"]["owned"]:
             if mount["name"] == mount_name:
                 # 计算激活时间（基础时间 * 1.5）
@@ -515,7 +508,6 @@ class SkillSystem:
     
     def learn_skill(self, skill_name):
         """学习技能"""
-        import time
         for skill in self.skill_types:
             if skill["name"] == skill_name:
                 # 检查是否已经学习
@@ -1037,13 +1029,7 @@ def main():
 
         # 字体初始化（根据屏幕大小自适应）
         def init_font(size):
-            font_name = get_system_font_name()
-            # 根据屏幕大小调整字体
-            adjusted_size = int(size * min(SCREEN_WIDTH / 900, SCREEN_HEIGHT / 700))
-            try:
-                return pygame.font.SysFont(font_name, adjusted_size)
-            except Exception:
-                return pygame.font.Font(None, adjusted_size)
+            return get_font(size)
 
         font_big = init_font(48)
         font_main = init_font(32)
@@ -1062,7 +1048,6 @@ def main():
         # 主循环
         running = True
         while running:
-            import time
             mx, my = pygame.mouse.get_pos()
             
             # 处理时间任务
@@ -1114,7 +1099,7 @@ def main():
                 save()
             
             # 渐变背景
-            draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+            draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
             
             # 导航按钮
             nav_buttons = [
@@ -1270,8 +1255,8 @@ def main():
         
         safe_exit("装备系统")
     except Exception as e:
-        print(f"异常：{str(e)}")
-        print("详细错误信息：")
+        logger.info(f"异常：{str(e)}")
+        logger.info("详细错误信息：")
         import traceback
         traceback.print_exc()
         safe_exit("装备系统", str(e))

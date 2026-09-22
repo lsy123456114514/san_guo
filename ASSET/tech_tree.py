@@ -1,7 +1,9 @@
+"""科技树系统 - 科技点升级、全局属性加成、前置依赖"""
+
 import os
 import sys
 import pygame
-from ASSET.game_data import data, save, TECH_TREE, get_system_font_name
+from ASSET.game_data import data, save, TECH_TREE, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
 from ASSET import safe_exit
 
 # 全局变量（延迟初始化）
@@ -183,21 +185,11 @@ def init_fonts():
             FONT_SMALL = pygame.font.Font(None, 24)
             FONT_TINY = pygame.font.Font(None, 20)
             FONT_BIG = pygame.font.Font(None, 50)
-    except Exception:
+    except Exception as _e:
         FONT_MAIN = pygame.font.Font(None, 36)
         FONT_SMALL = pygame.font.Font(None, 24)
         FONT_TINY = pygame.font.Font(None, 20)
         FONT_BIG = pygame.font.Font(None, 50)
-
-def draw_gradient_background(surface, color1, color2):
-    """绘制渐变背景"""
-    width, height = surface.get_size()
-    for y in range(height):
-        ratio = y / height
-        r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-        g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-        b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-        pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
 
 def draw_title(surface, text, y_pos, screen_width):
     """绘制标题"""
@@ -230,7 +222,7 @@ def draw_resource_panel(surface, x, y, width, height):
         ("食物", data['resources']['食物'], (200, 150, 100))
     ]
     
-    spacing = width // len(resources)
+    spacing = width // max(1, len(resources))
     for i, (icon, value, color) in enumerate(resources):
         icon_x = x + i * spacing + spacing // 2
         icon_y = y + height // 2
@@ -443,7 +435,7 @@ def main():
     running = True
     while running:
         # 渐变背景
-        draw_gradient_background(screen, COLORS["bg_dark"], COLORS["bg_light"])
+        draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
         
         # 标题
         draw_title(screen, "科技树系统", 60, screen_width)
@@ -539,7 +531,7 @@ def main():
                         if btn.check_click((mx - view_offset[0], my - view_offset[1])):
                             if node.upgrade():
                                 # 升级成功
-                                print(f"成功解锁 {node.tech_data['name']} 的子科技")
+                                logger.info(f"成功解锁 {node.tech_data['name']} 的子科技")
         
         clock.tick(60)
 

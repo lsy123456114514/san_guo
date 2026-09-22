@@ -66,6 +66,9 @@ a = Analysis(
         ('ASSET', 'ASSET'),
         ('ASSET/fonts', 'ASSET/fonts'),
         ('ASSET/sounds', 'ASSET/sounds'),
+        # C++ 渲染器 DLL（game_map_3d.py 在打包后从 _internal/ 查找）
+        ('opengl_renderer.dll', '.'),
+        ('renderer_bindings.py', '.'),
     ],
     hiddenimports=hiddenimports,
     hookspath=[],

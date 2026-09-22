@@ -77,4 +77,59 @@ class PiCalculatorLight:
     
     def start_calculation(self):
         try:
-            digits = int(self.digits
+            digits = int(self.digits_entry.get())
+        except ValueError:
+            messagebox.showerror("错误", "请输入有效的小数位数！")
+            return
+
+        if digits < 1 or digits > 100000:
+            messagebox.showerror("错误", "小数位数必须在 1 到 100000 之间！")
+            return
+
+        self.is_calculating = True
+        self.stop_event.clear()
+        self.start_button.config(state=tk.DISABLED)
+        self.stop_button.config(state=tk.NORMAL)
+        self.result_text.config(state=tk.NORMAL)
+        self.result_text.delete("1.0", tk.END)
+        self.result_text.config(state=tk.DISABLED)
+        self.status_label.config(text="状态: 计算中...")
+
+        def calculate():
+            start_time = time.time()
+            try:
+                result = self.calculate_pi(digits)
+                elapsed = time.time() - start_time
+                if self.stop_event.is_set():
+                    self.root.after(0, self.update_result, "\n计算已停止\n")
+                else:
+                    self.root.after(
+                        0, self.update_result,
+                        f"π = {result}\n\n耗时: {elapsed:.4f} 秒\n"
+                    )
+            except Exception as e:
+                self.root.after(0, self.update_result, f"计算错误: {e}\n")
+            finally:
+                self.root.after(0, self.on_calculation_done)
+
+        threading.Thread(target=calculate, daemon=True).start()
+
+    def on_calculation_done(self):
+        self.is_calculating = False
+        self.start_button.config(state=tk.NORMAL)
+        self.stop_button.config(state=tk.DISABLED)
+        self.status_label.config(text="状态: 就绪")
+
+    def stop_calculation(self):
+        self.stop_event.set()
+        self.status_label.config(text="状态: 正在停止...")
+
+
+def main():
+    root = tk.Tk()
+    PiCalculatorLight(root)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
