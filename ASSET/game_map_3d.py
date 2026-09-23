@@ -231,6 +231,8 @@ class GameMap3D:
         self.inventory_slots = 27  # 3行9列
         self.inventory = [None] * self.inventory_slots
         self.max_stack_size = 64
+        # 已挖空的地形格 (x,y,z)，避免地形被无限“重生”
+        self.broken_terrain = set()
         
         # 物品类型定义（MC 1.12.2风格）
         self.item_types = {
@@ -1508,6 +1510,8 @@ class GameMap3D:
                 
                 self.inventory = mc_world.get("inventory", [])
                 self.world_seed = mc_world.get("world_seed", 0)
+                broken = mc_world.get("broken_terrain", [])
+                self.broken_terrain = {tuple(c) for c in broken if isinstance(c, (list, tuple)) and len(c) == 3}
                 
                 self.health = mc_world.get("health", 20)
                 self.hunger = mc_world.get("hunger", 20)
@@ -1534,6 +1538,7 @@ class GameMap3D:
         try:
             mc_world = {
                 "placed_blocks": self.placed_blocks,
+                "broken_terrain": [list(c) for c in getattr(self, "broken_terrain", set())],
                 "hotbar": self.hotbar,
                 "hotbar_selected": self.hotbar_selected,
                 "player_pos": self.player_pos,
@@ -1868,7 +1873,9 @@ class GameMap3D:
         return None, None
 
     def _block_at(self, x, y, z):
-        """判断 (x,y,z) 是否有方块（放置的 + 地形）。"""
+        """判断 (x,y,z) 是否有方块（放置的 + 地形，排除已挖空）。"""
+        if (x, y, z) in self.broken_terrain:
+            return False
         for b in self.placed_blocks:
             if b["x"] == x and b["y"] == y and b["z"] == z:
                 return True
@@ -1887,12 +1894,9 @@ class GameMap3D:
         bz = hit[2] + face[2]
         selected = self.hotbar[self.hotbar_selected]
         if selected and selected != "水":
-            # 生存模式消耗背包数量
+            # 生存模式尽量从背包扣；扣不到也允许用快捷栏自带方块放置
             if self.game_mode == "survival":
-                if not self.remove_item_from_inventory(selected, 1):
-                    self.message = f"{selected} 数量不足"
-                    self.message_timer = 1000
-                    return
+                self.remove_item_from_inventory(selected, 1)
             self.placed_blocks.append({"x": bx, "y": by, "z": bz, "type": selected})
             self.message = f"放置 {selected} 在 ({bx}, {by}, {bz})"
             self.message_timer = 1000
@@ -1908,6 +1912,8 @@ class GameMap3D:
 
     def _get_block_type(self, x, y, z):
         """获取指定坐标方块类型名称。"""
+        if (x, y, z) in self.broken_terrain:
+            return None
         for b in self.placed_blocks:
             if b["x"] == x and b["y"] == y and b["z"] == z:
                 return b["type"]
@@ -1937,13 +1943,21 @@ class GameMap3D:
         speed = self.tool_speeds.get(tool, 1.0)
         self.mining["progress"] += speed / max(hardness * 30.0, 1.0)
         if self.mining["progress"] >= 1.0:
+            mined = False
             for i, b in enumerate(self.placed_blocks):
                 if b["x"] == hit[0] and b["y"] == hit[1] and b["z"] == hit[2]:
                     self.placed_blocks.pop(i)
                     self.add_item_to_inventory(block_type, 1)
                     self.message = f"挖掘 {block_type}"
                     self.message_timer = 1000
+                    mined = True
                     break
+            if not mined and self._get_block_type(*hit) is not None:
+                self.broken_terrain.add((hit[0], hit[1], hit[2]))
+                self.add_item_to_inventory(block_type, 1)
+                self.message = f"挖掘 {block_type}"
+                self.message_timer = 1000
+                self._terrain_origin = None  # 强制重建地形显示列表
             self.mining = {"active": False, "progress": 0.0, "target": None}
 
     # ── Mob AI ───────────────────────────────────────────────────────────
@@ -2070,29 +2084,39 @@ class GameMap3D:
 
     def draw_block_highlight(self):
         """在准星指向的方块上绘制高亮线框。"""
-        hit, _ = self.raycast_voxel(6.0)
-        if hit is None:
-            return
-        x, y, z = hit
-        glPushMatrix()
-        glTranslatef(x, y, z)
-        glDisable(GL_LIGHTING)
-        glDisable(GL_TEXTURE_2D)
-        glColor4f(1.0, 1.0, 1.0, 0.6)
-        glLineWidth(2.0)
-        glBegin(GL_LINE_LOOP)
-        glVertex3f(0, 0, 0); glVertex3f(1, 0, 0); glVertex3f(1, 1, 0); glVertex3f(0, 1, 0)
-        glEnd()
-        glBegin(GL_LINE_LOOP)
-        glVertex3f(0, 0, 1); glVertex3f(1, 0, 1); glVertex3f(1, 1, 1); glVertex3f(0, 1, 1)
-        glEnd()
-        glBegin(GL_LINES)
-        for vx, vy, vz in [(0,0,0,0,0,1),(1,0,0,1,0,1),(1,1,0,1,1,1),(0,1,0,0,1,1)]:
-            glVertex3f(vx, vy, vz); glVertex3f(vz, vy, vz)
-        glEnd()
-        glEnable(GL_TEXTURE_2D)
-        glEnable(GL_LIGHTING)
-        glPopMatrix()
+        pushed = False
+        try:
+            hit, _ = self.raycast_voxel(6.0)
+            if hit is None:
+                return
+            x, y, z = hit
+            glPushMatrix()
+            pushed = True
+            glTranslatef(x, y, z)
+            glDisable(GL_LIGHTING)
+            glDisable(GL_TEXTURE_2D)
+            glColor4f(1.0, 1.0, 1.0, 0.6)
+            glLineWidth(2.0)
+            glBegin(GL_LINE_LOOP)
+            glVertex3f(0, 0, 0); glVertex3f(1, 0, 0); glVertex3f(1, 1, 0); glVertex3f(0, 1, 0)
+            glEnd()
+            glBegin(GL_LINE_LOOP)
+            glVertex3f(0, 0, 1); glVertex3f(1, 0, 1); glVertex3f(1, 1, 1); glVertex3f(0, 1, 1)
+            glEnd()
+            glBegin(GL_LINES)
+            for vx, vy, vz, ex, ey, ez in [(0,0,0,0,0,1),(1,0,0,1,0,1),(1,1,0,1,1,1),(0,1,0,0,1,1)]:
+                glVertex3f(vx, vy, vz); glVertex3f(ex, ey, ez)
+            glEnd()
+        except Exception as e:
+            logger.info(f"绘制方块高亮错误: {e}")
+        finally:
+            if pushed:
+                try:
+                    glEnable(GL_TEXTURE_2D)
+                    glEnable(GL_LIGHTING)
+                    glPopMatrix()
+                except Exception:
+                    pass
 
     def draw_mining_progress(self):
         """在屏幕上绘制挖掘进度条。"""
@@ -2172,6 +2196,28 @@ class GameMap3D:
             self.draw_3d_scene_cpp()
         else:
             self.draw_3d_scene_python()
+
+    def _restore_gl_stack(self) -> None:
+        """异常后恢复 GL 状态，避免连锁报错。
+
+        单个绘制函数抛异常时可能遗留未配对的 glBegin / glPushMatrix，
+        导致后续 GL_STACK_OVERFLOW(1283) / GL_INVALID_OPERATION(1282) 大量刷屏。
+        这里关闭可能未闭合的 glBegin，并把模型视图矩阵栈还原到基准深度。
+        """
+        try:
+            glEnd()
+        except Exception:
+            pass
+        try:
+            glMatrixMode(GL_MODELVIEW)
+            depth = glGetIntegerv(GL_MODELVIEW_STACK_DEPTH)
+            if isinstance(depth, (list, tuple)):
+                depth = depth[0]
+            while depth and depth > 1:
+                glPopMatrix()
+                depth -= 1
+        except Exception:
+            pass
     
     def draw_3d_scene_cpp(self):
         """使用C++渲染器绘制3D场景（地形/树/建筑/方块/粒子全走C++，老处理器也能流畅运行）"""
@@ -2268,6 +2314,7 @@ class GameMap3D:
             pygame.display.flip()
         except Exception as e:
             logger.info(f"C++渲染错误: {e}")
+            self._restore_gl_stack()
             self.draw_3d_scene_python()
     
     def render_particles_cpp(self):
@@ -2351,6 +2398,7 @@ class GameMap3D:
             pygame.display.flip()
         except Exception as e:
             logger.info(f"Python渲染错误: {e}")
+            self._restore_gl_stack()
     
     # ── Terrain Generation ──────────────────────────────────────────────
 
@@ -2398,9 +2446,12 @@ class GameMap3D:
 
         glNewList(self._terrain_list, GL_COMPILE)
 
-        # 顶面（草地）
+        # 顶面（草地）— 已挖空的表面格不画，露出坑洞
         glBegin(GL_QUADS)
         for x, z, h in cols:
+            if any((x + dx, h, z + dz) in self.broken_terrain
+                   for dx in range(bs) for dz in range(bs)):
+                continue
             shade = 0.9 + 0.08 * ((x // bs + z // bs) % 3)
             glColor3f(0.20 * shade, 0.55 * shade, 0.20 * shade)
             glVertex3f(x, h, z)
@@ -2605,9 +2656,11 @@ class GameMap3D:
     
     def draw_sun_moon(self):
         """绘制太阳和月亮"""
+        pushed = False
         try:
             glDisable(GL_LIGHTING)
             glPushMatrix()
+            pushed = True
             
             sun_radius = 50
             moon_radius = 45
@@ -2641,8 +2694,15 @@ class GameMap3D:
             
             glPopMatrix()
             glEnable(GL_LIGHTING)
+            pushed = False
         except Exception as e:
             logger.info(f"绘制太阳月亮错误: {e}")
+            if pushed:
+                try:
+                    glEnable(GL_LIGHTING)
+                    glPopMatrix()
+                except Exception:
+                    pass
     
     # ── Weather System ──────────────────────────────────────────────────
 
@@ -2689,8 +2749,12 @@ class GameMap3D:
                 
                 self.rain_particles = [p for p in self.rain_particles if p.get("y", -10) > -5]
                 for p in self.rain_particles:
+                    ground = self.terrain_height(p.get("x", 0), p.get("z", 0))
                     p["y"] = p.get("y", 0) - p.get("speed", 10) * 0.1
+                    if p["y"] <= ground + 0.1:
+                        p["y"] = -10
                     p["x"] = p.get("x", 0) + 0.5
+                self.rain_particles = [p for p in self.rain_particles if p.get("y", -10) > -5]
             
             elif self.weather == "snow":
                 for _ in range(3):
@@ -2707,9 +2771,13 @@ class GameMap3D:
                 
                 self.snow_particles = [p for p in self.snow_particles if p.get("y", -10) > -5]
                 for p in self.snow_particles:
+                    ground = self.terrain_height(p.get("x", 0), p.get("z", 0))
                     p["y"] = p.get("y", 0) - p.get("speed", 3) * 0.05
+                    if p["y"] <= ground + 0.3:
+                        p["y"] = -10
                     p["x"] = p.get("x", 0) + p.get("drift_x", 0) * 0.1
                     p["z"] = p.get("z", 0) + p.get("drift_z", 0) * 0.1
+                self.snow_particles = [p for p in self.snow_particles if p.get("y", -10) > -5]
         except Exception as e:
             logger.info(f"更新天气错误: {e}")
     
@@ -2970,6 +3038,7 @@ class GameMap3D:
             glEnable(GL_LIGHTING)
         except Exception as e:
             logger.info(f"绘制实体错误: {e}")
+            self._restore_gl_stack()
     
     def draw_herobrine(self):
         """绘制Herobrine（彩蛋）"""
@@ -3064,7 +3133,8 @@ class GameMap3D:
                     })
         
         for wave in self.wave_particles:
-            wave["y"] = 0.1 + wave["amplitude"] * math.sin(self.wave_timer * wave["frequency"] + wave["phase"])
+            base = self.terrain_height(wave["x"], wave["z"]) + 0.15
+            wave["y"] = base + wave["amplitude"] * math.sin(self.wave_timer * wave["frequency"] + wave["phase"])
             wave["x"] += wave["speed"] * math.cos(wave["phase"])
             wave["z"] += wave["speed"] * math.sin(wave["phase"])
         self.wave_particles[:] = [wave for wave in self.wave_particles if math.hypot(wave["x"] - self.player_pos[0], wave["z"] - self.player_pos[2]) <= 200]
@@ -3093,6 +3163,7 @@ class GameMap3D:
             glEnable(GL_LIGHTING)
         except Exception as e:
             logger.info(f"绘制海浪错误: {e}")
+            self._restore_gl_stack()
     
     def draw_tree(self, x, z):
         """绘制树木"""
@@ -3171,14 +3242,17 @@ class GameMap3D:
             glEnable(GL_LIGHTING)
         except Exception as e:
             logger.info(f"绘制树木错误: {e}")
+            self._restore_gl_stack()
     
     def draw_location(self, loc):
         """绘制地点 - 优化版，增加高度和细节"""
+        pushed = False
         try:
             x, z = loc["x"], loc["y"]
             loc_type = loc.get("type", "村庄")
             
             glPushMatrix()
+            pushed = True
             glTranslatef(x, self.terrain_height(x, z), z)
             
             glDisable(GL_LIGHTING)
@@ -3212,7 +3286,7 @@ class GameMap3D:
                 wall_color = (0.6, 0.5, 0.4)
                 wall_height = 12
             
-            glColor3f(wall_color)
+            glColor3f(*wall_color)
             
             glBegin(GL_QUADS)
             glVertex3f(-base_width/2, base_height, -base_depth/2)
@@ -3278,8 +3352,15 @@ class GameMap3D:
             
             glEnable(GL_LIGHTING)
             glPopMatrix()
+            pushed = False
         except Exception as e:
             logger.info(f"绘制地点错误: {e}")
+            if pushed:
+                try:
+                    glEnable(GL_LIGHTING)
+                    glPopMatrix()
+                except Exception:
+                    pass
     
     def draw_cube(self, width, height, depth):
         """绘制立方体"""
@@ -4505,8 +4586,12 @@ class GameMap3D:
     def validate_inventory(self):
         """验证背包数据完整性（安全检查）"""
         if not isinstance(self.inventory, list):
-            self.inventory = [None] * self.inventory_slots
-        
+            self.inventory = []
+        if len(self.inventory) < self.inventory_slots:
+            self.inventory = list(self.inventory) + [None] * (self.inventory_slots - len(self.inventory))
+        elif len(self.inventory) > self.inventory_slots:
+            self.inventory = list(self.inventory[:self.inventory_slots])
+
         for i in range(len(self.inventory)):
             if self.inventory[i] is not None:
                 if not isinstance(self.inventory[i], dict):
@@ -4516,6 +4601,11 @@ class GameMap3D:
                         self.inventory[i] = None
                     else:
                         self.inventory[i]["count"] = self.clamp_value(self.inventory[i]["count"], 1, self.max_stack_size)
+
+        if not any(self.inventory):
+            for i, block in enumerate(self.hotbar[:self.inventory_slots]):
+                if block:
+                    self.inventory[i] = {"name": block, "count": 64}
     
     def validate_hotbar(self):
         """验证快捷栏数据完整性"""

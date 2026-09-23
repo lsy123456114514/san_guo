@@ -1894,6 +1894,8 @@ def calculate_passive_income() -> None:
     """
     current_time = int(time.time())
     last_login = data.get('last_login', 0)
+    if not isinstance(data.get('resources'), dict):
+        data['resources'] = dict(default_save.get('resources') or {r: 0 for r in RESOURCES})
     if last_login > 0:
         time_diff = current_time - last_login
         if time_diff > PASSIVE_INCOME_THRESHOLD:
@@ -1923,7 +1925,21 @@ def load() -> None:
             with open(SAVE_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
             logger.info("[存档] 加载成功，开始补全缺失键")
-            
+
+            # 顶层必须是 dict；否则无法补全，直接回退
+            if not isinstance(data, dict):
+                raise TypeError(f"存档顶层类型无效: {type(data).__name__}")
+
+            # 确保关键容器存在（旧档/残缺档常见）
+            if not isinstance(data.get('resources'), dict):
+                data['resources'] = dict(default_save.get('resources') or {r: 0 for r in RESOURCES})
+            if not isinstance(data.get('achievements'), dict):
+                data['achievements'] = {}
+            if not isinstance(data.get('weather'), dict):
+                data['weather'] = default_save['weather']
+            if not isinstance(data.get('settings'), dict):
+                data['settings'] = dict(SETTINGS)
+
             # 检查并添加缺失的键
             if 'achievements' not in data:
                 data['achievements'] = {}
@@ -1995,7 +2011,7 @@ def load() -> None:
             if 'checkin' not in data:
                 data['checkin'] = default_save['checkin']
             
-            # 检查并添加缺失的资源
+            # 检查并添加缺失的资源（resources 已在上方保证为 dict）
             for resource in RESOURCES:
                 if resource not in data['resources']:
                     data['resources'][resource] = 0
@@ -2070,7 +2086,9 @@ def load() -> None:
 
         except Exception as e:
             logger.error("[存档] 加载失败: %s，回退到默认存档", e, exc_info=True)
-            data = default_save.copy()
+            # 深拷贝关键容器，避免污染 default_save（浅拷贝会共享嵌套 dict）
+            import copy as _copy
+            data = _copy.deepcopy(default_save)
             calculate_passive_income()
 
 def save() -> None:

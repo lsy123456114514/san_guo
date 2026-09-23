@@ -662,15 +662,14 @@ class Button:
         self.is_hovered = self.rect.collidepoint(mouse_pos)
 
     def check_click(self, mouse_pos):
-        """检查点击"""
-        if self.is_hovered and pygame.mouse.get_pressed()[0]:
-            if not self.is_clicked:
-                self.is_clicked = True
-                self.click_timer = pygame.time.get_ticks()
-                return True
-        elif self.is_clicked:
-            if pygame.time.get_ticks() - self.click_timer > 200:
-                self.is_clicked = False
+        """检查点击（先清冷却，避免悬停时 is_clicked 卡死导致点不动）。"""
+        now = pygame.time.get_ticks()
+        if self.is_clicked and now - self.click_timer > 200:
+            self.is_clicked = False
+        if self.is_hovered and pygame.mouse.get_pressed()[0] and not self.is_clicked:
+            self.is_clicked = True
+            self.click_timer = now
+            return True
         return False
 
     def draw(self, surface):
@@ -1626,8 +1625,11 @@ def setting_menu():
         clock.tick(MENU_FPS)
 
 def input_save_name(screen, font_title, font_input):
-    """输入存档名称"""
-    input_box = pygame.Rect(screen.get_width() // 4, screen.get_height() // 2, screen.get_width() // 2, 50)
+    """输入存档名称。Esc/取消按钮返回 None，回车确认。"""
+    w, h = screen.get_width(), screen.get_height()
+    panel = pygame.Rect(w // 4, h // 2 - 70, w // 2, 140)
+    input_box = pygame.Rect(panel.x + 20, panel.y + 55, panel.width - 40, 44)
+    cancel_rect = pygame.Rect(panel.right - 100, panel.bottom - 40, 80, 28)
     text = ""
     active = True
     clock = pygame.time.Clock()
@@ -1639,18 +1641,47 @@ def input_save_name(screen, font_title, font_input):
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_RETURN:
                     active = False
+                elif event.key == pygame.K_ESCAPE:
+                    return None
                 elif event.key == pygame.K_BACKSPACE:
                     text = text[:-1]
-                else:
+                elif event.unicode and event.unicode.isprintable():
                     text += event.unicode
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if cancel_rect.collidepoint(event.pos):
+                    return None
 
-        pygame.draw.rect(screen, (50, 50, 80), input_box)
-        pygame.draw.rect(screen, (100, 100, 150), input_box, 2)
+        overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 140))
+        screen.blit(overlay, (0, 0))
 
+        pygame.draw.rect(screen, (40, 40, 70), panel, border_radius=10)
+        pygame.draw.rect(screen, (120, 120, 170), panel, 2, border_radius=10)
+
+        if font_title:
+            title = font_title.render("输入存档名称", True, (255, 215, 0))
+            if title:
+                screen.blit(title, title.get_rect(center=(panel.centerx, panel.y + 24)))
+
+        pygame.draw.rect(screen, (25, 25, 45), input_box, border_radius=6)
+        pygame.draw.rect(screen, (140, 140, 190), input_box, 2, border_radius=6)
         if font_input:
-            txt_surface = font_input.render(text, True, (255, 255, 255))
+            shown = text if text else "存档"
+            color = (255, 255, 255) if text else (140, 140, 160)
+            txt_surface = font_input.render(shown, True, color)
             if txt_surface:
-                screen.blit(txt_surface, (input_box.x + 5, input_box.y + 10))
+                clip = txt_surface.get_rect(midleft=(input_box.x + 8, input_box.centery))
+                screen.blit(txt_surface, clip)
+            hint = font_input.render("回车确认  Esc取消", True, (160, 160, 180))
+            if hint:
+                screen.blit(hint, hint.get_rect(center=(panel.centerx, cancel_rect.centery)))
+
+        pygame.draw.rect(screen, (90, 50, 50), cancel_rect, border_radius=6)
+        pygame.draw.rect(screen, (180, 100, 100), cancel_rect, 1, border_radius=6)
+        if font_input:
+            label = font_input.render("取消", True, (255, 220, 220))
+            if label:
+                screen.blit(label, label.get_rect(center=cancel_rect.center))
 
         pygame.display.flip()
         clock.tick(30)
@@ -1658,14 +1689,21 @@ def input_save_name(screen, font_title, font_input):
     return text if text else "存档"
 
 def show_message(message):
-    """显示消息"""
-    if FONT_MAIN:
+    """显示消息（限时显示，期间继续处理事件，避免界面假死）。"""
+    if not (FONT_MAIN and screen):
+        return
+    deadline = pygame.time.get_ticks() + 1500
+    while pygame.time.get_ticks() < deadline:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.event.post(event)
+                return
         msg_surface = FONT_MAIN.render(message, True, (255, 255, 255))
-        if msg_surface and screen:
+        if msg_surface:
             screen.blit(msg_surface, (screen.get_width() // 2 - msg_surface.get_width() // 2,
                                      screen.get_height() // 2))
             pygame.display.flip()
-            pygame.time.wait(2000)
+        pygame.time.wait(30)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 主入口
