@@ -634,7 +634,6 @@ class Particle:
         self.size = max(1, self.size - 0.1)
 
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
         color = self.color[:3]
         pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
 
@@ -1217,7 +1216,6 @@ def draw_title(surface, text, y_pos, screen_width):
 
 def clear():
     """清屏"""
-    global screen
     if screen:
         screen.fill(COLORS["bg_dark"])
 
@@ -1270,7 +1268,6 @@ def run_module(module_file):
 
 def mini_games_menu():
     """小游戏中心菜单 — 展示所有小游戏入口按钮并处理启动。"""
-    global screen, clock
     screen_width = screen.get_width()
     screen_height = screen.get_height()
 
@@ -1540,15 +1537,11 @@ def custom_resolution_dialog(settings_lines, current_w, current_h):
 
 def setting_menu():
     """游戏设置菜单 — 分辨率、全屏、地图容量、音效等选项的循环切换与即时生效。"""
-    global screen, clock
 
     try:
         sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        from main import save_login_state
-        login_state_available = True
     except Exception:
-        save_login_state = None
-        login_state_available = False
+        pass
 
     particles = []
 
@@ -1840,7 +1833,7 @@ def show_message(message):
 
 def main():
     """主菜单主循环 — 创建窗口、初始化字体、构建下拉菜单和按钮、渲染背景特效并处理用户交互。"""
-    global screen, clock, FONT_MAIN, FONT_SMALL, FONT_BIG, data
+    global screen, clock, FONT_MAIN, FONT_SMALL, FONT_BIG
 
     if not pygame.get_init():
         pygame.init()
@@ -2077,9 +2070,7 @@ def main():
 
     moving_elements = []
     
-    floating_texts = []
     
-    click_effects = []
     
     mouse_trail = MouseTrail(max_trails=25)
     
@@ -2424,7 +2415,6 @@ def main():
 
 def show_exit_menu():
     """退出确认弹窗 — 提供「退出游戏」「退出登录」「取消」三个选项。"""
-    global screen, clock
     screen_width = screen.get_width()
     screen_height = screen.get_height()
 

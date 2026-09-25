@@ -48,7 +48,6 @@ class Particle:
             self.size = max(1, self.size - 0.1)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
         if self.type == "sparkle":
             points = []
             for i in range(5):

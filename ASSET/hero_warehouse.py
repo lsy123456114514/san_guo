@@ -485,7 +485,6 @@ def main():
             equip_gun_btns = []
             unequip_gun_btns = []
             upgrade_gun_btns = []
-            gun_select_btns = []
 
             all_heroes = list(data["hero_fragments"].keys())
             

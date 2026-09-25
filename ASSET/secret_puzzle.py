@@ -17,15 +17,12 @@
 """
 
 import os
-import sys
 import base64
-import math
 import random
-import logging
 import pygame
 from typing import List, Tuple, Optional, Dict, Any
 
-from ASSET.game_data import data, save, get_font, draw_gradient_bg, logger, render_text
+from ASSET.game_data import data, save, get_font, draw_gradient_bg, logger
 
 # ══════════════════════════════════════════════════════════════
 # 常量配置

@@ -30,7 +30,6 @@ FONT_BIG = None
 
 def draw_title(surface, text, y_pos, screen_width):
     """绘制带特效的标题"""
-    global FONT_BIG
     # 发光效果
     for offset in range(5, 0, -1):
         alpha = 50 - offset * 8
@@ -62,7 +61,6 @@ def draw_title(surface, text, y_pos, screen_width):
 
 def draw_resource_panel(surface, x, y, width, height):
     """绘制资源面板"""
-    global FONT_SMALL
     panel_rect = pygame.Rect(x, y, width, height)
     
     # 面板背景
@@ -145,6 +143,10 @@ def main():
     
     # 主循环
     running = True
+    # 按钮只在解锁状态/天赋点/分辨率变化时重建 — 每帧重建会重置 hover 动画
+    talent_items = []
+    back_btn = None
+    talent_sig = None
     while running:
         # 渐变背景
         draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
@@ -163,8 +165,8 @@ def main():
         points_surf = FONT_MAIN.render(points_text, True, COLORS["accent_gold"])
         screen.blit(points_surf, (screen_width // 2 - points_surf.get_width() // 2, screen_height * 0.25))
         
-        # 天赋树
-        talent_items = []
+        # 天赋树：先算规格（标题照常绘制），签名变化才重建按钮
+        talent_specs = []
         button_width = min(350, screen_width * 0.45)
         button_height = min(70, screen_height * 0.1)
         button_spacing = min(10, screen_height * 0.015)
@@ -187,12 +189,12 @@ def main():
                 # 计算是否可以解锁
                 can_unlock = not is_unlocked and talent["cost"] <= talent_points
                 
-                # 创建天赋按钮
+                # 按钮文本
                 button_text = f"{talent['name']}\n{talent['description']}\n消耗: {talent['cost']}点"
                 if is_unlocked:
                     button_text += " (已解锁)"
                 
-                y = category_y + len(talent_items) * (button_height + button_spacing)
+                y = category_y + len(talent_specs) * (button_height + button_spacing)
                 if y + button_height > screen_height - 50:
                     break
                 
@@ -204,29 +206,28 @@ def main():
                 else:
                     button_color = COLORS["accent_red"]
                 
-                btn = Button(
-                    button_text,
-                    (screen_width - button_width) // 2,
-                    y,
-                    button_width,
-                    button_height,
-                    FONT_SMALL,
-                    normal_color=button_color
-                )
-                talent_items.append((btn, talent))
+                talent_specs.append((talent, button_text, button_color, y))
             
             category_y += len(category_info["talents"]) * (button_height + button_spacing) + 20
         
-        # 返回按钮
-        back_btn = Button(
-            "返回主菜单",
-            screen_width - 200,
-            screen_height - 60,
-            180,
-            50,
-            FONT_SMALL,
-            normal_color=COLORS["accent_blue_dark"]
-        )
+        sig = (tuple((t["id"], text, color, y) for t, text, color, y in talent_specs),
+               screen_width, screen_height)
+        if sig != talent_sig:
+            talent_sig = sig
+            talent_items = [
+                (Button(text, (screen_width - button_width) // 2, y,
+                        button_width, button_height, FONT_SMALL, normal_color=color), talent)
+                for talent, text, color, y in talent_specs
+            ]
+            back_btn = Button(
+                "返回主菜单",
+                screen_width - 200,
+                screen_height - 60,
+                180,
+                50,
+                FONT_SMALL,
+                normal_color=COLORS["accent_blue_dark"]
+            )
         
         # 鼠标位置
         mouse_pos = pygame.mouse.get_pos()

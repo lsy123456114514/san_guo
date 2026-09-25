@@ -326,7 +326,6 @@ def draw_pooled_particle(
     """
     if p.life <= 0:
         return
-    alpha = int(255 * (p.life / p.max_life)) if p.max_life > 0 else 255
     sx = int(p.x - camera_x)
     sy = int(p.y - camera_y)
     r = max(1, int(p.size * (p.life / p.max_life)))

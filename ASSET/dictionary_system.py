@@ -1517,7 +1517,7 @@ class DictionarySystem:
                 self.screen.blit(next_surf, next_text_rect)
             else:
                 # 测试结束
-                result_surf = self.font_large.render(f"测试结束！", True, COLORS["text"])
+                result_surf = self.font_large.render("测试结束！", True, COLORS["text"])
                 result_rect = result_surf.get_rect(center=(screen_width // 2, 200))
                 self.screen.blit(result_surf, result_rect)
                 

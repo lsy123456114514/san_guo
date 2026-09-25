@@ -258,7 +258,7 @@ class SecureNetwork:
                     length = struct.unpack('!I', buffer[:4])[0]
                     
                     if length > self.MAX_PACKET_SIZE:
-                        print(f"⚠️ 数据包过大")
+                        print("⚠️ 数据包过大")
                         break
                     
                     if len(buffer) >= 4 + length:

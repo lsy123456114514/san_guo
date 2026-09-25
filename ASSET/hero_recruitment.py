@@ -81,7 +81,6 @@ class Particle:
         self.size = max(1, self.size - 0.1)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
         color = self.color[:3]
         pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
 
@@ -169,7 +168,6 @@ def recruit_hero(recruit_type):
 
 def show_recruit_animation(hero_data):
     """显示招募动画"""
-    global screen, clock
     width, height = screen.get_size()
     particles = []
     

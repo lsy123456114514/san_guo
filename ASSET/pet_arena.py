@@ -181,7 +181,6 @@ def create_enemy_pet(level):
 
 def battle(player_pet, enemy_pet):
     """宠物对战"""
-    global screen, clock, FONT_MAIN, FONT_SMALL
     
     player_battle_pet = BattlePet(player_pet)
     enemy_battle_pet = BattlePet(enemy_pet)
@@ -194,7 +193,11 @@ def battle(player_pet, enemy_pet):
     
     running = True
     battle_phase = "player_turn"  # player_turn, enemy_turn, battle_end
-    player_skill = None
+    # 按钮只在技能表/分辨率变化时重建 — 每帧重建会重置 hover 动画
+    skill_buttons = []
+    skills_sig = None
+    attack_button = None
+    exit_button = None
     
     while running:
         # 获取当前屏幕大小
@@ -226,19 +229,28 @@ def battle(player_pet, enemy_pet):
         
         # 绘制技能按钮
         if battle_phase == "player_turn":
-            skill_buttons = []
-            start_x = screen_width // 2 - (len(player_pet.skills) * (button_width + button_spacing)) // 2
-            start_y = screen_height * 0.9
+            sig = (tuple(s['name'] for s in player_pet.skills), screen_width, screen_height)
+            if sig != skills_sig:
+                skills_sig = sig
+                start_x = screen_width // 2 - (len(player_pet.skills) * (button_width + button_spacing)) // 2
+                start_y = screen_height * 0.9
+                skill_buttons = [
+                    (Button(skill['name'],
+                            start_x + i * (button_width + button_spacing),
+                            start_y, button_width, button_height, FONT_SMALL), skill)
+                    for i, skill in enumerate(player_pet.skills)
+                ]
+                attack_button = Button("普通攻击", screen_width // 2 - button_width // 2,
+                                       start_y + button_height + button_spacing,
+                                       button_width, button_height, FONT_SMALL)
             
-            for i, skill in enumerate(player_pet.skills):
-                skill_button = Button(skill['name'], start_x + i * (button_width + button_spacing), start_y, button_width, button_height, FONT_SMALL)
-                skill_buttons.append((skill_button, skill))
-                skill_button.check_hover(pygame.mouse.get_pos())
+            mouse_pos = pygame.mouse.get_pos()
+            for skill_button, skill in skill_buttons:
+                skill_button.check_hover(mouse_pos)
                 skill_button.draw(screen)
             
             # 普通攻击按钮
-            attack_button = Button("普通攻击", screen_width // 2 - button_width // 2, start_y + button_height + button_spacing, button_width, button_height, FONT_SMALL)
-            attack_button.check_hover(pygame.mouse.get_pos())
+            attack_button.check_hover(mouse_pos)
             attack_button.draw(screen)
         
         # 绘制战斗结果
@@ -250,8 +262,10 @@ def battle(player_pet, enemy_pet):
                 result_text = FONT_MAIN.render("战斗胜利！", True, COLORS["accent_green"])
             screen.blit(result_text, (screen_width // 2 - result_text.get_width() // 2, result_y))
             
-            # 退出按钮
-            exit_button = Button("退出", screen_width // 2 - button_width // 2, result_y + 50, button_width, button_height, FONT_SMALL)
+            # 退出按钮（只构建一次）
+            if exit_button is None:
+                exit_button = Button("退出", screen_width // 2 - button_width // 2,
+                                     result_y + 50, button_width, button_height, FONT_SMALL)
             exit_button.check_hover(pygame.mouse.get_pos())
             exit_button.draw(screen)
         
@@ -357,7 +371,6 @@ def battle(player_pet, enemy_pet):
 
 def pet_arena_menu():
     """宠物竞技场菜单"""
-    global screen, clock, FONT_MAIN, FONT_SMALL
     
     # 确保宠物数据存在
     if 'pet' not in data:
@@ -370,6 +383,11 @@ def pet_arena_menu():
     particles = []
     
     running = True
+    # 按钮只在宠物等级/分辨率变化时重建 — 每帧重建会重置 hover 动画
+    challenge_buttons = []
+    back_button = None
+    menu_sig = None
+    challenge_levels = [(10, "初级挑战"), (20, "中级挑战"), (30, "高级挑战"), (50, "终极挑战")]
     while running:
         # 获取当前屏幕大小
         screen_width = screen.get_width()
@@ -414,15 +432,27 @@ def pet_arena_menu():
         screen.blit(type_text, (pet_x - type_text.get_width() // 2, pet_y - 60))
         screen.blit(element_text, (pet_x - element_text.get_width() // 2, pet_y - 30))
         
-        # 绘制挑战按钮
-        challenge_buttons = []
+        # 挑战按钮（按等级/分辨率签名重建）
         start_y = screen_height * 0.7
         
-        challenge_levels = [(10, "初级挑战"), (20, "中级挑战"), (30, "高级挑战"), (50, "终极挑战")]
+        sig = (pet.level, screen_width, screen_height)
+        if sig != menu_sig:
+            menu_sig = sig
+            challenge_buttons = [
+                (Button(label, screen_width // 2 - button_width // 2,
+                        start_y + i * (button_height + button_spacing),
+                        button_width, button_height, FONT_SMALL), level)
+                for i, (level, label) in enumerate(challenge_levels)
+                if pet.level >= level - 5
+            ]
+            back_button = Button("返回", screen_width // 2 - button_width // 2,
+                                 start_y + len(challenge_levels) * (button_height + button_spacing) + 20,
+                                 button_width, button_height, FONT_SMALL, normal_color=(100, 100, 150))
+        
+        btn_by_level = {level: btn for btn, level in challenge_buttons}
         for i, (level, label) in enumerate(challenge_levels):
             if pet.level >= level - 5:
-                challenge_button = Button(label, screen_width // 2 - button_width // 2, start_y + i * (button_height + button_spacing), button_width, button_height, FONT_SMALL)
-                challenge_buttons.append((challenge_button, level))
+                challenge_button = btn_by_level[level]
                 challenge_button.check_hover(pygame.mouse.get_pos())
                 challenge_button.draw(screen)
             else:
@@ -431,7 +461,6 @@ def pet_arena_menu():
                 screen.blit(lock_text, (screen_width // 2 - lock_text.get_width() // 2, start_y + i * (button_height + button_spacing) + 15))
         
         # 返回按钮
-        back_button = Button("返回", screen_width // 2 - button_width // 2, start_y + len(challenge_levels) * (button_height + button_spacing) + 20, button_width, button_height, FONT_SMALL, normal_color=(100, 100, 150))
         back_button.check_hover(pygame.mouse.get_pos())
         back_button.draw(screen)
         

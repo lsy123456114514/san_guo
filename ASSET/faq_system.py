@@ -68,7 +68,6 @@ FAQs = [
 
 def draw_title(surface, text, y_pos, screen_width):
     """绘制带特效的标题"""
-    global FONT_BIG
     # 发光效果
     for offset in range(5, 0, -1):
         alpha = 50 - offset * 8
@@ -100,7 +99,6 @@ def draw_title(surface, text, y_pos, screen_width):
 
 def draw_resource_panel(surface, x, y, width, height):
     """绘制资源面板"""
-    global FONT_SMALL
     panel_rect = pygame.Rect(x, y, width, height)
     
     # 面板背景

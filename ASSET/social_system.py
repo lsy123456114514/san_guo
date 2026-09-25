@@ -45,7 +45,6 @@ class Button:
         
         # 渐变效果
         for i in range(self.rect.height):
-            alpha = 255 - int(50 * (i / self.rect.height))
             gradient_color = tuple(min(255, c + 20) for c in color[:3])
             pygame.draw.line(surface, gradient_color, 
                            (self.rect.x, self.rect.y + i),
@@ -525,7 +524,7 @@ def draw_task_system(screen, font_big, font_main, font_small):
     # 标题
     draw_title(screen, "任务系统", screen_height * 0.1, screen_width, font_big)
     
-    task_system = TaskSystem()
+    TaskSystem()  # 构造时初始化 data["tasks"]
     
     # 每日任务
     y_offset = screen_height * 0.2
@@ -595,7 +594,7 @@ def draw_mail_system(screen, font_big, font_main, font_small):
     # 标题
     draw_title(screen, "邮件系统", screen_height * 0.1, screen_width, font_big)
     
-    mail_system = MailSystem()
+    MailSystem()  # 构造时初始化 data["mail"]
     
     # 邮件列表
     y_offset = screen_height * 0.2
@@ -635,7 +634,7 @@ def draw_friend_system(screen, font_big, font_main, font_small):
     # 标题
     draw_title(screen, "好友系统", screen_height * 0.1, screen_width, font_big)
     
-    friend_system = FriendSystem()
+    FriendSystem()  # 构造时初始化 data["friends"]
     
     # 好友列表
     y_offset = screen_height * 0.2
@@ -738,9 +737,9 @@ def main():
 
         # 系统初始化
         pet_system = PetSystem()
-        task_system = TaskSystem()
+        TaskSystem()  # 构造时初始化 data["tasks"]
         mail_system = MailSystem()
-        friend_system = FriendSystem()
+        FriendSystem()  # 构造时初始化 data["friends"]
         
         # 发送欢迎邮件
         if not data["mail"]["inbox"]:
@@ -810,7 +809,7 @@ def main():
                 pet_container.draw(screen, render_pet)
             elif current_page == "task":
                 draw_title(screen, "任务系统", SCREEN_HEIGHT * 0.1, SCREEN_WIDTH, font_big)
-                task_system = TaskSystem()
+                TaskSystem()  # 构造时初始化 data["tasks"]
                 all_tasks = data["tasks"]["daily"] + data["tasks"]["main"]
                 task_container.set_items(all_tasks)
                 
@@ -867,7 +866,7 @@ def main():
                     pygame.draw.rect(surface, COLORS["accent_gold"], friend_rect, 2, border_radius=10)
                     
                     name_surf = font_main.render(friend["username"], True, COLORS["accent_gold"])
-                    status_surf = font_small.render(f"状态: 在线" if friend.get("status", "online") == "online" else "状态: 离线", True, COLORS["text_white"])
+                    status_surf = font_small.render("状态: 在线" if friend.get("status", "online") == "online" else "状态: 离线", True, COLORS["text_white"])
                     
                     surface.blit(name_surf, (10, y - 120 + 10))
                     surface.blit(status_surf, (10, y - 120 + 40))

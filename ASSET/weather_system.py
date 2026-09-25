@@ -612,7 +612,6 @@ class ScrollableContainer:
 def draw_weather_system(surface, font_big, font_main, font_small, weather_system, container=None):
     """绘制天气系统"""
     screen_width = surface.get_width()
-    screen_height = surface.get_height()
     margin = 20
     
     # 标题

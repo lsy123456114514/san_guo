@@ -546,7 +546,6 @@ def main():
         COLOR_INPUT = (30, 30, 45)
         COLOR_INPUT_BORDER = (139, 69, 19)
         COLOR_INPUT_BORDER_ACTIVE = (255, 215, 0)
-        COLOR_ERROR = (255, 100, 100)
         
         def draw_text(text, x, y, font, color=COLOR_TEXT):
             """绘制文字"""
@@ -665,7 +664,6 @@ def main():
         )
         
         # 状态
-        is_registering = False
         
         # 主循环
         running = True

@@ -301,7 +301,7 @@ class AutoUpdater:
                     response.status_code, dt,
                     response.headers.get('Content-Type', '?'), snippet,
                 )
-                self.error_message = f"pCloud 返回格式错误（可能是网关超时页/反爬拦截）"
+                self.error_message = "pCloud 返回格式错误（可能是网关超时页/反爬拦截）"
                 return None
 
             if data.get('result') != 0:

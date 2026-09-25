@@ -46,7 +46,6 @@ class Button:
         
         # 渐变效果
         for i in range(self.rect.height):
-            alpha = 255 - int(50 * (i / self.rect.height))
             gradient_color = tuple(min(255, c + 20) for c in color[:3])
             pygame.draw.line(surface, gradient_color, 
                            (self.rect.x, self.rect.y + i),
@@ -223,7 +222,6 @@ class AlchemySystem:
                         data["resources"][ingredient] -= amount
                     
                     # 计算制作时间
-                    base_time = data.get('settings', {}).get('time', {}).get('base_time', 60)
                     time_required = recipe["time"]
                     
                     # 创建时间任务

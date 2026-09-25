@@ -45,7 +45,6 @@ class Button:
         
         # 渐变效果
         for i in range(self.rect.height):
-            alpha = 255 - int(50 * (i / self.rect.height))
             gradient_color = tuple(min(255, c + 20) for c in color[:3])
             pygame.draw.line(surface, gradient_color, 
                            (self.rect.x, self.rect.y + i),

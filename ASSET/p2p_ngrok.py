@@ -51,7 +51,7 @@ class NgrokTunnel:
         try:
             args = ['ngrok', proto, str(local_port)]
             
-            logger.info(f"启动ngrok隧道...")
+            logger.info("启动ngrok隧道...")
             self.ngrok_process = subprocess.Popen(
                 args,
                 stdout=subprocess.PIPE,

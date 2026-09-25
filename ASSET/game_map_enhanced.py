@@ -118,7 +118,6 @@ class Particle:
     def draw(self, surface):
         if self.life <= 0:
             return
-        alpha = int(255 * (self.life / self.max_life))
         color = self.color[:3] if len(self.color) > 3 else self.color
         pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
 
@@ -555,7 +554,6 @@ def show_occupy_menu(surface, x, y, loc, font, screen_width, screen_height):
 def show_town(button_rect, surface, screen_width, screen_height, font_main, font_small, clock):
     """显示我的城镇"""
     # 城镇大小
-    TOWN_SIZE = 1000
     TOWN_DISPLAY_SIZE = min(600, screen_width * 0.8, screen_height * 0.8)
     
     # 计算城镇窗口位置

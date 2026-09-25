@@ -3263,7 +3263,6 @@ class GameMap3D:
             glColor3f(0.5, 0.4, 0.3)
             self.draw_cube(base_width, base_height, base_depth)
             
-            wall_thickness = 0.5
             wall_height = 12
             
             if loc_type == "关隘":
@@ -4982,7 +4981,6 @@ class GameMap3D:
             self.cheat_stats["codes_successful"] += 1
             self.cheat_stats["last_code"] = code_id
             
-            effect = code_data.get("effect", "")
             reward = code_data.get("reward", {})
             
             if "health" in reward:
@@ -5419,7 +5417,6 @@ class GameMap3D:
             
             # 建筑碰撞检测
             player_radius = 0.8
-            player_height = 2.0
             for loc in self.locations:
                 if "collision_box" in loc:
                     box = loc["collision_box"]

@@ -165,10 +165,15 @@ class Pet:
         """获取进化阶段名称"""
         if not hasattr(self, 'evolution_level'):
             return "普通"
-        evolution_names = ["普通", "进化", "超进化", "究极进化"]
+        evolution_names = ["普通", "精英", "史诗", "传说觉醒"]
         if self.evolution_level < len(evolution_names):
             return evolution_names[self.evolution_level]
         return f"{self.evolution_level}阶进化"
+
+    def get_stage_name(self):
+        """获取成长阶段名称（1-3 阶）"""
+        stage_names = {1: "幼年期", 2: "成长期", 3: "成熟期"}
+        return stage_names.get(self.stage, f"{self.stage}阶段")
     
     def learn_skill(self, skill_name):
         """学习技能"""
@@ -478,7 +483,7 @@ def play_with_pet():
 
 def pet_menu():
     """宠物菜单"""
-    global screen, clock, FONT_MAIN, FONT_SMALL
+    global screen
     
     # 确保字体初始化
     if FONT_MAIN is None or FONT_SMALL is None:
@@ -535,6 +540,7 @@ def pet_menu():
     particles = []
     
     running = True
+    menu_sig = None  # 按钮签名：分辨率没变就不重建
     while running:
         # 获取当前屏幕大小
         screen_width = screen.get_width()
@@ -641,15 +647,17 @@ def pet_menu():
                 screen.blit(pet_text, (hatch_x, hatch_item_y - 25))
                 screen.blit(time_text_surf, (hatch_x + progress_width - time_text_surf.get_width(), hatch_item_y - 25))
         
-        # 创建按钮
+        # 创建按钮（只在分辨率变化时重建 — 每帧重建会重置 hover 动画）
         button_y = screen_height * 0.9
-        
-        feed_button = Button("喂食", screen_width // 2 - 5 * button_width // 2 - 4 * button_spacing // 2, button_y, button_width, button_height, FONT_SMALL)
-        play_button = Button("玩耍", screen_width // 2 - 3 * button_width // 2 - 2 * button_spacing // 2, button_y, button_width, button_height, FONT_SMALL)
-        hatch_button = Button("孵化", screen_width // 2 - button_width // 2, button_y, button_width, button_height, FONT_SMALL)
-        warehouse_button = Button("宠物仓库", screen_width // 2 + button_width // 2 + button_spacing, button_y, button_width, button_height, FONT_SMALL)
-        evolve_button = Button("进化", screen_width // 2 + 3 * button_width // 2 + 2 * button_spacing, button_y, button_width, button_height, FONT_SMALL, normal_color=COLORS["accent_purple"])
-        back_button = Button("返回", screen_width // 2 - button_width // 2, button_y + button_height + button_spacing, button_width, button_height, FONT_SMALL, normal_color=(100, 100, 150))
+        sig = (screen_width, screen_height)
+        if sig != menu_sig:
+            menu_sig = sig
+            feed_button = Button("喂食", screen_width // 2 - 5 * button_width // 2 - 4 * button_spacing // 2, button_y, button_width, button_height, FONT_SMALL)
+            play_button = Button("玩耍", screen_width // 2 - 3 * button_width // 2 - 2 * button_spacing // 2, button_y, button_width, button_height, FONT_SMALL)
+            hatch_button = Button("孵化", screen_width // 2 - button_width // 2, button_y, button_width, button_height, FONT_SMALL)
+            warehouse_button = Button("宠物仓库", screen_width // 2 + button_width // 2 + button_spacing, button_y, button_width, button_height, FONT_SMALL)
+            evolve_button = Button("进化", screen_width // 2 + 3 * button_width // 2 + 2 * button_spacing, button_y, button_width, button_height, FONT_SMALL, normal_color=COLORS["accent_purple"])
+            back_button = Button("返回", screen_width // 2 - button_width // 2, button_y + button_height + button_spacing, button_width, button_height, FONT_SMALL, normal_color=(100, 100, 150))
         
         # 处理鼠标
         mouse_pos = pygame.mouse.get_pos()
@@ -758,7 +766,6 @@ def pet_menu():
 
 def hatch_selection_menu():
     """孵化选择界面 - 让用户选择要孵化哪个宠物蛋"""
-    global screen, clock, FONT_MAIN, FONT_SMALL
     
     # 装饰粒子
     particles = []
@@ -773,6 +780,8 @@ def hatch_selection_menu():
     
     running = True
     selected_egg = None
+    egg_buttons = []
+    egg_sig = None  # 按钮签名：文本/位置/分辨率没变就不重建
     
     while running:
         # 获取当前屏幕大小
@@ -802,10 +811,10 @@ def hatch_selection_menu():
         # 标题
         draw_title(screen, "选择要孵化的宠物蛋", screen_height * 0.12, screen_width)
         
-        # 绘制可用的宠物蛋
-        egg_buttons = []
+        # 绘制可用的宠物蛋（先算规格，签名变化才重建按钮）
         start_y = screen_height * 0.25
         
+        egg_specs = []
         for i, (egg_key, egg_name, pet_type, hatch_time, color) in enumerate(egg_types):
             egg_count = data['resources'].get(egg_key, 0)
             
@@ -813,7 +822,6 @@ def hatch_selection_menu():
             btn_x = screen_width // 2 - button_width // 2
             btn_y = start_y + i * (button_height + button_spacing)
             
-            # 创建按钮
             if egg_count > 0:
                 btn_text = f"{egg_name} (拥有: {egg_count})"
                 btn_color = color
@@ -821,20 +829,31 @@ def hatch_selection_menu():
                 btn_text = f"{egg_name} (未拥有)"
                 btn_color = (100, 100, 100)
             
-            egg_button = Button(btn_text, btn_x, btn_y, button_width, button_height, FONT_SMALL, 
-                               normal_color=btn_color, hover_color=btn_color)
-            egg_buttons.append((egg_button, egg_key, pet_type, hatch_time, egg_count > 0))
-            
-            # 检查悬停和绘制
-            mouse_pos = pygame.mouse.get_pos()
+            egg_specs.append((egg_key, pet_type, hatch_time, egg_count > 0,
+                              btn_text, btn_color, btn_x, btn_y))
+        
+        sig = (tuple((t, c, x, y) for _k, _p, _h, _a, t, c, x, y in egg_specs),
+               screen_width, screen_height)
+        if sig != egg_sig:
+            egg_sig = sig
+            egg_buttons = [
+                (Button(text, x, y, button_width, button_height, FONT_SMALL,
+                        normal_color=col, hover_color=col),
+                 key, ptype, hatch_t, has)
+                for key, ptype, hatch_t, has, text, col, x, y in egg_specs
+            ]
+            back_button = Button("返回", screen_width // 2 - button_width // 2, 
+                                screen_height * 0.85, button_width, button_height, 
+                                FONT_SMALL, normal_color=(100, 100, 150))
+        
+        # 检查悬停和绘制
+        mouse_pos = pygame.mouse.get_pos()
+        for egg_button, _k, _p, _h, _a in egg_buttons:
             egg_button.check_hover(mouse_pos)
             egg_button.draw(screen)
         
         # 返回按钮
-        back_button = Button("返回", screen_width // 2 - button_width // 2, 
-                            screen_height * 0.85, button_width, button_height, 
-                            FONT_SMALL, normal_color=(100, 100, 150))
-        back_button.check_hover(pygame.mouse.get_pos())
+        back_button.check_hover(mouse_pos)
         back_button.draw(screen)
         
         pygame.display.flip()
@@ -866,7 +885,6 @@ def hatch_selection_menu():
 
 def pet_warehouse_menu():
     """宠物仓库菜单"""
-    global screen, clock, FONT_MAIN, FONT_SMALL
     
     # 确保宠物仓库存在
     if 'pet_warehouse' not in data:
@@ -877,6 +895,10 @@ def pet_warehouse_menu():
     particles = []
     
     running = True
+    # 按钮只在上阵状态/仓库列表/分辨率变化时重建 — 每帧重建会重置 hover 动画
+    pet_buttons = []
+    back_button = None
+    wh_sig = None
     while running:
         # 获取当前屏幕大小
         screen_width = screen.get_width()
@@ -885,7 +907,6 @@ def pet_warehouse_menu():
         # 按钮设置
         button_width = min(200, screen_width * 0.3)
         button_height = min(50, screen_height * 0.07)
-        button_spacing = min(15, screen_height * 0.025)
         
         # 渐变背景
         draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
@@ -905,10 +926,10 @@ def pet_warehouse_menu():
         # 标题
         draw_title(screen, "宠物仓库", screen_height * 0.12, screen_width)
         
-        # 绘制宠物列表
+        # 绘制宠物列表（先画卡片，按钮按签名重建）
         warehouse_y = screen_height * 0.2
-        pet_buttons = []
         
+        equip_specs = []
         for i, pet_dict in enumerate(data['pet_warehouse']):
             pet = Pet.from_dict(pet_dict)
             pet_x = screen_width // 2 - 300
@@ -928,11 +949,23 @@ def pet_warehouse_menu():
             screen.blit(level_text, (pet_x + 20, pet_y + 40))
             screen.blit(status_text, (pet_x + 150, pet_y + 40))
             
-            # 上阵/下阵按钮
-            equip_text = "下阵" if pet.is_equipped else "上阵"
-            equip_button = Button(equip_text, pet_x + 450, pet_y + 10, 120, 50, FONT_SMALL)
-            pet_buttons.append((equip_button, i))
-            equip_button.check_hover(pygame.mouse.get_pos())
+            # 上阵/下阵按钮规格
+            equip_specs.append(("下阵" if pet.is_equipped else "上阵",
+                                pet_x + 450, pet_y + 10, i))
+        
+        sig = (tuple(equip_specs), screen_width, screen_height)
+        if sig != wh_sig:
+            wh_sig = sig
+            pet_buttons = [
+                (Button(text, x, y, 120, 50, FONT_SMALL), i)
+                for text, x, y, i in equip_specs
+            ]
+            back_button = Button("返回", screen_width // 2 - button_width // 2, screen_height * 0.9, button_width, button_height, FONT_SMALL, normal_color=(100, 100, 150))
+        
+        # 上阵/下阵按钮
+        mouse_pos = pygame.mouse.get_pos()
+        for equip_button, _i in pet_buttons:
+            equip_button.check_hover(mouse_pos)
             equip_button.draw(screen)
         
         # 空仓库提示
@@ -941,8 +974,7 @@ def pet_warehouse_menu():
             screen.blit(empty_text, (screen_width // 2 - empty_text.get_width() // 2, screen_height // 2))
         
         # 返回按钮
-        back_button = Button("返回", screen_width // 2 - button_width // 2, screen_height * 0.9, button_width, button_height, FONT_SMALL, normal_color=(100, 100, 150))
-        back_button.check_hover(pygame.mouse.get_pos())
+        back_button.check_hover(mouse_pos)
         back_button.draw(screen)
         
         pygame.display.flip()

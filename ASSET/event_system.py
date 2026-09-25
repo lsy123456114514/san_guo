@@ -294,10 +294,9 @@ class EventSystem:
         # 记录事件历史
         self.event_history.append(self.current_event["id"])
         self.save_to_data()  # 保存到存档
-        event_name = self.current_event["name"]
         self.current_event = None
         
-        return f"事件完成！", True
+        return "事件完成！", True
     
     def apply_reward(self, reward):
         """应用奖励"""
@@ -498,7 +497,7 @@ class EventDialog:
         
         if event.type == pygame.MOUSEMOTION:
             # 检查选项悬停
-            choice_y = dialog_y = (screen_height - dialog_height) // 2 + 200
+            choice_y = (screen_height - dialog_height) // 2 + 200
             lines = len(self.event["description"].split())
             choice_y += lines * 35
             
@@ -511,7 +510,7 @@ class EventDialog:
         
         elif event.type == pygame.MOUSEBUTTONDOWN:
             # 检查选项点击
-            choice_y = dialog_y = (screen_height - dialog_height) // 2 + 200
+            choice_y = (screen_height - dialog_height) // 2 + 200
             lines = len(self.event["description"].split())
             choice_y += lines * 35
             

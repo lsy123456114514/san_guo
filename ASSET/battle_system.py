@@ -76,7 +76,6 @@ class Particle:
         self.size = max(0.5, self.size - 0.03)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
         pygame.draw.circle(surface, self.color, (int(self.x), int(self.y)), int(self.size))
 
 class FloatingText:
@@ -677,7 +676,6 @@ def draw_hero_card(surface, x, y, hero, is_player, font_normal, font_small):
         bond_rect = bond_surf.get_rect(center=(x + card_width // 2, y + 205))
         surface.blit(bond_surf, bond_rect)
         # 调整小弟位置
-        minion_y = y + card_height + 10
     else:
         # 小弟数量
         minion_count = sum(1 for m in hero.minions if m.hp > 0)

@@ -342,7 +342,6 @@ def get_system_font_name() -> str | None:
 
     # 2) 其次使用系统中的中文字体
     s = platform.system()
-    is_android = 'ANDROID_DATA' in os.environ
     if s == "Windows":
         font_list = ["Microsoft YaHei", "SimHei", "Microsoft YaHei UI",
                      "SimSun", "KaiTi", "FangSong"]

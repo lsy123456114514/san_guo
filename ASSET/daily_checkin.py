@@ -246,13 +246,11 @@ def main():
         clock = pygame.time.Clock()
 
         # 计算缩放因子
-        scale = min(SCREEN_WIDTH / 900, SCREEN_HEIGHT / 700)
 
         # 字体初始化（根据屏幕大小自适应）
         def init_font(size):
             return get_font(size)
 
-        font_title = init_font(36 if not 'ANDROID_DATA' in os.environ else 52)
         font_normal = init_font(24 if not 'ANDROID_DATA' in os.environ else 36)
         font_small = init_font(18 if not 'ANDROID_DATA' in os.environ else 28)
 

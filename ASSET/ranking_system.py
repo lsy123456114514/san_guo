@@ -230,13 +230,11 @@ def main():
         clock = pygame.time.Clock()
 
         # 计算缩放因子
-        scale = min(SCREEN_WIDTH / 900, SCREEN_HEIGHT / 700)
 
         # 字体初始化（根据屏幕大小自适应）
         def init_font(size):
             return get_font(size)
 
-        font_title = init_font(36 if not 'ANDROID_DATA' in os.environ else 52)
         font_normal = init_font(24 if not 'ANDROID_DATA' in os.environ else 36)
         font_small = init_font(18 if not 'ANDROID_DATA' in os.environ else 28)
 
@@ -345,7 +343,6 @@ def main():
             # 显示排行榜
             ranking_data = rankings[ranking_types[current_ranking][1]]
             ranking_name = ranking_types[current_ranking][0]
-            ranking_unit = ranking_types[current_ranking][2]
 
             # 排行榜标题
             ranking_title = font_normal.render(f"{ranking_name}排行榜", True, COLORS["accent_blue"])

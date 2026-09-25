@@ -113,7 +113,6 @@ class ActivityCenter:
     
     def _refresh_activities(self):
         """刷新活动状态"""
-        current_time = time.time()
         
         for activity in self.activities:
             if activity["id"] in data["activities"]["claimed_rewards"]:

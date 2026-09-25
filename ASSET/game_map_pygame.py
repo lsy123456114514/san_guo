@@ -97,7 +97,6 @@ class Particle:
         self.size = max(0.5, self.size - 0.05)
     
     def draw(self, surface: pygame.Surface):
-        alpha = int(255 * (self.life / self.max_life))
         # 只使用RGB部分，确保颜色参数有效
         color = self.color[:3]  # 只取RGB值，去掉alpha通道
         pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
@@ -552,7 +551,6 @@ def main():
         max_zoom = 10.0
         drag_start = None
         selected_loc = None
-        hover_loc = None
         
         # 占领系统
         capturing_loc = None  # 当前正在占领的地点索引
@@ -616,7 +614,6 @@ def main():
                 drag_start = None
 
             # 检测悬停
-            hover_loc = None
             offset_x, offset_y = view_offset
             
             # 占领进度更新
@@ -671,8 +668,6 @@ def main():
                 if -50 <= screen_x <= SCREEN_WIDTH + 50 and -50 <= screen_y <= SCREEN_HEIGHT + 50:
                     # 检测悬停
                     is_hover = math.hypot(mx - screen_x, my - screen_y) <= scaled_radius + 5
-                    if is_hover:
-                        hover_loc = idx
                     
                     is_selected = (selected_loc == idx)
                     is_capturing = (capturing_loc == idx)

@@ -63,7 +63,6 @@ class NetworkPVP:
         """处理接收到的消息"""
         try:
             message = json.loads(data.decode('utf-8'))
-            msg_type = message.get('type', '')
             
             if self.message_handler:
                 self.message_handler(message, addr)

@@ -44,7 +44,6 @@ class Button:
         
         # 渐变效果
         for i in range(self.rect.height):
-            alpha = 255 - int(50 * (i / self.rect.height))
             gradient_color = tuple(min(255, c + 20) for c in color[:3])
             pygame.draw.line(surface, gradient_color, 
                            (self.rect.x, self.rect.y + i),
@@ -164,7 +163,7 @@ class TradingSystem:
                     offer["buyer"] = data.get("username", "player")
                     offer["completed_at"] = datetime.datetime.now().isoformat()
                     save()
-                    return True, f"购买成功！"
+                    return True, "购买成功！"
                 else:
                     return False, "金币不足"
         return False, "交易 offer 不存在"
@@ -187,7 +186,7 @@ def draw_trading_system(screen, font_big, font_main, font_small):
     # 标题
     draw_title(screen, "交易系统", screen_height * 0.1, screen_width, font_big)
     
-    trading_system = TradingSystem()
+    TradingSystem()  # 构造时初始化 data["trading"]
     
     # 交易 offer 列表
     y_offset = screen_height * 0.2
