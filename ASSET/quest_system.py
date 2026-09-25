@@ -1,10 +1,7 @@
 # -*- coding: utf-8 -*-
 """任务/主线/章节系统 - 每日/每周/主线任务调度与领取奖励"""
-import os
 import pygame
-import time
-from datetime import datetime, timedelta
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, get_system_font_name, draw_gradient_bg
 from ASSET.task_chain_system import TaskChainSystem
 from ASSET import safe_exit
 
@@ -27,7 +24,6 @@ COLORS = {
     "btn_blue_hover": (80, 160, 255),
 }
 
-
 # ============ 按钮控件 ============
 
 class Button:
@@ -49,7 +45,6 @@ class Button:
 
     def update(self, mouse_pos):
         self.hover = self.rect.collidepoint(mouse_pos)
-
 
 # ============ 绘制函数 ============
 
@@ -84,7 +79,7 @@ def main(screen=None):
             FONT_MAIN = pygame.font.Font(font_name, 22) if font_name else pygame.font.SysFont(None, 26)
             FONT_SMALL = pygame.font.Font(font_name, 16) if font_name else pygame.font.SysFont(None, 20)
             FONT_BIG = pygame.font.Font(font_name, 32) if font_name else pygame.font.SysFont(None, 38)
-        except Exception as _e:
+        except Exception:
             FONT_MAIN = pygame.font.SysFont(None, 26)
             FONT_SMALL = pygame.font.SysFont(None, 20)
             FONT_BIG = pygame.font.SysFont(None, 38)
@@ -138,7 +133,7 @@ def main(screen=None):
                     tasks = task_system.get_weekly_tasks() if hasattr(task_system, 'get_weekly_tasks') else []
                 else:
                     tasks = task_system.get_main_tasks() if hasattr(task_system, 'get_main_tasks') else []
-            except Exception as _e:
+            except Exception:
                 tasks = []
 
             if not isinstance(tasks, list):
@@ -221,7 +216,6 @@ def main(screen=None):
 
     except Exception as e:
         safe_exit("任务系统", str(e))
-
 
 if __name__ == "__main__":
     main()

@@ -1,10 +1,7 @@
 """时装系统 - 时装装备与外观切换"""
 
 import pygame
-import json
-import os
-from ASSET.game_data import data, save, FASHION_ITEMS, get_system_font_name, load_sound, logger, draw_gradient_bg, cull_dead, get_font
-from ASSET import safe_exit
+from ASSET.game_data import data, save, FASHION_ITEMS, get_system_font_name, draw_gradient_bg
 
 # 颜色定义
 COLORS = {
@@ -346,7 +343,7 @@ def main():
         else:
             FONT_MAIN = pygame.font.Font(None, 40)
             FONT_SMALL = pygame.font.Font(None, 24)
-    except Exception as _e:
+    except Exception:
         FONT_MAIN = pygame.font.Font(None, 40)
         FONT_SMALL = pygame.font.Font(None, 24)
     

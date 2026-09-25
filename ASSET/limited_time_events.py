@@ -4,7 +4,7 @@ import os
 import pygame
 import datetime
 import random
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font
 from ASSET import safe_exit
 
 # 颜色主题

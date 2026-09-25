@@ -1,7 +1,6 @@
 """武将图鉴系统 - 名将收集与解锁奖励"""
 
-import time
-from ASSET.game_data import data, save, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save
 
 class HeroCollectionSystem:
     """武将图鉴收集系统 - 收集天下名将，解锁奖励"""

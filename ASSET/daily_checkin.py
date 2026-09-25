@@ -2,11 +2,9 @@
 
 import os
 import pygame
-import json
 import random
-import math
-from datetime import datetime, timedelta
-from ASSET.game_data import data, save, logger, draw_gradient_bg, cull_dead, get_font
+from datetime import datetime
+from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font
 from ASSET import safe_exit
 
 # 颜色主题

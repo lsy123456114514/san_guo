@@ -8,15 +8,13 @@ import os
 import sys
 import subprocess
 import tempfile
-import zipfile
 import shutil
 import time
 import urllib.request
 import urllib.error
-import hashlib
 import pygame
 
-from ASSET.game_data import logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import logger
 
 try:
     import requests
@@ -64,7 +62,7 @@ class AutoUpdater:
         try:
             self.font = pygame.font.SysFont("Microsoft YaHei", 24)
             self.font_small = pygame.font.SysFont("Microsoft YaHei", 16)
-        except Exception as _e:
+        except Exception:
             self.font = pygame.font.Font(None, 24)
             self.font_small = pygame.font.Font(None, 16)
     
@@ -240,7 +238,7 @@ class AutoUpdater:
             phase = "SIZE"
             try:
                 file_size = ftp.size(remote_path)
-            except Exception as _e:
+            except Exception:
                 file_size = 0
             logger.info("[更新] FTP 登录成功 remote_size=%d 累计耗时 %.3fs",
                         file_size, time.perf_counter() - t0)
@@ -292,11 +290,11 @@ class AutoUpdater:
             logger.info("[更新] pCloud 返回 状态=%s 耗时 %.3fs", response.status_code, dt)
             try:
                 data = response.json()
-            except ValueError as jerr:
+            except ValueError:
                 snippet = ""
                 try:
                     snippet = response.text[:300].replace("\r", " ").replace("\n", "\\n")
-                except Exception as _e:
+                except Exception:
                     snippet = "<无法读取 body>"
                 logger.error(
                     "[更新] pCloud 返回非 JSON！HTTP=%s 耗时=%.3fs Content-Type=%s snippet=%s",
@@ -348,11 +346,11 @@ class AutoUpdater:
 
             try:
                 data = response.json()
-            except ValueError as jerr:
+            except ValueError:
                 snippet = ""
                 try:
                     snippet = response.text[:300].replace("\r", " ").replace("\n", "\\n")
-                except Exception as _e:
+                except Exception:
                     snippet = "<无法读取 body>"
                 logger.error(
                     "[更新] GitHub 返回非 JSON！HTTP=%s 耗时=%.3fs Content-Type=%s snippet=%s",
@@ -401,11 +399,11 @@ class AutoUpdater:
             logger.info("[更新] 自定义源 返回 状态=%s 耗时 %.3fs", response.status_code, dt)
             try:
                 data = response.json()
-            except ValueError as jerr:
+            except ValueError:
                 snippet = ""
                 try:
                     snippet = response.text[:300].replace("\r", " ").replace("\n", "\\n")
-                except Exception as _e:
+                except Exception:
                     snippet = "<无法读取 body>"
                 logger.error(
                     "[更新] 自定义源 返回非 JSON！HTTP=%s 耗时=%.3fs Content-Type=%s snippet=%s",

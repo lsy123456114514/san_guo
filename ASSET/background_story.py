@@ -3,13 +3,10 @@
 """
 游戏背景故事介绍
 """
-import os
-import sys
 import pygame
 import math
 import random
-from ASSET.game_data import data, save, logger, draw_gradient_bg, cull_dead, get_font
-from ASSET.game_main_menu import Button, COLORS, init_fonts
+from ASSET.game_main_menu import Button, init_fonts
 
 # 全局变量
 FONT_MAIN = None

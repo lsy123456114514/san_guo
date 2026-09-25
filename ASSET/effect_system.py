@@ -3,8 +3,7 @@
 import pygame
 import random
 import math
-import time
-from ASSET.game_data import data, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import logger
 
 class EffectSystem:
     def __init__(self):

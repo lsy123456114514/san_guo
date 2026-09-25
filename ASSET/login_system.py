@@ -6,8 +6,7 @@ import platform
 import json
 import time
 import logging
-from ASSET.game_data import get_system_font_name, RESOURCES, SETTINGS, default_save, logger, get_font, draw_gradient_bg
-from ASSET import safe_exit
+from ASSET.game_data import RESOURCES, default_save, logger, get_font
 
 def hide_file(filepath):
     """隐藏文件（仅Windows）"""
@@ -17,7 +16,6 @@ def hide_file(filepath):
             ctypes.windll.kernel32.SetFileAttributesW(filepath, 0x02)
         except Exception as _e:
             logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
-
 
 def unhide_file(filepath):
     """清除隐藏/只读属性，确保文件可写（仅Windows）"""
@@ -72,23 +70,25 @@ class MessageWindow:
         # 颜色定义
         self.COLOR_TITLE = (255, 210, 0)
         self.COLOR_TEXT = (255, 255, 255)
-        self.COLOR_BTN = (40, 100, 200)
-        self.COLOR_BTN_HOVER = (60, 130, 230)
-        
-        # 创建按钮
+        self.COLOR_BTN = (100, 70, 40)
+        self.COLOR_BTN_HOVER = (140, 95, 55)
+
+        # 创建按钮（错误/提示类弹窗只留「确定」；「确认…」类才带取消）
         btn_width = min(100, self.window_width * 0.3)
         btn_height = min(40, self.window_height * 0.2)
         btn_spacing = 20
-        
+        self.show_cancel = self.title.startswith("确认")
+
         self.ok_btn = Button(
-            self.window_x + (self.window_width - btn_width * 2 - btn_spacing) // 2,
+            self.window_x + (self.window_width - btn_width) // 2 if not self.show_cancel
+            else self.window_x + (self.window_width - btn_width * 2 - btn_spacing) // 2,
             self.window_y + self.window_height - btn_height - 20,
             btn_width,
             btn_height,
             "确定",
             self.font_normal
         )
-        
+
         self.cancel_btn = Button(
             self.window_x + (self.window_width - btn_width * 2 - btn_spacing) // 2 + btn_width + btn_spacing,
             self.window_y + self.window_height - btn_height - 20,
@@ -97,8 +97,27 @@ class MessageWindow:
             "取消",
             self.font_normal
         )
-        
+
         self.result = None
+
+    def _wrap_cn(self, max_width):
+        """按像素宽度逐字折行 — split(' ') 对中文无效。"""
+        lines = []
+        current = ""
+        for ch in self.message:
+            if ch == "\n":
+                lines.append(current)
+                current = ""
+                continue
+            trial = current + ch
+            if self.font_normal.size(trial)[0] <= max_width:
+                current = trial
+            else:
+                lines.append(current)
+                current = ch
+        if current:
+            lines.append(current)
+        return lines or [""]
     
     def draw(self, mx, my):
         # 绘制背景遮罩
@@ -108,28 +127,17 @@ class MessageWindow:
         
         # 绘制窗口
         window_rect = pygame.Rect(self.window_x, self.window_y, self.window_width, self.window_height)
-        pygame.draw.rect(self.screen, (30, 40, 60), window_rect)
-        pygame.draw.rect(self.screen, (60, 80, 120), window_rect, 2)
+        pygame.draw.rect(self.screen, (30, 40, 60), window_rect, border_radius=12)
+        pygame.draw.rect(self.screen, (139, 69, 19), window_rect, 3, border_radius=12)
+        pygame.draw.rect(self.screen, (255, 215, 0), window_rect, 1, border_radius=12)
         
         # 绘制标题
         title_surf = self.font_title.render(self.title, True, self.COLOR_TITLE)
         if title_surf:
             self.screen.blit(title_surf, (self.window_x + (self.window_width - title_surf.get_width()) // 2, self.window_y + 20))
         
-        # 绘制消息
-        message_lines = []
-        words = self.message.split(' ')
-        current_line = ""
-        
-        for word in words:
-            test_line = current_line + word + " "
-            if self.font_normal.size(test_line)[0] <= self.window_width - 40:
-                current_line = test_line
-            else:
-                message_lines.append(current_line)
-                current_line = word + " "
-        if current_line:
-            message_lines.append(current_line)
+        # 绘制消息（中文按宽度逐字折行）
+        message_lines = self._wrap_cn(self.window_width - 40)
         
         start_y = self.window_y + 60
         line_height = 25
@@ -140,7 +148,8 @@ class MessageWindow:
         
         # 绘制按钮
         self.ok_btn.draw(self.screen, mx, my, self.COLOR_BTN, self.COLOR_BTN_HOVER, self.COLOR_TEXT)
-        self.cancel_btn.draw(self.screen, mx, my, self.COLOR_BTN, self.COLOR_BTN_HOVER, self.COLOR_TEXT)
+        if self.show_cancel:
+            self.cancel_btn.draw(self.screen, mx, my, self.COLOR_BTN, self.COLOR_BTN_HOVER, self.COLOR_TEXT)
     
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -148,7 +157,14 @@ class MessageWindow:
             if self.ok_btn.is_clicked(mx, my):
                 self.result = True
                 return True
-            if self.cancel_btn.is_clicked(mx, my):
+            if self.show_cancel and self.cancel_btn.is_clicked(mx, my):
+                self.result = False
+                return True
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                self.result = True
+                return True
+            if event.key == pygame.K_ESCAPE:
                 self.result = False
                 return True
         return False
@@ -525,11 +541,11 @@ def main():
         COLOR_TITLE = (255, 210, 0)
         COLOR_TEXT = (255, 255, 255)
         COLOR_TEXT_HINT = (150, 150, 150)
-        COLOR_BTN = (40, 100, 200)
-        COLOR_BTN_HOVER = (60, 130, 230)
-        COLOR_INPUT = (30, 40, 60)
-        COLOR_INPUT_BORDER = (60, 80, 120)
-        COLOR_INPUT_BORDER_ACTIVE = (100, 150, 255)
+        COLOR_BTN = (100, 70, 40)
+        COLOR_BTN_HOVER = (140, 95, 55)
+        COLOR_INPUT = (30, 30, 45)
+        COLOR_INPUT_BORDER = (139, 69, 19)
+        COLOR_INPUT_BORDER_ACTIVE = (255, 215, 0)
         COLOR_ERROR = (255, 100, 100)
         
         def draw_text(text, x, y, font, color=COLOR_TEXT):
@@ -540,18 +556,19 @@ def main():
         
         # 输入框类
         class InputBox:
-            def __init__(self, x, y, width, height, font, placeholder=""):
+            def __init__(self, x, y, width, height, font, placeholder="", mask=False):
                 self.rect = pygame.Rect(x, y, width, height)
                 self.color = COLOR_INPUT_BORDER
                 self.text = ""
                 self.font = font
                 self.placeholder = placeholder
                 self.active = False
+                self.mask = mask  # 密码框：显示 * 而非原文
             
             def handle_event(self, event):
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if self.rect.collidepoint(event.pos):
-                        self.active = not self.active
+                        self.active = True
                     else:
                         self.active = False
                     self.color = COLOR_INPUT_BORDER_ACTIVE if self.active else COLOR_INPUT_BORDER
@@ -559,20 +576,19 @@ def main():
                     if self.active:
                         if event.key == pygame.K_BACKSPACE:
                             self.text = self.text[:-1]
-                        elif event.key == pygame.K_RETURN:
-                            pass
                 if event.type == pygame.TEXTINPUT:
                     if self.active:
                         self.text += event.text
             
             def draw(self, screen):
-                # 绘制输入框
-                pygame.draw.rect(screen, COLOR_INPUT, self.rect)
-                pygame.draw.rect(screen, self.color, self.rect, 2)
+                # 圆角输入框
+                pygame.draw.rect(screen, COLOR_INPUT, self.rect, border_radius=6)
+                pygame.draw.rect(screen, self.color, self.rect, 2, border_radius=6)
                 
-                # 绘制文字
+                # 绘制文字（密码打码）
                 if self.text:
-                    text_surf = self.font.render(self.text, True, COLOR_TEXT)
+                    shown = "*" * len(self.text) if self.mask else self.text
+                    text_surf = self.font.render(shown, True, COLOR_TEXT)
                 else:
                     text_surf = self.font.render(self.placeholder, True, COLOR_TEXT_HINT)
                 
@@ -622,7 +638,8 @@ def main():
             input_width,
             input_height,
             font_input,
-            "请输入密码"
+            "请输入密码",
+            mask=True
         )
         
         btn_width = min(150, SCREEN_WIDTH * 0.3)
@@ -669,25 +686,35 @@ def main():
             register_btn.draw(screen, mx, my)
             
             # 事件处理
+            def do_login():
+                success, message, user_data = login_user(username_input.text, password_input.text)
+                if success:
+                    save_result = show_save_manager(screen, font_title, font_normal, font_small, username_input.text, user_data)
+                    if save_result:
+                        return True, username_input.text, save_result
+                else:
+                    msg_window = MessageWindow(screen, "登录失败", message, font_title, font_normal)
+                    msg_window.show()
+                return None
+
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
                 username_input.handle_event(event)
                 password_input.handle_event(event)
+
+                # 回车提交（光标在任一输入框时）
+                if event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    if username_input.active or password_input.active:
+                        result = do_login()
+                        if result:
+                            return result
                 
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     if login_btn.is_clicked(mx, my):
-                        # 登录逻辑
-                        success, message, user_data = login_user(username_input.text, password_input.text)
-                        if success:
-                            # 登录成功，显示存档管理界面
-                            save_result = show_save_manager(screen, font_title, font_normal, font_small, username_input.text, user_data)
-                            if save_result:
-                                return True, username_input.text, save_result
-                        else:
-                            # 显示错误消息窗口
-                            msg_window = MessageWindow(screen, "登录失败", message, font_title, font_normal)
-                            msg_window.show()
+                        result = do_login()
+                        if result:
+                            return result
                     
                     if register_btn.is_clicked(mx, my):
                         # 注册逻辑

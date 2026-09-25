@@ -6,22 +6,18 @@
 """
 
 import pygame
-import math
 from functools import lru_cache
-from ASSET.game_data import draw_gradient_bg, cull_dead, get_font
 
 # 全局缓存字典
 _surface_cache = {}
 _gradient_cache = {}
 _particle_cache = {}
 
-
 def clear_cache():
     """清空所有缓存"""
     _surface_cache.clear()
     _gradient_cache.clear()
     _particle_cache.clear()
-
 
 @lru_cache(maxsize=128)
 def create_cached_surface(size, flags=0):
@@ -30,7 +26,6 @@ def create_cached_surface(size, flags=0):
     if key not in _surface_cache:
         _surface_cache[key] = pygame.Surface(size, flags)
     return _surface_cache[key].copy()
-
 
 def draw_gradient_background_cached(surface, color1, color2, cache_key=None):
     """
@@ -59,7 +54,6 @@ def draw_gradient_background_cached(surface, color1, color2, cache_key=None):
         _gradient_cache[cache_key] = gradient_surf
     
     surface.blit(_gradient_cache[cache_key], (0, 0))
-
 
 class CachedParticleRenderer:
     """缓存粒子渲染器"""
@@ -98,17 +92,14 @@ class CachedParticleRenderer:
         """清空缓存"""
         self.cache.clear()
 
-
 # 全局粒子渲染器实例
 _particle_renderer = CachedParticleRenderer()
-
 
 def draw_particle_cached(surface, x, y, size, color, alpha=255):
     """
     绘制粒子（全局缓存版）
     """
     _particle_renderer.draw_circle(surface, x, y, size, color, alpha)
-
 
 class CachedLightRenderer:
     """缓存光晕渲染器"""
@@ -154,17 +145,14 @@ class CachedLightRenderer:
         """清空缓存"""
         self.cache.clear()
 
-
 # 全局光晕渲染器实例
 _light_renderer = CachedLightRenderer()
-
 
 def draw_glow_cached(surface, x, y, radius, color, intensity=1.0):
     """
     绘制光晕（全局缓存版）
     """
     _light_renderer.draw_glow(surface, x, y, radius, color, intensity)
-
 
 class FPSCounter:
     """FPS 计数器"""
@@ -209,7 +197,6 @@ class FPSCounter:
         text = font.render(f"FPS: {fps:.1f}", True, color)
         surface.blit(text, (x, y))
 
-
 # 性能优化装饰器
 def benchmark(func):
     """
@@ -226,7 +213,6 @@ def benchmark(func):
         return result
     
     return wrapper
-
 
 # 简单的对象池实现
 class ObjectPool:
@@ -261,7 +247,6 @@ class ObjectPool:
         """归还所有在用对象"""
         self.pool.extend(self.in_use)
         self.in_use.clear()
-
 
 # 导出主要组件
 __all__ = [

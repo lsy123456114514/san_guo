@@ -6,7 +6,7 @@ import random
 import json
 import os
 import time
-from ASSET.game_data import data, save, get_system_font_name, load_sound, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, logger, get_font
 from ASSET import safe_exit
 
 # 简单的Perlin噪声实现

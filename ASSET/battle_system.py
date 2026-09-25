@@ -2,13 +2,11 @@
 
 import os
 import pygame
-import platform
 import time
 import random
 import math
-from ASSET.game_data import data, save, get_system_font_name, load_sound, EQUIP_SKILLS, HERO_SKILLS, ELEMENTS, GUNS, HERO_BONDS, ELEMENT_SYNERGIES, ELEMENT_WEAKNESS, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, load_sound, EQUIP_SKILLS, HERO_SKILLS, GUNS, HERO_BONDS, ELEMENT_SYNERGIES, ELEMENT_WEAKNESS, logger, draw_gradient_bg, get_font
 from ASSET.weather_system import WeatherSystem
-from ASSET.event_system import EventSystem
 from ASSET import safe_exit
 
 def update_battle_stats(win, player_heroes, enemy_heroes):
@@ -785,6 +783,18 @@ def select_heroes(screen, font_title, font_normal, font_small):
     # 主循环
     running = True
     scroll_offset = 0
+    # 按钮跨帧复用：hover 动画与选中态颜色刷新才有意义
+    hero_btn_cache = {}
+    confirm_btn = AnimatedButton(
+        (SCREEN_WIDTH - button_width) // 2,
+        SCREEN_HEIGHT - 60,
+        button_width,
+        button_height,
+        "确认选择",
+        font_normal,
+        normal_color=COLORS["accent_green"],
+        hover_color=COLORS["accent_green"]
+    )
     while running:
         mx, my = pygame.mouse.get_pos()
         
@@ -813,17 +823,26 @@ def select_heroes(screen, font_title, font_normal, font_small):
                 button_color = COLORS["accent_green"] if is_selected else COLORS["accent_blue"]
                 hover_color = COLORS["accent_green"] if is_selected else COLORS["accent_blue"]
                 
-                # 创建按钮
-                btn = AnimatedButton(
-                    (SCREEN_WIDTH - button_width) // 2,
-                    y,
-                    button_width,
-                    button_height,
-                    f"{hero_name} (Lv.{data['heroes'].get(hero_name, {}).get('star', 1)})",
-                    font_normal,
-                    normal_color=button_color,
-                    hover_color=hover_color
-                )
+                # 创建按钮（复用缓存，避免每帧重建导致动画失效）
+                btn = hero_btn_cache.get(hero_name)
+                if btn is None:
+                    btn = AnimatedButton(
+                        (SCREEN_WIDTH - button_width) // 2,
+                        y,
+                        button_width,
+                        button_height,
+                        f"{hero_name} (Lv.{data['heroes'].get(hero_name, {}).get('star', 1)})",
+                        font_normal,
+                        normal_color=button_color,
+                        hover_color=hover_color
+                    )
+                    hero_btn_cache[hero_name] = btn
+                else:
+                    btn.original_x = (SCREEN_WIDTH - button_width) // 2
+                    btn.original_y = y
+                    btn.update_rect()
+                    btn.normal_color = button_color
+                    btn.hover_color = hover_color
                 btn.update((mx, my))
                 btn.draw(screen)
                 hero_buttons.append((btn, hero_name))
@@ -833,16 +852,6 @@ def select_heroes(screen, font_title, font_normal, font_small):
         screen.blit(selected_text, (20, SCREEN_HEIGHT - 80))
         
         # 确认按钮
-        confirm_btn = AnimatedButton(
-            (SCREEN_WIDTH - button_width) // 2,
-            SCREEN_HEIGHT - 60,
-            button_width,
-            button_height,
-            "确认选择",
-            font_normal,
-            normal_color=COLORS["accent_green"],
-            hover_color=COLORS["accent_green"]
-        )
         confirm_btn.update((mx, my))
         confirm_btn.draw(screen)
         
@@ -1291,6 +1300,7 @@ def main():
         t_loop_start = time.perf_counter()
 
         running = True
+        hero_skill_card_cache = {}  # 武将技能卡跨帧复用
         while running:
             mx, my = pygame.mouse.get_pos()
             
@@ -1353,7 +1363,7 @@ def main():
                                     attacker_x = SCREEN_WIDTH - 230 - enemy_heroes.index(attacker) * 200 + 90
                                 else:
                                     attacker_x = SCREEN_WIDTH // 2
-                            except Exception as _e:
+                            except Exception:
                                 attacker_x = SCREEN_WIDTH // 2
                         else:  # 是小弟
                             # 找到小弟所属的武将
@@ -1378,7 +1388,7 @@ def main():
                                 target_x = SCREEN_WIDTH - 230 - enemy_heroes.index(target) * 200 + 90
                             else:
                                 target_x = SCREEN_WIDTH // 2
-                        except Exception as _e:
+                        except Exception:
                             target_x = SCREEN_WIDTH // 2
                         # 绘制攻击特效
                         draw_element_effect(screen, target_x, 230, element)
@@ -1387,7 +1397,7 @@ def main():
                         animation_timer = 0
                         current_attack = None
 
-                # 武将技能卡片
+                # 武将技能卡片（跨帧复用，避免每帧重建丢失 hover 动画）
             hero_skill_cards = []
             for i, hero in enumerate(player_heroes):
                 if hero.hp > 0:
@@ -1395,12 +1405,19 @@ def main():
                     if x + hero_card_width > SCREEN_WIDTH - 50:
                         break
                     # 创建武将技能卡片
-                    card = AnimatedButton(
-                        x, hero_card_y,
-                        hero_card_width, hero_card_height, f"{hero.name}: {hero.skill['name']}", font_small,
-                        normal_color=ELEMENT_COLORS.get(hero.element, (200, 150, 50)),
-                        hover_color=ELEMENT_COLORS.get(hero.element, (240, 190, 90))
-                    )
+                    card = hero_skill_card_cache.get(id(hero))
+                    if card is None:
+                        card = AnimatedButton(
+                            x, hero_card_y,
+                            hero_card_width, hero_card_height, f"{hero.name}: {hero.skill['name']}", font_small,
+                            normal_color=ELEMENT_COLORS.get(hero.element, (200, 150, 50)),
+                            hover_color=ELEMENT_COLORS.get(hero.element, (240, 190, 90))
+                        )
+                        hero_skill_card_cache[id(hero)] = card
+                    else:
+                        card.original_x = x
+                        card.original_y = hero_card_y
+                        card.update_rect()
                     if not animating:
                         card.update((mx, my))
                     card.draw(screen)

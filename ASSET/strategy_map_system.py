@@ -1,12 +1,7 @@
 """策略地图系统 - 领土管理与资源产出"""
 
-import pygame
-import math
-import random
-import json
 import time
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
-from ASSET import safe_exit
+from ASSET.game_data import data, save, logger
 
 class TerritoryManager:
     """领土管理系统"""

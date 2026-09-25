@@ -5,20 +5,9 @@
 集成世界聊天 + 公网P2P + 局域网对战
 """
 
-import os
 import pygame
 import random
-import math
-import time
-from typing import Dict, Any, Optional
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
-
-# 导入安全网络模块
-try:
-    from ASSET.secure_network import SecureNetwork
-    from ASSET.p2p_ngrok import P2PNgrok
-except Exception as _e:
-    logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
+from ASSET.game_data import logger, get_font
 
 # 颜色主题
 COLORS = {
@@ -32,7 +21,6 @@ COLORS = {
     "text_white": (240, 240, 240),
     "text_gray": (160, 170, 190),
 }
-
 
 class Particle:
     """粒子效果 - 带透明度渐变的圆形粒子"""
@@ -55,7 +43,6 @@ class Particle:
     def draw(self, surface):
         alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
         pygame.draw.circle(surface, (*self.color[:3], alpha), (int(self.x), int(self.y)), int(self.size))
-
 
 class AnimatedButton:
     """动画按钮 - 悬停缩放与发光效果"""
@@ -100,7 +87,6 @@ class AnimatedButton:
     def check_click(self, event, mouse_pos):
         return event.type == pygame.MOUSEBUTTONDOWN and self.hovered
 
-
 class InputBox:
     """输入框 - 支持点击激活、光标闪烁与文字输入"""
     def __init__(self, x, y, width, height, font, text=""):
@@ -142,7 +128,6 @@ class InputBox:
         text_surface = self.font.render(display_text, True, COLORS["text_white"])
         surface.blit(text_surface, (self.rect.x + 12, self.rect.y + 12))
 
-
 class SuperPVP:
     """超级对战大厅 - 整合世界聊天、局域网与P2P对战"""
     def __init__(self, screen):
@@ -164,7 +149,6 @@ class SuperPVP:
         def init_font(size):
             return get_font(size)
 
-
 def main(screen=None):
     try:
         if not pygame.get_init():
@@ -181,7 +165,6 @@ def main(screen=None):
     except Exception as e:
         logger.info(f"超级PVP异常: {e}")
         return False
-
 
 if __name__ == "__main__":
     main()

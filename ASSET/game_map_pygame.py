@@ -10,9 +10,7 @@ import os
 import pygame
 import random
 import math
-import platform
-from ASSET.game_data import data, save, get_system_font_name, load_sound, logger, draw_gradient_bg, cull_dead, get_font
-from ASSET import safe_exit
+from ASSET.game_data import data, save, load_sound, logger, draw_gradient_bg, get_font
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Color Theme
@@ -74,7 +72,6 @@ LOCATION_TYPES = {
 # Visual Effect Classes
 # ═══════════════════════════════════════════════════════════════════════════════
 
-
 class Particle:
     """A single particle used for visual effects (selection, capture, combat).
 
@@ -104,7 +101,6 @@ class Particle:
         # 只使用RGB部分，确保颜色参数有效
         color = self.color[:3]  # 只取RGB值，去掉alpha通道
         pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
-
 
 class FloatingText:
     """A label that floats upward and fades out over its lifetime.
@@ -136,7 +132,6 @@ class FloatingText:
 # Grid & Location Rendering
 # ═══════════════════════════════════════════════════════════════════════════════
 
-
 def draw_grid(
     surface: pygame.Surface,
     offset_x: int,
@@ -165,7 +160,6 @@ def draw_grid(
     
     for y in range(start_y, screen_height, grid_size):
         pygame.draw.line(surface, grid_color, (0, y), (screen_width, y))
-
 
 def draw_location(
     surface: pygame.Surface,
@@ -247,7 +241,6 @@ def draw_location(
 # ═══════════════════════════════════════════════════════════════════════════════
 # Popup & UI Panel Rendering
 # ═══════════════════════════════════════════════════════════════════════════════
-
 
 def draw_popup(
     surface: pygame.Surface,
@@ -392,7 +385,6 @@ def draw_popup(
     
     return btn_rect, time_card_btn
 
-
 def draw_ui_panel(
     surface: pygame.Surface,
     screen_width: int,
@@ -441,7 +433,6 @@ def draw_ui_panel(
 # ═══════════════════════════════════════════════════════════════════════════════
 # Map Generation & Capture Logic
 # ═══════════════════════════════════════════════════════════════════════════════
-
 
 def main():
     """Entry point for the 2D world map module.

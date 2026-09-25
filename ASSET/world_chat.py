@@ -5,16 +5,14 @@
 精美PyGame界面，支持全球聊天
 """
 
-import os
 import pygame
 import random
-import math
 import time
 import socket
 import json
 import threading
-from typing import List, Dict, Optional
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
+from typing import List, Dict
+from ASSET.game_data import data, logger, get_font
 
 # 颜色主题
 COLORS = {
@@ -31,7 +29,6 @@ COLORS = {
     "player_other": (120, 200, 150),
     "player_self": (255, 210, 100),
 }
-
 
 class Particle:
     def __init__(self, x, y, color, speed, size, life):
@@ -56,7 +53,6 @@ class Particle:
         pygame.draw.circle(temp_surface, (*self.color, alpha), (int(self.size), int(self.size)), int(self.size))
         surface.blit(temp_surface, (int(self.x - self.size), int(self.y - self.size)))
 
-
 class ChatMessage:
     def __init__(self, text: str, sender: str = "系统", msg_type: str = "system", timestamp: float = 0):
         self.text = text
@@ -73,7 +69,6 @@ class ChatMessage:
             return COLORS["player_self"]
         else:
             return COLORS["player_other"]
-
 
 class InputBox:
     def __init__(self, x, y, width, height, font):
@@ -116,7 +111,6 @@ class InputBox:
         text_surface = self.font.render(display_text, True, COLORS["text_white"])
         surface.blit(text_surface, (self.rect.x + 15, self.rect.y + 12))
 
-
 class Button:
     def __init__(self, text, x, y, width, height, font, color=COLORS["accent_blue"]):
         self.text = text
@@ -141,7 +135,6 @@ class Button:
         if event.type == pygame.MOUSEBUTTONDOWN and self.hovered:
             return True
         return False
-
 
 class ChatClient:
     """聊天网络客户端"""
@@ -279,7 +272,6 @@ class ChatClient:
         if self.thread:
             self.thread.join(timeout=1)
 
-
 class WorldChat:
     def __init__(self, screen):
         self.screen = screen
@@ -299,7 +291,6 @@ class WorldChat:
         def init_font(size):
             return get_font(size)
 
-
 def main(screen=None):
     try:
         if not pygame.get_init():
@@ -316,7 +307,6 @@ def main(screen=None):
     except Exception as e:
         logger.info(f"世界聊天异常: {e}")
         return False
-
 
 if __name__ == "__main__":
     main()

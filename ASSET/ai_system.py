@@ -4,9 +4,8 @@
 
 import pygame
 import os
-import json
 import time
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg
 from ASSET.game_main_menu import Button, COLORS
 
 # 尝试导入requests模块
@@ -351,7 +350,7 @@ def call_ollama(prompt, model, url):
         if e.response is not None:
             try:
                 resp_snippet = e.response.text[:300].replace("\n", "\\n")
-            except Exception as _e:
+            except Exception:
                 resp_snippet = "<无法读取响应体>"
         logger.error(
             "[AI] HTTP错误 状态=%s 耗时约%.3fs snippet=%s err=%s",
@@ -416,7 +415,7 @@ def main():
             FONT_MAIN = pygame.font.Font(None, 40)
             FONT_SMALL = pygame.font.Font(None, 28)
             FONT_BIG = pygame.font.Font(None, 60)
-    except Exception as _e:
+    except Exception:
         FONT_MAIN = pygame.font.Font(None, 40)
         FONT_SMALL = pygame.font.Font(None, 28)
         FONT_BIG = pygame.font.Font(None, 60)

@@ -6,9 +6,6 @@
 """
 
 import pygame
-import os
-import sys
-from ASSET.game_data import draw_gradient_bg, cull_dead, get_font
 
 # 颜色定义
 WHITE = (255, 255, 255)
@@ -169,7 +166,7 @@ class Whiteboard:
             font_small_size = 18 if self.width < 1024 else 20
             self.font = pygame.font.SysFont("Microsoft YaHei", font_size)
             self.font_small = pygame.font.SysFont("Microsoft YaHei", font_small_size)
-        except Exception as _e:
+        except Exception:
             font_size = 24 if self.width < 1024 else 32
             font_small_size = 16 if self.width < 1024 else 20
             self.font = pygame.font.Font(None, font_size)

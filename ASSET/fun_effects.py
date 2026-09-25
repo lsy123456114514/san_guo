@@ -3,7 +3,6 @@
 import pygame
 import random
 import math
-from ASSET.game_data import draw_gradient_bg, cull_dead, get_font
 
 class PetSprite:
     """宠物精灵 - 跟随鼠标移动与情绪表情切换"""

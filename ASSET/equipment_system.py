@@ -5,8 +5,7 @@ import time
 import pygame
 import random
 import datetime
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
-from ASSET.languages import get_text
+from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font
 from ASSET import safe_exit
 
 # 颜色主题
@@ -220,7 +219,6 @@ def show_message(surface, message, font_main):
     
     panel_surf = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
 
-
     pygame.draw.rect(panel_surf, (40, 40, 70, 200), (0, 0, panel_width, panel_height), border_radius=15)
     surface.blit(panel_surf, (panel_x, panel_y))
     
@@ -234,7 +232,16 @@ def show_message(surface, message, font_main):
     surface.blit(text_surf, text_rect)
     
     pygame.display.flip()
-    pygame.time.wait(2000)
+    # 最多显示 2 秒，点击或按键可提前关闭
+    start = pygame.time.get_ticks()
+    waiting = True
+    while waiting and pygame.time.get_ticks() - start < 2000:
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                waiting = False
+            elif ev.type in (pygame.MOUSEBUTTONDOWN, pygame.KEYDOWN):
+                waiting = False
+        pygame.time.wait(30)
 
 class EquipmentSystem:
     """装备系统"""

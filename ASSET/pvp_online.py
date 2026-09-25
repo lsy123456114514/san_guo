@@ -5,14 +5,10 @@
 支持局域网对战、IP直连、玩家匹配
 """
 
-import os
 import pygame
-import platform
 import random
 import math
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
-from ASSET.network_pvp import NetworkPVP
-from ASSET import safe_exit
+from ASSET.game_data import data, logger, get_font
 
 # 颜色主题
 COLORS = {
@@ -28,7 +24,6 @@ COLORS = {
     "text_gray": (180, 180, 200),
     "panel_bg": (40, 40, 70, 200)
 }
-
 
 class Particle:
     """粒子效果 - 支持普通圆形与星形闪烁粒子"""
@@ -68,7 +63,6 @@ class Particle:
             pygame.draw.polygon(surface, self.color, points)
         else:
             pygame.draw.circle(surface, self.color, (int(self.x), int(self.y)), int(self.size))
-
 
 class AnimatedButton:
     """动画按钮 - 悬停缩放、发光与星形粒子特效"""
@@ -169,7 +163,6 @@ class AnimatedButton:
                 self.is_clicked = False
         return False
 
-
 class InputBox:
     """输入框 - 支持点击激活、光标闪烁与文字输入"""
     def __init__(self, x, y, width, height, font, text=''):
@@ -245,7 +238,6 @@ def draw_title(surface, text, y_pos, screen_width, font, color=COLORS["accent_go
     pygame.draw.circle(surface, color, (screen_width // 2, line_y), 6)
     pygame.draw.circle(surface, COLORS["bg_dark"], (screen_width // 2, line_y), 4)
 
-
 class PVPOnline:
     """在线对战 - 在线PVP匹配与对战主控类"""
     def __init__(self, screen):
@@ -270,7 +262,6 @@ class PVPOnline:
         def init_font(size):
             return get_font(size)
 
-
 def main(screen=None):
     try:
         if not pygame.get_init():
@@ -287,7 +278,6 @@ def main(screen=None):
     except Exception as e:
         logger.info(f"在线PVP模块异常：{str(e)}")
         return False
-
 
 if __name__ == "__main__":
     main()

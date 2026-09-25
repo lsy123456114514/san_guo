@@ -2,8 +2,7 @@
 
 import os
 import pygame
-import platform
-from ASSET.game_data import data, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, get_font
 from ASSET import safe_exit, snake_game, push_box, breakout, minesweeper, game_2048, tetris, gobang
 
 def main():

@@ -14,8 +14,7 @@ import time
 import json
 from typing import Optional, Dict, Any, Callable
 
-from ASSET.game_data import logger, draw_gradient_bg, cull_dead, get_font
-
+from ASSET.game_data import logger
 
 class NgrokTunnel:
     """Ngrok隧道管理器"""
@@ -33,7 +32,7 @@ class NgrokTunnel:
             result = subprocess.run(['ngrok', 'version'], 
                                  capture_output=True, text=True, timeout=5)
             return result.returncode == 0
-        except Exception as _e:
+        except Exception:
             return False
     
     def download_ngrok(self) -> bool:
@@ -98,7 +97,7 @@ class NgrokTunnel:
                             snippet = ""
                             try:
                                 snippet = response.text[:200].replace("\n", "\\n")
-                            except Exception as _e:
+                            except Exception:
                                 snippet = "<无法读取 body>"
                             logger.warning(
                                 "[Ngrok] 第%d次轮询 JSON解析失败 HTTP=%s Content-Type=%s snippet=%s err=%s",
@@ -186,7 +185,7 @@ class NgrokTunnel:
             try:
                 self.ngrok_process.terminate()
                 self.ngrok_process.wait(timeout=2)
-            except Exception as _e:
+            except Exception:
                 try:
                     self.ngrok_process.kill()
                 except Exception as _e:
@@ -195,7 +194,6 @@ class NgrokTunnel:
         self.tunnel_url = None
         self.tunnel_port = None
         logger.info("🛑 隧道已关闭")
-
 
 class P2PNgrok:
     """集成ngrok的P2P网络"""
@@ -247,7 +245,7 @@ class P2PNgrok:
             ip = s.getsockname()[0]
             s.close()
             return ip
-        except Exception as _e:
+        except Exception:
             return '127.0.0.1'
     
     def _receive_loop(self):
@@ -322,7 +320,6 @@ class P2PNgrok:
         
         logger.info("🛑 P2P网络已停止")
 
-
 def test_ngrok():
     """测试ngrok功能"""
     logger.info("=== Ngrok P2P 测试\n")
@@ -346,7 +343,6 @@ def test_ngrok():
             logger.info("[Ngrok] 手动 Ctrl+C 中断，退出隧道保持循环")
     
     p2p.stop()
-
 
 if __name__ == "__main__":
     test_ngrok()

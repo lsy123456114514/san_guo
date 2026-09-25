@@ -13,8 +13,7 @@ import random
 import json
 import os
 import time
-from ASSET.game_data import data, save, get_system_font_name, load_sound, logger, draw_gradient_bg, cull_dead, get_font
-from ASSET import safe_exit
+from ASSET.game_data import data, save, get_system_font_name, logger
 
 MC_WORLD_KEY = "mc_world"
 
@@ -34,7 +33,7 @@ except ImportError:
 try:
     import sys
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from renderer_bindings import renderer, TreeData, LocationData, NPCData, EnemyData, GeneralData, PetData, PlayerData, FollowerData, ProjectileData, PickupData, TechBlockData, ParticleData, BlockData
+    from renderer_bindings import renderer, TreeData, LocationData, PlayerData, FollowerData, ParticleData, BlockData
     cpp_renderer_available = renderer.is_available
 except Exception as e:
     logger.info(f"无法加载C++渲染器: {e}")
@@ -1389,7 +1388,7 @@ class GameMap3D:
                 else:
                     self.font_main = pygame.font.Font(None, 40)
                     self.font_small = pygame.font.Font(None, 24)
-            except Exception as _e:
+            except Exception:
                 self.font_main = pygame.font.Font(None, 40)
                 self.font_small = pygame.font.Font(None, 24)
             
@@ -2428,7 +2427,7 @@ class GameMap3D:
         if getattr(self, "_terrain_list", None) is not None:
             try:
                 glDeleteLists(self._terrain_list, 1)
-            except Exception as _e:
+            except Exception:
                 pass
 
         self._terrain_list = glGenLists(1)
@@ -4122,8 +4121,9 @@ class GameMap3D:
                         pygame.mouse.set_visible(False)
                         pygame.event.set_grab(True)
                     elif option == "设置":
-                        self.message = "设置功能开发中..."
-                        self.message_timer = 2000
+                        # 3D 渲染上下文与设置页互斥，回主菜单调整更稳妥
+                        self.message = "画质与分辨率请在主菜单「游戏设置」中调整"
+                        self.message_timer = 2500
                     elif option == "保存并退出":
                         return "quit"
                     elif option == "返回主菜单":
@@ -4153,8 +4153,8 @@ class GameMap3D:
                                 pygame.mouse.set_visible(False)
                                 pygame.event.set_grab(True)
                             elif option == "设置":
-                                self.message = "设置功能开发中..."
-                                self.message_timer = 2000
+                                self.message = "画质与分辨率请在主菜单「游戏设置」中调整"
+                                self.message_timer = 2500
                             elif option == "保存并退出":
                                 return "quit"
                             elif option == "返回主菜单":
@@ -4209,7 +4209,7 @@ class GameMap3D:
                 ny = hotbar_y - 28
                 self.screen.blit(shadow_surf, (nx + 1, ny + 1))
                 self.screen.blit(name_surf, (nx, ny))
-            except Exception as _e:
+            except Exception:
                 pass
 
         glEnable(GL_DEPTH_TEST)
@@ -4770,7 +4770,7 @@ class GameMap3D:
                     z = float(args[3])
                     self.player_pos = [x, y, z]
                     self.add_chat_message(f"已传送到 ({x}, {y}, {z})")
-                except Exception as _e:
+                except Exception:
                     self.add_chat_message("用法: /tp <x> <y> <z>")
         
         elif cmd == "heal":

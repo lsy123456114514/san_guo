@@ -31,7 +31,6 @@ def get_physical_resolution():
     info = pygame.display.Info()
     return info.current_w, info.current_h
 
-
 def get_safe_resolution(screen_width, screen_height, min_width=640, min_height=360, ratio=0.8):
     """获取安全的窗口尺寸，确保不超出屏幕"""
     safe_width = int(screen_width * ratio)
@@ -53,7 +52,7 @@ def hide_file(filepath):
 
 # 导入反反编译保护模块
 sys.path.append(os.path.join(os.path.dirname(__file__), 'ASSET'))
-from ASSET.anti_decompile import protect_function, anti_decompile
+from ASSET.anti_decompile import protect_function
 
 # 安卓路径适配
 if 'ANDROID_DATA' in os.environ:
@@ -151,7 +150,6 @@ from ASSET.login_system import save_user_progress
 from ASSET.game_main_menu import main as menu_main
 from ASSET.game_data import data, save, unhide_file, ensure_defaults
 from ASSET.dictionary_system import main as dictionary_main
-from ASSET.whiteboard import main as whiteboard_main
 
 # 导入启动动画
 from ASSET.game_main_menu import startup_animation
@@ -216,9 +214,7 @@ def main_game():
             
             # 确保时钟初始化
             clock = pygame.time.Clock()
-            
-            # 导入game_main_menu模块中的全局变量
-            from ASSET.game_main_menu import screen as menu_screen, clock as menu_clock
+
             # 更新game_main_menu模块的全局变量
             import ASSET.game_main_menu
             ASSET.game_main_menu.screen = screen
@@ -276,10 +272,16 @@ if __name__ == '__main__':
     try:
         main_game()
     except Exception as e:
-        print(f"启动失败：{str(e)}")
-        print("详细错误信息：")
         import traceback
-        traceback.print_exc()
+        tb = traceback.format_exc()
+        # 技术细节进日志，屏幕上只说人话
+        try:
+            with open("game.log", "a", encoding="utf-8") as _f:
+                _f.write(f"\n[启动失败] {e}\n{tb}\n")
+        except Exception:
+            pass
+        print("游戏没能启动，详情见 game.log")
+        print(tb)
         try:
             save()
         except Exception:

@@ -22,10 +22,7 @@ import math
 import random
 import logging
 from ASSET.fun_effects import PetSprite, FloatingParticles
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font, ensure_defaults
-from ASSET import safe_exit
-from ASSET.login_system import save_game
-from ASSET.equipment_system import main as equipment_system_main  # pyright: ignore[reportUnusedImport]
+from ASSET.game_data import data, save, draw_gradient_bg, ensure_defaults
 
 # 配置日志系统
 logging.basicConfig(
@@ -52,6 +49,24 @@ COMET_MAX = 5
 # 全局变量（延迟初始化）
 screen = None
 clock = None
+
+# ── 简易音效（文件缺失或音效关闭时静默降级）──
+_SFX_CACHE = {}
+
+def play_sfx(name):
+    """播放 sounds/ 下的音效，受设置里的音效开关控制。"""
+    try:
+        if not data.get('settings', {}).get('sound', {}).get('enable', True):
+            return
+        snd = _SFX_CACHE.get(name)
+        if snd is None:
+            from ASSET.game_data import load_sound
+            snd = load_sound(name)
+            _SFX_CACHE[name] = snd
+        if snd:
+            snd.play()
+    except Exception as _e:
+        logger.debug("[异常静默] play_sfx %s: %s", name, _e)
 FONT_MAIN = None
 FONT_SMALL = None
 FONT_BIG = None
@@ -238,7 +253,7 @@ class AnimatedSprite:
                 surface.blit(self.frames[self.current_frame], (self.x, self.y))
             elif self.redundant_frame:
                 surface.blit(self.redundant_frame, (self.x, self.y))
-        except Exception as _e:
+        except Exception:
             if self.redundant_frame:
                 try:
                     surface.blit(self.redundant_frame, (self.x, self.y))
@@ -279,7 +294,7 @@ class FloatingText:
             text_surf = self.font.render(self.text, True, self.color)
             text_surf.set_alpha(self.alpha)
             surface.blit(text_surf, (self.x, self.y))
-        except Exception as _e:
+        except Exception:
             if self.redundant_text:
                 try:
                     self.redundant_text.set_alpha(self.alpha)
@@ -316,7 +331,7 @@ class GlowingEffect:
             pygame.draw.rect(glow_surf, (*self.color, alpha), 
                            (10, 10, self.width, self.height), border_radius=10)
             self.surface.blit(glow_surf, (self.x - 10, self.y - 10))
-        except Exception as _e:
+        except Exception:
             if self.redundant_surface:
                 try:
                     self.surface.blit(self.redundant_surface, (self.x - 10, self.y - 10))
@@ -393,17 +408,17 @@ class SafeSurface:
         try:
             self.surface = pygame.Surface(self.size, self.flags)
             self.surface.fill((0, 0, 0, 0))
-        except Exception as _e:
+        except Exception:
             self.surface = pygame.Surface((100, 100), pygame.SRCALPHA)
             
     def blit(self, source, dest, area=None, special_flags=0):
         try:
             return self.surface.blit(source, dest, area, special_flags)
-        except Exception as _e:
+        except Exception:
             if self.fallback_surface:
                 try:
                     return self.fallback_surface.blit(source, dest, area, special_flags)
-                except Exception as _e:
+                except Exception:
                     return None
     
     def draw_rect(self, color, rect, width=0, border_radius=0):
@@ -426,7 +441,6 @@ def is_android():
 def is_ios():
     """检测是否为iOS平台"""
     return 'IOS_DATA' in os.environ
-
 
 def _get_physical_resolution():
     """获取屏幕真实物理像素分辨率，Windows 下通过 ctypes 绕过 DPI 缩放。"""
@@ -474,7 +488,7 @@ def get_screen_size():
             return info.current_w, info.current_h
         else:
             return pygame.display.get_surface().get_size()
-    except Exception as _e:
+    except Exception:
         return 800, 600
 
 def get_font_list():
@@ -539,33 +553,29 @@ def test_font_renderable(font, text="测试"):
             return False
         surface = font.render(text, True, (255, 255, 255))
         return surface is not None and surface.get_width() > 0
-    except Exception as _e:
+    except Exception:
         return False
 
 def init_fonts():
-    """按平台优先级尝试加载中文字体，失败时回退到 Pygame 默认字体。"""
+    """统一走 game_data.get_font（内置中文字体），保证主菜单与登录页同一套字体。"""
     global FONT_MAIN, FONT_SMALL, FONT_BIG
 
-    current_platform = get_platform()
     if is_mobile():
-        base_size = 48
-        small_size = 32
-        big_size = 72
+        base_size, small_size, big_size = 48, 32, 72
     else:
-        base_size = 40
-        small_size = 28
-        big_size = 60
+        base_size, small_size, big_size = 40, 28, 60
 
-    system_font = get_system_font_name()
-    if system_font:
-        font_list = [system_font] + get_font_list()
-    else:
-        font_list = get_font_list()
+    try:
+        from ASSET.game_data import get_font
+        FONT_MAIN = get_font(base_size)
+        FONT_SMALL = get_font(small_size)
+        FONT_BIG = get_font(big_size)
+        logger.info("统一字体加载成功（game_data.get_font）")
+        return
+    except Exception as e:
+        logger.error("统一字体加载失败，回退系统字体: %s", e)
 
-    logger.info(f"当前平台: {current_platform}")
-    logger.info(f"尝试加载字体列表: {font_list}")
-
-    for font_name in font_list:
+    for font_name in get_font_list():
         try:
             if font_name is None:
                 FONT_MAIN = pygame.font.Font(None, base_size)
@@ -576,14 +586,8 @@ def init_fonts():
                 FONT_SMALL = pygame.font.SysFont(font_name, small_size)
                 FONT_BIG = pygame.font.SysFont(font_name, big_size)
 
-            test_text = "测试中文ABC123"
-            if test_font_renderable(FONT_MAIN, test_text):
-                logger.info(f"成功使用字体: {font_name if font_name else '默认字体'}")
-
-                if not test_font_renderable(FONT_MAIN, "中文"):
-                    logger.warning(f"字体 {font_name} 不支持中文，尝试备选方案")
-                    continue
-
+            if test_font_renderable(FONT_MAIN, "中文") and test_font_renderable(FONT_MAIN, "测试中文ABC123"):
+                logger.info(f"回退使用字体: {font_name if font_name else '默认字体'}")
                 return
         except Exception as e:
             logger.error(f"字体 {font_name} 加载失败: {e}")
@@ -658,8 +662,11 @@ class Button:
         self.click_particles = []
 
     def check_hover(self, mouse_pos):
-        """检查鼠标悬停"""
+        """检查鼠标悬停（进入瞬间播轻音）"""
+        was = self.is_hovered
         self.is_hovered = self.rect.collidepoint(mouse_pos)
+        if self.is_hovered and not was:
+            play_sfx("hover.wav")
 
     def check_click(self, mouse_pos):
         """检查点击（先清冷却，避免悬停时 is_clicked 卡死导致点不动）。"""
@@ -698,11 +705,12 @@ class Button:
             surface.blit(glow_surf, (self.rect.x - 8, self.rect.y - 8))
 
         if self.is_hovered:
-            color = (80, 50, 40)
+            color = self.hover_color
         elif self.is_clicked:
-            color = (50, 35, 25)
+            # 按下态：常态色压暗
+            color = tuple(max(0, int(c * 0.75)) for c in self.normal_color)
         else:
-            color = (60, 40, 30)
+            color = self.normal_color
 
         scaled_width = int(self.rect.width * self.scale)
         scaled_height = int(self.rect.height * self.scale)
@@ -725,7 +733,7 @@ class Button:
             pygame.draw.rect(surface, (255, 215, 0), (cx, cy, corner_size, corner_size), 1)
 
         if self.font:
-            text_surf = self.font.render(self.text, True, (255, 255, 255))
+            text_surf = self.font.render(self.text, True, self.text_color)
             if text_surf:
                 text_rect = text_surf.get_rect(center=(scaled_rect.centerx, scaled_rect.centery + self.text_offset))
                 shadow_surf = self.font.render(self.text, True, (0, 0, 0))
@@ -777,22 +785,32 @@ class DropdownMenu:
         self.text_color = COLORS["text_white"]
         self.is_hovered = False
         self.glow_alpha = 0
+        self.scroll_index = 0  # 长列表滚动窗口起点
+
+    def max_visible(self, screen_height):
+        """屏幕内最多能显示的条目数"""
+        item_height = min(40, screen_height * 0.06)
+        fit = int((screen_height - self.rect.y - 20) // max(1, item_height))
+        return max(3, min(len(self.items), fit))
+
+    def scroll(self, direction, screen_height):
+        """滚动长下拉列表（direction: -1 上 / 1 下）"""
+        limit = max(0, len(self.items) - self.max_visible(screen_height))
+        self.scroll_index = max(0, min(limit, self.scroll_index + direction))
 
     def update_items(self, screen_width, screen_height):
-        """更新下拉菜单项的位置"""
+        """更新下拉菜单项的位置（长列表按窗口裁剪，防止溢出屏幕）"""
         self.dropdown_items = []
         if self.is_open:
             item_height = min(40, screen_height * 0.06)
-            if self.rect.x + self.rect.width * 2 < screen_width:
-                for i, (item_text, item_code) in enumerate(self.items):
-                    item_y = self.rect.y + i * item_height
-                    item_rect = pygame.Rect(self.rect.x + self.rect.width + 10, item_y, self.rect.width, item_height)
-                    self.dropdown_items.append((item_text, item_code, item_rect))
-            else:
-                for i, (item_text, item_code) in enumerate(self.items):
-                    item_y = self.rect.y + i * item_height
-                    item_rect = pygame.Rect(self.rect.x - self.rect.width - 10, item_y, self.rect.width, item_height)
-                    self.dropdown_items.append((item_text, item_code, item_rect))
+            visible = self.max_visible(screen_height)
+            window = self.items[self.scroll_index:self.scroll_index + visible]
+            to_right = self.rect.x + self.rect.width * 2 < screen_width
+            base_x = self.rect.x + self.rect.width + 10 if to_right else self.rect.x - self.rect.width - 10
+            for i, (item_text, item_code) in enumerate(window):
+                item_y = self.rect.y + i * item_height
+                item_rect = pygame.Rect(base_x, item_y, self.rect.width, item_height)
+                self.dropdown_items.append((item_text, item_code, item_rect))
 
     def draw(self, surface):
         """绘制下拉菜单"""
@@ -808,9 +826,9 @@ class DropdownMenu:
             surface.blit(glow_surf, (self.rect.x - 8, self.rect.y - 8))
 
         if self.is_hovered:
-            color = (80, 50, 40)
+            color = self.hover_color
         else:
-            color = (60, 40, 30)
+            color = self.normal_color
 
         pygame.draw.rect(surface, color, self.rect, border_radius=8)
         pygame.draw.rect(surface, (139, 69, 19), self.rect, 3, border_radius=8)
@@ -956,7 +974,7 @@ def draw_three_kingdoms_background(surface, screen_width, screen_height):
 
         draw_seal(surface, screen_width - 100, 100, 60, "三国")
         draw_seal(surface, 100, screen_height - 100, 60, "霸业")
-    except Exception as _e:
+    except Exception:
         surface.fill((10, 10, 25))
 
 def draw_chinese_pattern(surface, x, y, size, color):
@@ -1170,22 +1188,14 @@ def run_module(module_file):
         pygame.event.clear()
 
     except Exception as e:
-        logger.error(f"启动模块 {module_file} 失败：{str(e)}")
-        logger.error("详细错误信息：")
+        logger.error("打开「%s」时出错了：%s", module_file, e)
         import traceback
         logger.error(traceback.format_exc())
-        # 统一走图形提示，避免无控制台时 input() 永久阻塞主菜单
+        # 玩家面前只说人话，技术细节留在 game.log
         try:
-            if screen is not None and FONT_SMALL:
-                err_surf = FONT_SMALL.render(f"启动失败：{str(e)}", True, (255, 80, 80))
-                if err_surf:
-                    screen.blit(err_surf, (40, 40))
-                    pygame.display.flip()
-                    pygame.time.wait(1800)
-            else:
-                pygame.time.wait(800)
+            show_message("这个功能一时没能打开，详情已记入日志")
         except Exception:
-            pygame.time.wait(500)
+            pygame.time.wait(800)
 
 def mini_games_menu():
     """小游戏中心菜单 — 展示所有小游戏入口按钮并处理启动。"""
@@ -1195,7 +1205,7 @@ def mini_games_menu():
 
     try:
         from ASSET.achievement_system import update_achievement_progress
-    except Exception as _e:
+    except Exception:
         update_achievement_progress = None
 
     mini_games = [
@@ -1457,7 +1467,6 @@ def custom_resolution_dialog(settings_lines, current_w, current_h):
     _restore_window()
     return result["size"]
 
-
 def setting_menu():
     """游戏设置菜单 — 分辨率、全屏、地图容量、音效等选项的循环切换与即时生效。"""
     global screen, clock
@@ -1466,7 +1475,7 @@ def setting_menu():
         sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         from main import save_login_state
         login_state_available = True
-    except Exception as _e:
+    except Exception:
         save_login_state = None
         login_state_available = False
 
@@ -1510,6 +1519,8 @@ def setting_menu():
         ]
 
     running = True
+    setting_buttons = []
+    settings_sig = None  # 上次构建按钮时的（文本列表, 宽高）签名
     while running:
         screen_width = screen.get_width()
         screen_height = screen.get_height()
@@ -1522,21 +1533,25 @@ def setting_menu():
         total_height = len(setting_items) * button_height + (len(setting_items) - 1) * button_spacing
         start_y = max(screen_height * 0.18, (screen_height - total_height) / 2)
 
-        setting_buttons = []
-        for i, text in enumerate(setting_items):
-            x = (screen_width - button_width) // 2
-            y = start_y + i * (button_height + button_spacing)
-            if text == "应用":
-                normal_color = COLORS["accent_blue"]
-            elif text == "确定":
-                normal_color = COLORS["accent_green"]
-            elif text == "返回主菜单":
-                normal_color = (100, 100, 150)
-            else:
-                normal_color = COLORS["accent_blue"]
-            btn = Button(text, x, y, button_width, button_height, FONT_SMALL,
-                         normal_color=normal_color)
-            setting_buttons.append(btn)
+        # 仅当设置文本或布局变化时重建按钮 — 每帧重建会重置 hover 动画
+        sig = (tuple(setting_items), screen_width, screen_height)
+        if sig != settings_sig:
+            settings_sig = sig
+            setting_buttons = []
+            for i, text in enumerate(setting_items):
+                x = (screen_width - button_width) // 2
+                y = start_y + i * (button_height + button_spacing)
+                if text == "应用":
+                    normal_color = COLORS["accent_blue"]
+                elif text == "确定":
+                    normal_color = COLORS["accent_green"]
+                elif text == "返回主菜单":
+                    normal_color = (100, 100, 150)
+                else:
+                    normal_color = COLORS["accent_blue"]
+                btn = Button(text, x, y, button_width, button_height, FONT_SMALL,
+                             normal_color=normal_color)
+                setting_buttons.append(btn)
 
         draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
 
@@ -1629,14 +1644,19 @@ def setting_menu():
         clock.tick(MENU_FPS)
 
 def input_save_name(screen, font_title, font_input):
-    """输入存档名称。Esc/取消按钮返回 None，回车确认。"""
+    """输入存档名称。Esc/取消/点面板外返回 None，回车确认。"""
     w, h = screen.get_width(), screen.get_height()
-    panel = pygame.Rect(w // 4, h // 2 - 70, w // 2, 140)
+    panel = pygame.Rect(w // 4, h // 2 - 80, w // 2, 165)
     input_box = pygame.Rect(panel.x + 20, panel.y + 55, panel.width - 40, 44)
-    cancel_rect = pygame.Rect(panel.right - 100, panel.bottom - 40, 80, 28)
+    cancel_rect = pygame.Rect(panel.right - 100, panel.bottom - 38, 80, 28)
     text = ""
+    max_len = 16
     active = True
     clock = pygame.time.Clock()
+    try:
+        pygame.key.set_text_input_enabled(True)
+    except AttributeError:
+        pass
 
     while active:
         for event in pygame.event.get():
@@ -1649,10 +1669,12 @@ def input_save_name(screen, font_title, font_input):
                     return None
                 elif event.key == pygame.K_BACKSPACE:
                     text = text[:-1]
-                elif event.unicode and event.unicode.isprintable():
+                elif event.unicode and event.unicode.isprintable() and len(text) < max_len:
                     text += event.unicode
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if cancel_rect.collidepoint(event.pos):
+                    return None
+                if not panel.collidepoint(event.pos):
                     return None
 
         overlay = pygame.Surface((w, h), pygame.SRCALPHA)
@@ -1660,25 +1682,36 @@ def input_save_name(screen, font_title, font_input):
         screen.blit(overlay, (0, 0))
 
         pygame.draw.rect(screen, (40, 40, 70), panel, border_radius=10)
-        pygame.draw.rect(screen, (120, 120, 170), panel, 2, border_radius=10)
+        pygame.draw.rect(screen, (139, 69, 19), panel, 2, border_radius=10)
+        pygame.draw.rect(screen, (255, 215, 0), panel, 1, border_radius=10)
 
         if font_title:
-            title = font_title.render("输入存档名称", True, (255, 215, 0))
+            title = font_title.render("给这次征程起个名字", True, (255, 215, 0))
             if title:
-                screen.blit(title, title.get_rect(center=(panel.centerx, panel.y + 24)))
+                screen.blit(title, title.get_rect(center=(panel.centerx, panel.y + 26)))
 
         pygame.draw.rect(screen, (25, 25, 45), input_box, border_radius=6)
         pygame.draw.rect(screen, (140, 140, 190), input_box, 2, border_radius=6)
         if font_input:
-            shown = text if text else "存档"
+            shown = text if text else "例：赤壁之战"
             color = (255, 255, 255) if text else (140, 140, 160)
             txt_surface = font_input.render(shown, True, color)
             if txt_surface:
                 clip = txt_surface.get_rect(midleft=(input_box.x + 8, input_box.centery))
                 screen.blit(txt_surface, clip)
-            hint = font_input.render("回车确认  Esc取消", True, (160, 160, 180))
+            # 光标闪烁
+            if text and (pygame.time.get_ticks() // 400) % 2 == 0:
+                cx = clip.right + 3
+                pygame.draw.line(screen, (255, 215, 0),
+                                 (cx, input_box.y + 8), (cx, input_box.bottom - 8), 2)
+            # 字数提示（独立一行，不与按钮挤在一起）
+            counter = font_input.render(f"{len(text)}/{max_len}", True, (150, 150, 170))
+            if counter:
+                screen.blit(counter, counter.get_rect(right=input_box.right - 6,
+                                                      centery=input_box.centery))
+            hint = font_input.render("回车确认 · Esc取消", True, (160, 160, 180))
             if hint:
-                screen.blit(hint, hint.get_rect(center=(panel.centerx, cancel_rect.centery)))
+                screen.blit(hint, hint.get_rect(midleft=(panel.x + 20, panel.bottom - 24)))
 
         pygame.draw.rect(screen, (90, 50, 50), cancel_rect, border_radius=6)
         pygame.draw.rect(screen, (180, 100, 100), cancel_rect, 1, border_radius=6)
@@ -1690,22 +1723,43 @@ def input_save_name(screen, font_title, font_input):
         pygame.display.flip()
         clock.tick(30)
 
-    return text if text else "存档"
+    return text if text else "未命名征程"
 
 def show_message(message):
-    """显示消息（限时显示，期间继续处理事件，避免界面假死）。"""
+    """显示消息 — 带面板的 Toast，点击/按键可提前关闭。"""
     if not (FONT_MAIN and screen):
         return
+    w, h = screen.get_width(), screen.get_height()
     deadline = pygame.time.get_ticks() + 1500
-    while pygame.time.get_ticks() < deadline:
+    closed = False
+    while pygame.time.get_ticks() < deadline and not closed:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.event.post(event)
                 return
-        msg_surface = FONT_MAIN.render(message, True, (255, 255, 255))
+            if event.type in (pygame.MOUSEBUTTONDOWN, pygame.KEYDOWN):
+                closed = True
+                break
+        if closed:
+            break
+
+        remaining = deadline - pygame.time.get_ticks()
+        # 最后 400ms 淡出
+        alpha = min(255, int(remaining / 400 * 255)) if remaining < 400 else 255
+
+        msg_surface = FONT_MAIN.render(message, True, (255, 240, 210))
         if msg_surface:
-            screen.blit(msg_surface, (screen.get_width() // 2 - msg_surface.get_width() // 2,
-                                     screen.get_height() // 2))
+            panel_w = msg_surface.get_width() + 60
+            panel_h = msg_surface.get_height() + 36
+            px, py = w // 2 - panel_w // 2, h // 2 - panel_h // 2
+
+            panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+            panel.fill((30, 26, 20, min(230, alpha)))
+            screen.blit(panel, (px, py))
+            pygame.draw.rect(screen, (255, 215, 0), (px, py, panel_w, panel_h), 2, border_radius=10)
+
+            msg_surface.set_alpha(alpha)
+            screen.blit(msg_surface, msg_surface.get_rect(center=(w // 2, h // 2)))
             pygame.display.flip()
         pygame.time.wait(30)
 
@@ -1763,10 +1817,45 @@ def main():
         except Exception as _e:
             logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
-    button_width = min(300, screen_width * 0.35)
-    button_height = min(55, screen_height * 0.07)
-    button_spacing = min(15, screen_height * 0.025)
-    start_y = screen_height * 0.28
+    def build_menu():
+        """构建主菜单元素 — 统一几何参数，小分辨率下自动压缩防溢出。"""
+        bw = min(300, screen_width * 0.35)
+        bh = min(55, screen_height * 0.07)
+        bs = min(15, screen_height * 0.025)
+        n = 8  # 行数
+        # 8 行总高不能超出可用区域（顶部留 28%，底部留 20px）
+        available = screen_height * 0.80 - 20
+        total = n * bh + (n - 1) * bs
+        if total > available:
+            scale = available / total
+            bh = max(28, bh * scale)
+            bs = max(4, bs * scale)
+            total = n * bh + (n - 1) * bs
+        sy = min(screen_height * 0.28, screen_height - total - 20)
+        x = (screen_width - bw) // 2
+
+        elements = []
+        drop_items = [
+            ("游戏核心", game_core_items),
+            ("游戏系统", game_system_items),
+            ("社交与排行", social_items),
+            ("其他功能", other_items),
+        ]
+        for i, (label, items) in enumerate(drop_items):
+            elements.append(("dropdown", DropdownMenu(
+                label, x, sy + i * (bh + bs), bw, bh, FONT_SMALL, items)))
+
+        plain_buttons = [
+            ("保存进度", "4", (100, 100, 150)),
+            ("读取存档", "15", (100, 100, 150)),
+            ("游戏设置", "5", (100, 100, 150)),
+            ("退出游戏", "9", COLORS["accent_red"]),
+        ]
+        for j, (label, code, color) in enumerate(plain_buttons):
+            btn = Button(label, x, sy + (4 + j) * (bh + bs), bw, bh,
+                         FONT_SMALL, normal_color=color)
+            elements.append(("button", (btn, code)))
+        return elements
 
     game_core_items = [
         ("PVP联机", "1"),
@@ -1816,31 +1905,70 @@ def main():
         ("幸运转盘", "39")
     ]
 
-    menu_elements = []
+    menu_elements = build_menu()
+    focus_idx = [0]  # 键盘焦点索引（list 包一层便于闭包内修改）
 
-    game_core_menu = DropdownMenu("游戏核心", (screen_width - button_width) // 2, start_y, button_width, button_height, FONT_SMALL, game_core_items)
-    menu_elements.append(("dropdown", game_core_menu))
-
-    game_system_menu = DropdownMenu("游戏系统", (screen_width - button_width) // 2, start_y + button_height + button_spacing, button_width, button_height, FONT_SMALL, game_system_items)
-    menu_elements.append(("dropdown", game_system_menu))
-
-    social_menu = DropdownMenu("社交与排行", (screen_width - button_width) // 2, start_y + 2 * (button_height + button_spacing), button_width, button_height, FONT_SMALL, social_items)
-    menu_elements.append(("dropdown", social_menu))
-
-    other_menu = DropdownMenu("其他功能", (screen_width - button_width) // 2, start_y + 3 * (button_height + button_spacing), button_width, button_height, FONT_SMALL, other_items)
-    menu_elements.append(("dropdown", other_menu))
-
-    save_btn = Button("保存进度", (screen_width - button_width) // 2, start_y + 4 * (button_height + button_spacing), button_width, button_height, FONT_SMALL, normal_color=(100, 100, 150))
-    menu_elements.append(("button", (save_btn, "4")))
-
-    load_btn = Button("读取存档", (screen_width - button_width) // 2, start_y + 5 * (button_height + button_spacing), button_width, button_height, FONT_SMALL, normal_color=(100, 100, 150))
-    menu_elements.append(("button", (load_btn, "15")))
-
-    setting_btn = Button("游戏设置", (screen_width - button_width) // 2, start_y + 6 * (button_height + button_spacing), button_width, button_height, FONT_SMALL, normal_color=(100, 100, 150))
-    menu_elements.append(("button", (setting_btn, "5")))
-
-    exit_btn = Button("退出游戏", (screen_width - button_width) // 2, start_y + 7 * (button_height + button_spacing), button_width, button_height, FONT_SMALL, normal_color=COLORS["accent_red"])
-    menu_elements.append(("button", (exit_btn, "9")))
+    def activate_code(code):
+        """菜单项激活 — 鼠标点击与键盘 Enter 共用。"""
+        nonlocal running, screen_width, screen_height
+        play_sfx("click.wav")
+        if code == "4":
+            username = data.get("username", "player")
+            save_name = input_save_name(screen, FONT_MAIN, FONT_SMALL)
+            if save_name:
+                from ASSET.login_system import save_user_progress, save_game
+                save_user_progress(username, data)
+                success, message = save_game(username, save_name, data)
+                if success:
+                    play_sfx("confirm.wav")
+                    show_message("存好了，主公可随时再战。")
+                else:
+                    play_sfx("deny.wav")
+                    show_message(f"这次没存上：{message}")
+        elif code == "15":
+            username = data.get("username", "player")
+            from ASSET.login_system import show_save_manager
+            save_result = show_save_manager(screen, FONT_BIG, FONT_MAIN, FONT_SMALL, username, data)
+            if save_result:
+                data.clear()
+                data.update(save_result)
+                ensure_defaults()
+                save()
+                show_message("读档成功，欢迎回来。")
+        elif code == "5":
+            old_width = screen_width
+            old_height = screen_height
+            setting_menu()
+            screen_width = screen.get_width()
+            screen_height = screen.get_height()
+            if screen_width != old_width or screen_height != old_height:
+                menu_elements[:] = build_menu()
+        elif code == "9":
+            exit_choice = show_exit_menu()
+            if exit_choice == "exit_game":
+                save()
+                play_sfx("confirm.wav")
+                show_message("青山不改，绿水长流，后会有期。")
+                running = False
+            elif exit_choice == "exit_login":
+                save()
+                data["username"] = ""
+                data["login_status"] = False
+                save()
+                if is_android():
+                    from ASSET.login_system import main as login_main
+                    login_main()
+                else:
+                    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                    login_path = os.path.join(os.path.dirname(__file__), "login_system.py")
+                    env = os.environ.copy()
+                    env['PYTHONPATH'] = project_root
+                    subprocess.Popen([sys.executable, login_path], cwd=project_root, env=env)
+                running = False
+        elif code in SPECIAL_HANDLERS:
+            SPECIAL_HANDLERS[code]()
+        elif code in MODULE_ROUTES:
+            run_module(MODULE_ROUTES[code])
 
     particles = []
 
@@ -2110,7 +2238,7 @@ def main():
                         try:
                             if item_rect.collidepoint(mouse_pos):
                                 highlight_surf = pygame.Surface((item_rect.width, item_rect.height), pygame.SRCALPHA)
-                                pygame.draw.rect(highlight_surf, (100, 180, 255, 80),
+                                pygame.draw.rect(highlight_surf, (255, 215, 0, 60),
                                                (0, 0, item_rect.width, item_rect.height),
                                                border_radius=8)
                                 screen.blit(highlight_surf, (item_rect.x, item_rect.y))
@@ -2123,6 +2251,29 @@ def main():
             if event.type == pygame.QUIT:
                 save()
                 running = False
+
+            # 滚轮：滚动展开中的长下拉列表
+            if event.type == pygame.MOUSEWHEEL:
+                for _t, _e in menu_elements:
+                    if _t == "dropdown" and _e.is_open:
+                        _e.scroll(-1 if event.y > 0 else 1, screen_height)
+                        break
+
+            # 键盘导航：↑↓ 移焦点，Enter 确认，Esc 关下拉
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    _open = [e for t, e in menu_elements
+                             if t == "dropdown" and e.is_open]
+                    if _open:
+                        _open[0].is_open = False
+                elif event.key in (pygame.K_UP, pygame.K_DOWN):
+                    focus_idx[0] = (focus_idx[0] + (1 if event.key == pygame.K_DOWN else -1)) % len(menu_elements)
+                elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    _et, _el = menu_elements[focus_idx[0]]
+                    if _et == "dropdown":
+                        _el.is_open = not _el.is_open
+                    else:
+                        activate_code(_el[1])
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 try:
@@ -2138,86 +2289,21 @@ def main():
                     if element_type == "dropdown":
                         clicked, code = element.check_click(mouse_pos)
                         if clicked and code:
-                            # 优先处理特殊逻辑，其余统一走模块路由表
-                            if code in SPECIAL_HANDLERS:
-                                SPECIAL_HANDLERS[code]()
-                            elif code in MODULE_ROUTES:
-                                run_module(MODULE_ROUTES[code])
+                            activate_code(code)
                             break
                     elif element_type == "button":
                         btn, code = element
                         if btn.check_click(mouse_pos):
-                            if code == "4":
-                                username = data.get("username", "player")
-                                save_name = input_save_name(screen, FONT_MAIN, FONT_SMALL)
-                                if save_name:
-                                    from ASSET.login_system import save_user_progress, save_game
-                                    save_user_progress(username, data)
-                                    success, message = save_game(username, save_name, data)
-                                    if success:
-                                        show_message("保存成功！")
-                                    else:
-                                        show_message(f"保存失败：{message}")
-                            elif code == "15":
-                                username = data.get("username", "player")
-                                from ASSET.login_system import show_save_manager
-                                save_result = show_save_manager(screen, FONT_BIG, FONT_MAIN, FONT_SMALL, username, data)
-                                if save_result:
-                                    data.clear()
-                                    data.update(save_result)
-                                    ensure_defaults()
-                                    save()
-                                    show_message("读取存档成功！")
-                            elif code == "5":
-                                old_width = screen_width
-                                old_height = screen_height
-                                setting_menu()
-                                screen_width = screen.get_width()
-                                screen_height = screen.get_height()
-                                if screen_width != old_width or screen_height != old_height:
-                                    button_width = min(320, screen_width * 0.4)
-                                    button_height = min(60, screen_height * 0.08)
-                                    button_spacing = min(12, screen_height * 0.02)
-                                    start_y = screen_height * 0.25
-                                    menu_elements = []
-                                    game_core_menu = DropdownMenu("游戏核心", (screen_width - button_width) // 2, start_y, button_width, button_height, FONT_SMALL, game_core_items)
-                                    menu_elements.append(("dropdown", game_core_menu))
-                                    game_system_menu = DropdownMenu("游戏系统", (screen_width - button_width) // 2, start_y + button_height + button_spacing, button_width, button_height, FONT_SMALL, game_system_items)
-                                    menu_elements.append(("dropdown", game_system_menu))
-                                    social_menu = DropdownMenu("社交与排行", (screen_width - button_width) // 2, start_y + 2 * (button_height + button_spacing), button_width, button_height, FONT_SMALL, social_items)
-                                    menu_elements.append(("dropdown", social_menu))
-                                    other_menu = DropdownMenu("其他功能", (screen_width - button_width) // 2, start_y + 3 * (button_height + button_spacing), button_width, button_height, FONT_SMALL, other_items)
-                                    menu_elements.append(("dropdown", other_menu))
-                                    save_btn = Button("保存进度", (screen_width - button_width) // 2, start_y + 4 * (button_height + button_spacing), button_width, button_height, FONT_SMALL, normal_color=(100, 100, 150))
-                                    menu_elements.append(("button", (save_btn, "4")))
-                                    load_btn = Button("读取存档", (screen_width - button_width) // 2, start_y + 5 * (button_height + button_spacing), button_width, button_height, FONT_SMALL, normal_color=(100, 100, 150))
-                                    menu_elements.append(("button", (load_btn, "15")))
-                                    setting_btn = Button("游戏设置", (screen_width - button_width) // 2, start_y + 6 * (button_height + button_spacing), button_width, button_height, FONT_SMALL, normal_color=(100, 100, 150))
-                                    menu_elements.append(("button", (setting_btn, "5")))
-                                    exit_btn = Button("退出游戏", (screen_width - button_width) // 2, start_y + 7 * (button_height + button_spacing), button_width, button_height, FONT_SMALL, normal_color=COLORS["accent_red"])
-                                    menu_elements.append(("button", (exit_btn, "9")))
-                            elif code == "9":
-                                exit_choice = show_exit_menu()
-                                if exit_choice == "exit_game":
-                                    save()
-                                    show_message("感谢游玩！")
-                                    running = False
-                                elif exit_choice == "exit_login":
-                                    save()
-                                    data["username"] = ""
-                                    data["login_status"] = False
-                                    save()
-                                    if is_android():
-                                        from ASSET.login_system import main as login_main
-                                        login_main()
-                                    else:
-                                        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                                        login_path = os.path.join(os.path.dirname(__file__), "login_system.py")
-                                        env = os.environ.copy()
-                                        env['PYTHONPATH'] = project_root
-                                        subprocess.Popen([sys.executable, login_path], cwd=project_root, env=env)
-                                    running = False
+                            activate_code(code)
                             break
+
+        # 键盘焦点高亮（金色描边，与回纹角一致）
+        if focus_idx[0] < len(menu_elements):
+            _ft, _fe = menu_elements[focus_idx[0]]
+            _fr = _fe.rect if hasattr(_fe, "rect") else None
+            if _fr:
+                pygame.draw.rect(screen, (255, 215, 0), _fr.inflate(8, 8), 2, border_radius=10)
+                pygame.display.flip()
 
         clock.tick(MENU_FPS)
 
@@ -2227,31 +2313,30 @@ def show_exit_menu():
     screen_width = screen.get_width()
     screen_height = screen.get_height()
 
-    panel_width = 400
-    panel_height = 200
+    panel_width = 430
+    panel_height = 210
     panel_x = (screen_width - panel_width) // 2
     panel_y = (screen_height - panel_height) // 2
 
-    button_width = 120
-    button_height = 50
-    button_spacing = 20
-    start_y = panel_y + 80
+    button_width = 110
+    button_height = 46
+    button_spacing = 16
+    # 三个按钮总宽 110*3+16*2 = 362 < 430，两侧各留 ~34px 内边距
+    buttons_total = button_width * 3 + button_spacing * 2
+    row_x = panel_x + (panel_width - buttons_total) // 2
+    start_y = panel_y + 110
 
-    exit_game_btn = Button("退出游戏",
-                          panel_x + (panel_width - button_width * 3 - button_spacing * 2) // 2,
-                          start_y,
+    exit_game_btn = Button("退出游戏", row_x, start_y,
                           button_width, button_height, FONT_SMALL,
                           normal_color=COLORS["accent_red"])
 
     exit_login_btn = Button("退出登录",
-                           panel_x + (panel_width - button_width * 3 - button_spacing * 2) // 2 + button_width + button_spacing,
-                           start_y,
-                           button_width, button_height, FONT_SMALL,
-                           normal_color=COLORS["accent_blue"])
+                            row_x + button_width + button_spacing, start_y,
+                            button_width, button_height, FONT_SMALL,
+                            normal_color=COLORS["accent_blue"])
 
     cancel_btn = Button("取消",
-                        panel_x + (panel_width - button_width * 3 - button_spacing * 2) // 2 + button_width * 2 + button_spacing * 2,
-                        start_y,
+                        row_x + (button_width + button_spacing) * 2, start_y,
                         button_width, button_height, FONT_SMALL,
                         normal_color=COLORS["accent_green"])
 
@@ -2271,6 +2356,11 @@ def show_exit_menu():
         for p in particles[:]:
             p.update()
             p.draw(screen)
+
+        # 暗化遮罩：弹窗观感而非换页
+        scrim = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
+        scrim.fill((0, 0, 0, 140))
+        screen.blit(scrim, (0, 0))
 
         pygame.draw.rect(screen, (30, 30, 55), (panel_x, panel_y, panel_width, panel_height), border_radius=15)
         pygame.draw.rect(screen, (139, 69, 19), (panel_x, panel_y, panel_width, panel_height), 3, border_radius=15)
@@ -2296,7 +2386,24 @@ def show_exit_menu():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 save()
-                return "exit_game"
+                running = False
+
+            # Esc=取消，Enter=默认「取消」，←→ 切换焦点按钮
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return "cancel"
+                if event.key == pygame.K_RETURN and exit_login_btn.is_hovered:
+                    return "exit_login"
+                if event.key == pygame.K_RETURN and exit_game_btn.is_hovered:
+                    return "exit_game"
+                if event.key == pygame.K_RETURN:
+                    return "cancel"
+                if event.key in (pygame.K_LEFT, pygame.K_RIGHT):
+                    trio = [exit_game_btn, exit_login_btn, cancel_btn]
+                    cur = next((i for i, b in enumerate(trio) if b.is_hovered), 2)
+                    nxt = (cur + (1 if event.key == pygame.K_RIGHT else -1)) % 3
+                    for i, b in enumerate(trio):
+                        b.is_hovered = (i == nxt)
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if exit_game_btn.check_click(mouse_pos):

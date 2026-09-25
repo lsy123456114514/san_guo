@@ -68,9 +68,9 @@ if not _logger.handlers:
             _ch = logging.StreamHandler()
             _ch.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
             _logger.addHandler(_ch)
-        except Exception as _e:
+        except Exception:
             pass
-    except Exception as _e:
+    except Exception:
         pass
     _logger.propagate = False
 
@@ -1793,7 +1793,7 @@ def draw_gradient_bg(
     if key not in _GRADIENT_CACHE:
         try:
             bg = pygame.Surface((w, h)).convert()
-        except Exception as _e:
+        except Exception:
             # Surface 创建失败（比如宽/高为 0）就直接填色兜底，不写缓存
             try:
                 surface.fill(c1)
@@ -1835,7 +1835,7 @@ def load_sound(file_name: str) -> pygame.mixer.Sound | None:
         sound = pygame.mixer.Sound(sound_path)
         sound.set_volume(SETTINGS["sound"]["volume"])
         _SOUND_CACHE[file_name] = sound
-    except Exception as _e:
+    except Exception:
         _SOUND_CACHE[file_name] = None
         return None
     _evict_if_full(_SOUND_CACHE, CACHE_MAX_SOUNDS)

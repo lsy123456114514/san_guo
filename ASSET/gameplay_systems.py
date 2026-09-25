@@ -1,7 +1,7 @@
 """玩法系统 - 活动中心与限时活动推送"""
 
 import time
-from ASSET.game_data import data, save, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save
 
 class ActivityCenter:
     """活动中心 - 借鉴冰河时代的活动推送机制"""
@@ -193,7 +193,6 @@ class ActivityCenter:
             "claimed": a["id"] in data["activities"]["claimed_rewards"]
         } for a in self.activities]
 
-
 class MailSystem:
     """邮件系统 - 游戏内消息和奖励发放"""
     
@@ -314,7 +313,6 @@ class MailSystem:
             "read": m["read"],
             "claimed": m["claimed"]
         } for m in data["mail"]["inbox"]]
-
 
 class CheckinCalendar:
     """签到日历 - 现代化签到界面"""
@@ -485,7 +483,6 @@ class CheckinCalendar:
             {"days": 21, "name": "三周签到", "rewards": {"金元宝": 300, "稀有武将碎片": 20}},
             {"days": 30, "name": "整月签到", "rewards": {"金元宝": 500, "传说武将碎片": 30}}
         ]
-
 
 class LeaderboardSystem:
     """排行榜系统 - 借鉴冰河时代的竞争机制"""

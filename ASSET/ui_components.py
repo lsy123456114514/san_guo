@@ -14,8 +14,6 @@ effects:
 * **TextReveal** – typewriter-style text reveal effect.
 """
 
-import math
-import time
 import logging
 from typing import Optional, Tuple
 import pygame
@@ -41,7 +39,6 @@ COLORS = {
     'orange': (255, 165, 0),
     'purple': (180, 80, 255),
 }
-
 
 # ═══════════════════════════════════════════════════════════
 # Transition Manager
@@ -201,7 +198,6 @@ class TransitionManager:
         """
         return t * t * (3.0 - 2.0 * t)
 
-
 # ═══════════════════════════════════════════════════════════
 # UI Panel
 # ═══════════════════════════════════════════════════════════
@@ -256,7 +252,6 @@ class UIPanel:
             ``True`` if the point is within the panel bounds.
         """
         return self.rect.collidepoint(point)
-
 
 # ═══════════════════════════════════════════════════════════
 # UI Button
@@ -350,7 +345,6 @@ class UIButton:
 
         surface.blit(btn_surf, (x, y))
 
-
 # ═══════════════════════════════════════════════════════════
 # Progress Bar
 # ═══════════════════════════════════════════════════════════
@@ -422,7 +416,6 @@ class ProgressBar:
                 surface.blit(txt, txt.get_rect(center=self.rect.center))
             except Exception:
                 pass
-
 
 # ═══════════════════════════════════════════════════════════
 # Toast Notification
@@ -507,7 +500,6 @@ class ToastNotification:
         pygame.draw.rect(panel, (*self.color, alpha), (0, 0, pw, ph), 2, border_radius=8)
         panel.blit(txt_surf, (15, 8))
         surface.blit(panel, (px, py))
-
 
 # ═══════════════════════════════════════════════════════════
 # Text Reveal Effect

@@ -1,9 +1,8 @@
 """科技树系统 - 科技点升级、全局属性加成、前置依赖"""
 
 import os
-import sys
 import pygame
-from ASSET.game_data import data, save, TECH_TREE, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, TECH_TREE, get_system_font_name, logger, draw_gradient_bg
 from ASSET import safe_exit
 
 # 全局变量（延迟初始化）
@@ -185,7 +184,7 @@ def init_fonts():
             FONT_SMALL = pygame.font.Font(None, 24)
             FONT_TINY = pygame.font.Font(None, 20)
             FONT_BIG = pygame.font.Font(None, 50)
-    except Exception as _e:
+    except Exception:
         FONT_MAIN = pygame.font.Font(None, 36)
         FONT_SMALL = pygame.font.Font(None, 24)
         FONT_TINY = pygame.font.Font(None, 20)

@@ -3,9 +3,8 @@
 import os
 import pygame
 import random
-from ASSET.game_data import data, save, logger, get_font
+from ASSET.game_data import data, save, get_font
 from ASSET import safe_exit
-
 
 class RacingMode:
     """三国主题无尽竞速跑酷
@@ -255,7 +254,6 @@ class RacingMode:
         restart_surf = self.font_small.render("按 空格/R 重新开始，ESC 返回主菜单", True, (200, 220, 255))
         self.screen.blit(restart_surf, ((self.width - restart_surf.get_width()) // 2, self.height // 2 + 60))
 
-
 def main():
     """竞速模式主函数"""
     try:
@@ -314,7 +312,6 @@ def main():
         safe_exit("竞速模式")
     except Exception as e:
         safe_exit("竞速模式", str(e))
-
 
 if __name__ == "__main__":
     main()

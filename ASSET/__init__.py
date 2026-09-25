@@ -29,7 +29,6 @@ Notes
 from __future__ import annotations
 
 import os
-import sys
 import pygame
 
 from ASSET.game_data import draw_gradient_bg, cull_dead, get_font, logger
@@ -43,7 +42,6 @@ _ANDROID_ENV_KEY: str = "ANDROID_DATA"
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
-
 
 def safe_exit(
     module_name: str = "模块",
@@ -140,7 +138,6 @@ def safe_exit(
                 type(_e).__name__,
                 _e,
             )
-
 
 # ---------------------------------------------------------------------------
 # Public exports

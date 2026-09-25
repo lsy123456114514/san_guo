@@ -1,12 +1,11 @@
 """商店系统 - 分类货架、限购、资源购买"""
 
 import os
-import sys
 import pygame
 import random
 import math
 import traceback
-from ASSET.game_data import data, save, get_system_font_name, load_sound, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, load_sound, logger, draw_gradient_bg, get_font
 from ASSET import safe_exit
 
 # 颜色主题
@@ -169,7 +168,11 @@ class ScrollableContainer:
             if event.button == 1:
                 # 检查是否点击滚动条
                 scrollbar_x = self.x + self.width - self.scrollbar_width - 5
-                scrollbar_y = self.y + 5 + (self.scroll_y / self.content_height) * (self.height - 10 - self.scrollbar_height)
+                max_scroll = max(0, self.content_height - self.height)
+                if max_scroll > 0:
+                    scrollbar_y = self.y + 5 + (self.scroll_y / max_scroll) * (self.height - 10 - self.scrollbar_height)
+                else:
+                    scrollbar_y = self.y + 5
                 if scrollbar_x <= mouse_pos[0] <= scrollbar_x + self.scrollbar_width and \
                    scrollbar_y <= mouse_pos[1] <= scrollbar_y + self.scrollbar_height:
                     self.is_scrolling = True
@@ -178,7 +181,7 @@ class ScrollableContainer:
             elif event.button == 4:  # 鼠标滚轮向上
                 self.scroll_y = max(0, self.scroll_y - 20)
             elif event.button == 5:  # 鼠标滚轮向下
-                self.scroll_y = min(self.content_height - self.height, self.scroll_y + 20)
+                self.scroll_y = max(0, min(self.content_height - self.height, self.scroll_y + 20))
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1:
                 self.is_scrolling = False
@@ -187,7 +190,7 @@ class ScrollableContainer:
                 delta_y = mouse_pos[1] - self.last_mouse_y
                 scroll_ratio = delta_y / (self.height - self.scrollbar_height)
                 self.scroll_y += scroll_ratio * self.content_height
-                self.scroll_y = max(0, min(self.content_height - self.height, self.scroll_y))
+                self.scroll_y = max(0, min(max(0, self.content_height - self.height), self.scroll_y))
                 self.last_mouse_y = mouse_pos[1]
         return False  # 返回False表示没有点击滚动条
     
@@ -623,6 +626,29 @@ def main():
 
         # 主循环
         running = True
+        selected_level = 0  # 时间卡等级选中项（跨帧保持）
+        card_levels = ["时间卡", "时间卡+", "时间卡++"]
+
+        # 按钮缓存：跨帧复用同一对象，hover 动画与粒子冷却才能生效
+        btn_cache = {}
+
+        def cached_btn(key, x, y, w, h, text, font, nc, hc, tc=(255, 255, 255)):
+            btn = btn_cache.get(key)
+            if btn is None:
+                btn = AnimatedButton(x, y, w, h, text, font, nc, hc, tc, 1.0)
+                btn_cache[key] = btn
+            else:
+                if (btn.original_x, btn.original_y,
+                    btn.original_width, btn.original_height) != (x, y, w, h):
+                    btn.original_x, btn.original_y = x, y
+                    btn.original_width, btn.original_height = w, h
+                    btn.update_rect()
+                # 颜色可能随状态（如选中）变化
+                btn.normal_color = nc
+                btn.hover_color = hc
+                btn.text_color = tc
+            return btn
+
         while running:
             mx, my = pygame.mouse.get_pos()
             
@@ -689,10 +715,8 @@ def main():
                     # 购买按钮 - 使用相对位置，不进行额外的缩放
                     btn_x = x + 10
                     btn_y = y + card_height - btn_height - 5
-                    btn = AnimatedButton(
-                        btn_x, btn_y, card_width - 20, btn_height,
-                        "购买", font_small, COLORS["btn_green"], COLORS["btn_green_hover"], (255, 255, 255), 1.0
-                    )
+                    btn = cached_btn(("res", res["name"]), btn_x, btn_y, card_width - 20, btn_height,
+                                     "购买", font_small, COLORS["btn_green"], COLORS["btn_green_hover"], (255, 255, 255))
                     btn.update((mx, my))
                     btn.draw(screen)
                     resource_btns.append((btn, res["name"], res["amount"]))
@@ -725,10 +749,8 @@ def main():
                     # 购买按钮 - 使用相对位置，不进行额外的缩放
                     btn_x = x + 10
                     btn_y = y + card_height - btn_height - 5
-                    btn = AnimatedButton(
-                        btn_x, btn_y, card_width - 20, btn_height,
-                        "购买", font_small, COLORS["btn_blue"], COLORS["btn_blue_hover"], (255, 255, 255), 1.0
-                    )
+                    btn = cached_btn(("hero", hero["name"]), btn_x, btn_y, card_width - 20, btn_height,
+                                     "购买", font_small, COLORS["btn_blue"], COLORS["btn_blue_hover"], (255, 255, 255))
                     btn.update((mx, my))
                     btn.draw(screen)
                     hero_btns.append((btn, hero["name"], hero["fragments"]))
@@ -756,10 +778,8 @@ def main():
                     # 购买按钮 - 使用相对位置，不进行额外的缩放
                     btn_x = x + 10
                     btn_y = y + card_height - btn_height - 5
-                    btn = AnimatedButton(
-                        btn_x, btn_y, card_width - 20, btn_height,
-                        "购买", font_small, COLORS["btn_gold"], COLORS["btn_gold_hover"], (255, 255, 255), 1.0
-                    )
+                    btn = cached_btn(("equip", equip["name"]), btn_x, btn_y, card_width - 20, btn_height,
+                                     "购买", font_small, COLORS["btn_gold"], COLORS["btn_gold_hover"], (255, 255, 255))
                     btn.update((mx, my))
                     btn.draw(screen)
                     equip_btns.append((btn, equip["name"], equip["type"]))
@@ -772,8 +792,6 @@ def main():
             content_y += 35 * scale
             
             # 时间卡等级选择
-            card_levels = ["时间卡", "时间卡+", "时间卡++"]
-            selected_level = 0
             craft_start_y = content_y
             
             for i, level in enumerate(card_levels):
@@ -781,14 +799,10 @@ def main():
                 y = container_y + craft_start_y
                 
                 if y + 40 > container_y and y < container_y + container_height:
-                    level_btn = AnimatedButton(
-                        x, y,
-                        90, 35,
-                        level, font_small, 
-                        COLORS["btn_blue"] if i == selected_level else (80, 80, 120), 
-                        COLORS["btn_blue_hover"],
-                        (255, 255, 255), 1.0
-                    )
+                    level_btn = cached_btn(("level", i), x, y, 90, 35,
+                                           level, font_small,
+                                           COLORS["btn_blue"] if i == selected_level else (80, 80, 120),
+                                           COLORS["btn_blue_hover"], (255, 255, 255))
                     level_btn.update((mx, my))
                     level_btn.draw(screen)
                     level_btns.append((level_btn, i))
@@ -858,11 +872,10 @@ def main():
                     screen.blit(value_surf, (craft_card_x + craft_card_width - 60, info_y + i * 20 * scale))
                 
                 # 合成按钮
-                craft_btn = AnimatedButton(
-                    craft_card_x + 80, craft_card_y + craft_card_height - 40, craft_card_width - 90, 35,
-                    "合成", font_small, COLORS["btn_blue"], COLORS["btn_blue_hover"], (255, 255, 255),
-                    1.0
-                )
+                craft_btn = cached_btn(("craft", 0),
+                                       craft_card_x + 80, craft_card_y + craft_card_height - 40,
+                                       craft_card_width - 90, 35,
+                                       "合成", font_small, COLORS["btn_blue"], COLORS["btn_blue_hover"], (255, 255, 255))
                 craft_btn.update((mx, my))
                 craft_btn.draw(screen)
             
@@ -883,12 +896,10 @@ def main():
                 draw_shop_item_card(screen, draw_card_x, draw_card_y, draw_card_width, draw_card_height,
                                   "抽卡", "随机抽卡", "1-5碎片", font_small, font_icon, scale)
                 
-                draw_card_btn = AnimatedButton(
-                    draw_card_x + 15, draw_card_y + draw_card_height - 45,
-                    draw_card_width - 30, 40,
-                    "免费抽取", font_small, COLORS["btn_gold"], COLORS["btn_gold_hover"], (255, 255, 255),
-                    1.0
-                )
+                draw_card_btn = cached_btn(("draw", 0),
+                                           draw_card_x + 15, draw_card_y + draw_card_height - 45,
+                                           draw_card_width - 30, 40,
+                                           "免费抽取", font_small, COLORS["btn_gold"], COLORS["btn_gold_hover"], (255, 255, 255))
                 draw_card_btn.update((mx, my))
                 draw_card_btn.draw(screen)
             
@@ -899,12 +910,10 @@ def main():
             return_btn_width = min(160, SCREEN_WIDTH * 0.25)
             return_btn_height = min(50, SCREEN_HEIGHT * 0.08)
             return_btn_y = SCREEN_HEIGHT - return_btn_height - 30
-            return_btn = AnimatedButton(
-                (SCREEN_WIDTH - return_btn_width) // 2, return_btn_y,
-                return_btn_width, return_btn_height, "返回", font_normal,
-                (60, 120, 60), (80, 160, 80), (255, 255, 255),
-                1.0  # 使用1.0作为缩放因子，因为我们已经根据屏幕大小计算了正确的尺寸
-            )
+            return_btn = cached_btn(("return", 0),
+                                    (SCREEN_WIDTH - return_btn_width) // 2, return_btn_y,
+                                    return_btn_width, return_btn_height, "返回", font_normal,
+                                    (60, 120, 60), (80, 160, 80), (255, 255, 255))
             return_btn.update((mx, my))
             return_btn.draw(screen)
 
@@ -978,9 +987,8 @@ def main():
                                     particle_color = random.choice([COLORS["accent_gold"], (255, 200, 100), (200, 160, 50)])
                                     particles.append(Particle(mx, my, particle_color, random.uniform(3, 6), random.uniform(3, 7), random.randint(30, 40)))
                     # 时间卡等级选择
-                    card_levels = ["时间卡", "时间卡+", "时间卡++"]
                     for i, level in enumerate(card_levels):
-                        level_rect = pygame.Rect(container_x + 10 + i * 100, craft_start_y, 90, 35)
+                        level_rect = pygame.Rect(container_x + 10 + i * 100, container_y + craft_start_y, 90, 35)
                         if level_rect.collidepoint(mx, my):
                             selected_level = i
                             play_sound(click_sound)

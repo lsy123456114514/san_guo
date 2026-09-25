@@ -4,7 +4,7 @@
 
 import pygame
 import os
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, get_system_font_name, draw_gradient_bg
 from ASSET.game_main_menu import Button, COLORS
 
 # 字体变量
@@ -167,7 +167,7 @@ def main():
             FONT_MAIN = pygame.font.Font(None, 40)
             FONT_SMALL = pygame.font.Font(None, 28)
             FONT_BIG = pygame.font.Font(None, 60)
-    except Exception as _e:
+    except Exception:
         FONT_MAIN = pygame.font.Font(None, 40)
         FONT_SMALL = pygame.font.Font(None, 28)
         FONT_BIG = pygame.font.Font(None, 60)
@@ -294,16 +294,22 @@ def main():
                     scroll_bar_height = (faq_list_area.height / (len(FAQs) * 60 + (220 if selected_faq else 0))) * faq_list_area.height
                     scroll_bar = pygame.Rect(faq_list_area.right - 15, faq_list_area.y, 10, faq_list_area.height)
                     if scroll_bar.collidepoint(mouse_pos):
-                        # 拖动滚动条
+                        # 拖动滚动条（非阻塞：直接记录状态，主循环里继续处理）
                         dragging = True
                         while dragging:
                             for drag_event in pygame.event.get():
-                                if drag_event.type == pygame.MOUSEBUTTONUP:
+                                if drag_event.type == pygame.QUIT:
+                                    dragging = False
+                                    save()
+                                    return
+                                elif drag_event.type == pygame.MOUSEBUTTONUP:
                                     dragging = False
                                 elif drag_event.type == pygame.MOUSEMOTION:
                                     drag_y = drag_event.pos[1]
-                                    scroll_ratio = (drag_y - faq_list_area.y) / faq_list_area.height
+                                    scroll_ratio = (drag_y - faq_list_area.y) / max(1, faq_list_area.height)
                                     scroll_y = max(0, min(max_scroll, scroll_ratio * max_scroll))
+                            pygame.display.flip()
+                            clock.tick(60)
                         
             # 鼠标滚轮滚动
             if event.type == pygame.MOUSEWHEEL:

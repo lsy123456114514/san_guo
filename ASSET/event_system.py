@@ -2,10 +2,8 @@
 
 import pygame
 import random
-import json
 import time
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
-from ASSET import safe_exit
+from ASSET.game_data import data, save
 
 class EventSystem:
     def __init__(self):

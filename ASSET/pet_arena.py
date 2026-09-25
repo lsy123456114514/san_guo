@@ -10,7 +10,7 @@ import math
 # 添加父目录到Python路径，确保可以正确导入ASSET模块
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, get_system_font_name, draw_gradient_bg
 from ASSET.game_main_menu import Button, COLORS, draw_title, Particle
 from ASSET.pet_system import Pet
 
@@ -473,7 +473,7 @@ def init_fonts():
         else:
             FONT_MAIN = pygame.font.Font(None, 40)
             FONT_SMALL = pygame.font.Font(None, 28)
-    except Exception as _e:
+    except Exception:
         FONT_MAIN = pygame.font.Font(None, 40)
         FONT_SMALL = pygame.font.Font(None, 28)
 

@@ -2,7 +2,6 @@ import pygame
 import random
 import time
 import math
-from ASSET.game_data import draw_gradient_bg, cull_dead, get_font
 
 class VisualEffects:
     """视觉特效系统 - 借鉴成功游戏的视觉风格"""
@@ -233,7 +232,6 @@ class VisualEffects:
                 "type": "smoke"
             })
 
-
 class AnimatedButton:
     """动画按钮 - 现代化交互效果"""
     
@@ -305,7 +303,6 @@ class AnimatedButton:
             return True
         return False
 
-
 class ProgressRing:
     """圆形进度条 - 现代化UI组件"""
     
@@ -337,7 +334,6 @@ class ProgressRing:
                 if glow_thickness > 0:
                     glow_color = (*self.color, int(255 * (1 - i * 0.3)))
                     pygame.draw.arc(surface, glow_color, (self.x - glow_radius, self.y - glow_radius, glow_radius * 2, glow_radius * 2), math.radians(start_angle), math.radians(end_angle), glow_thickness)
-
 
 class IconBadge:
     """图标徽章 - 显示未读数量"""
@@ -375,7 +371,6 @@ class IconBadge:
             count_surface = font_small.render(count_text, True, (255, 255, 255))
             count_rect = count_surface.get_rect(center=(badge_x, badge_y + bounce_offset))
             surface.blit(count_surface, count_rect)
-
 
 class FadeTransition:
     """淡入淡出过渡效果"""
@@ -417,7 +412,6 @@ class FadeTransition:
             overlay.set_alpha(self.alpha)
             surface.blit(overlay, (0, 0))
 
-
 class TextPopup:
     """文字弹出效果"""
     
@@ -456,7 +450,6 @@ class TextPopup:
         
         text_rect = text_surface.get_rect(center=(self.x, self.y + self.offset_y))
         surface.blit(text_surface, text_rect)
-
 
 class DamageNumber:
     """伤害数字显示"""

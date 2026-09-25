@@ -5,7 +5,7 @@
 import os
 import platform
 import pygame
-from ASSET.game_data import draw_gradient_bg, cull_dead, get_font, logger
+from ASSET.game_data import logger
 
 # 字体文件路径
 FONT_DIR = os.path.join(os.path.dirname(__file__), 'fonts')
@@ -88,7 +88,7 @@ def get_system_font(size, bold=False):
             font = pygame.font.SysFont(font_name, size, bold=bold)
             if font:
                 return font
-        except Exception as _e:
+        except Exception:
             continue
     
     # 最后的兜底方案

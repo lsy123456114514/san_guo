@@ -3,9 +3,8 @@
 """建造系统 - 资源栏顶部绘制逻辑"""
 
 import pygame
-import json
 import os
-from ASSET.game_data import data, save, BUILDINGS, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, BUILDINGS, get_system_font_name, draw_gradient_bg
 from ASSET.game_main_menu import Button
 
 # 颜色主题
@@ -132,7 +131,7 @@ def main():
             FONT_MAIN = pygame.font.Font(None, 40)
             FONT_SMALL = pygame.font.Font(None, 28)
             FONT_BIG = pygame.font.Font(None, 60)
-    except Exception as _e:
+    except Exception:
         FONT_MAIN = pygame.font.Font(None, 40)
         FONT_SMALL = pygame.font.Font(None, 28)
         FONT_BIG = pygame.font.Font(None, 60)

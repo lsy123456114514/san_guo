@@ -6,7 +6,7 @@ import hashlib
 import time
 import random
 import traceback
-from ASSET.game_data import draw_gradient_bg, cull_dead, get_font, logger
+from ASSET.game_data import logger
 
 # 反反编译保护模块
 class AntiDecompile:
@@ -27,7 +27,7 @@ class AntiDecompile:
             with open(file_path, 'rb') as f:
                 content = f.read()
                 return hashlib.sha256(content).hexdigest()
-        except Exception as _e:
+        except Exception:
             return None
     
     def init_protection(self):

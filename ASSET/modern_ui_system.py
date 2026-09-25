@@ -2,7 +2,7 @@
 
 import pygame
 import time
-from ASSET.game_data import data, save, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, logger
 
 class ModernUI:
     """现代化UI组件系统 - 借鉴成功游戏的设计"""
@@ -58,7 +58,7 @@ class ModernUI:
             self.font_medium = pygame.font.SysFont("Microsoft YaHei", 18)
             self.font_small = pygame.font.SysFont("Microsoft YaHei", 14)
             self.font_tiny = pygame.font.SysFont("Microsoft YaHei", 12)
-        except Exception as _e:
+        except Exception:
             self.font_large = pygame.font.Font(None, 36)
             self.font_medium = pygame.font.Font(None, 24)
             self.font_small = pygame.font.Font(None, 18)
@@ -470,7 +470,6 @@ class ModernUI:
                 return action["id"]
         
         return None
-
 
 class NotificationSystem:
     """通知系统 - 借鉴冰河时代的推送机制"""

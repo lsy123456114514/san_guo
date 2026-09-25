@@ -1,11 +1,9 @@
 """天气系统 - 动态天气变化与战斗加成"""
 
-import os
 import time
 import pygame
 import random
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
-from ASSET.languages import get_text
+from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font
 from ASSET import safe_exit
 
 # 颜色主题
