@@ -176,6 +176,18 @@ def main():
     running = True
     selected_faq = None
     scroll_y = 0
+    # 问题按钮只在滚动/选中/分辨率变化时重建 — 每帧重建会重置 hover 动画
+    question_btns = []
+    q_sig = None
+    back_btn = Button(
+        "返回主菜单",
+        screen_width - 200,
+        screen_height - 60,
+        180,
+        50,
+        FONT_SMALL,
+        normal_color=COLORS["accent_blue_dark"]
+    )
     
     while running:
         # 渐变背景
@@ -194,40 +206,43 @@ def main():
         pygame.draw.rect(screen, (30, 30, 55, 200), faq_list_area, border_radius=10)
         pygame.draw.rect(screen, COLORS["accent_gold"], faq_list_area, 2, border_radius=10)
         
-        # 显示FAQ列表
+        # 显示FAQ列表：先算规格，规格变了才重建按钮
+        specs = []
         y_offset = faq_list_area.y + 10 - scroll_y
         for faq in FAQs:
-            # 问题按钮
-            question_text = f"Q: {faq['question']}"
-            question_btn = Button(
-                question_text,
-                faq_list_area.x + 10,
+            specs.append((
+                faq,
+                f"Q: {faq['question']}",
                 y_offset,
-                faq_list_area.width - 20,
-                50,
-                FONT_SMALL,
-                normal_color=COLORS["accent_blue"] if selected_faq != faq['id'] else COLORS["accent_gold"]
-            )
-            question_btn.check_hover(pygame.mouse.get_pos())
-            question_btn.draw(screen)
-            
-            # 如果是选中的FAQ，显示答案
+                COLORS["accent_gold"] if selected_faq == faq['id'] else COLORS["accent_blue"]
+            ))
+            y_offset += 220 if selected_faq == faq['id'] else 60
+
+        sig = (tuple((t, y, c) for _f, t, y, c in specs), screen_width, screen_height)
+        if sig != q_sig:
+            q_sig = sig
+            question_btns = [
+                (faq, Button(text, faq_list_area.x + 10, y,
+                             faq_list_area.width - 20, 50, FONT_SMALL, normal_color=color))
+                for faq, text, y, color in specs
+            ]
+
+        # 答案区域（先画，按钮随后覆盖到其上，与原绘制顺序一致）
+        for faq, _t, y, _c in specs:
             if selected_faq == faq['id']:
-                # 答案区域
-                answer_area = pygame.Rect(faq_list_area.x + 20, y_offset + 60, faq_list_area.width - 40, 200)
+                answer_area = pygame.Rect(faq_list_area.x + 20, y + 60, faq_list_area.width - 40, 200)
                 pygame.draw.rect(screen, (40, 40, 70, 200), answer_area, border_radius=5)
-                
-                # 显示答案
                 answer_lines = faq['answer'].split('\n')
                 answer_y = answer_area.y + 10
                 for line in answer_lines:
                     answer_surf = FONT_SMALL.render(line, True, COLORS["text_white"])
                     screen.blit(answer_surf, (answer_area.x + 10, answer_y))
                     answer_y += answer_surf.get_height() + 5
-                
-                y_offset += 220
-            else:
-                y_offset += 60
+
+        mouse_pos = pygame.mouse.get_pos()
+        for _faq, question_btn in question_btns:
+            question_btn.check_hover(mouse_pos)
+            question_btn.draw(screen)
         
         # 滚动条
         max_scroll = max(0, (len(FAQs) * 60 + (220 if selected_faq else 0)) - faq_list_area.height)
@@ -238,16 +253,7 @@ def main():
             pygame.draw.rect(screen, COLORS["accent_gold"], scroll_bar, border_radius=5)
         
         # 返回按钮
-        back_btn = Button(
-            "返回主菜单",
-            screen_width - 200,
-            screen_height - 60,
-            180,
-            50,
-            FONT_SMALL,
-            normal_color=COLORS["accent_blue_dark"]
-        )
-        back_btn.check_hover(pygame.mouse.get_pos())
+        back_btn.check_hover(mouse_pos)
         back_btn.draw(screen)
         
         # 事件处理
@@ -260,17 +266,8 @@ def main():
             if event.type == pygame.MOUSEBUTTONDOWN:
                 mouse_pos = pygame.mouse.get_pos()
                 
-                # 检查FAQ按钮点击
-                y_offset = faq_list_area.y + 10 - scroll_y
-                for faq in FAQs:
-                    question_btn = Button(
-                        f"Q: {faq['question']}",
-                        faq_list_area.x + 10,
-                        y_offset,
-                        faq_list_area.width - 20,
-                        50,
-                        FONT_SMALL
-                    )
+                # 检查FAQ按钮点击（复用绘制用的缓存按钮，命中一致）
+                for faq, question_btn in question_btns:
                     if question_btn.check_click(mouse_pos):
                         if selected_faq == faq['id']:
                             selected_faq = None
@@ -278,11 +275,6 @@ def main():
                             selected_faq = faq['id']
                         scroll_y = 0  # 重置滚动位置
                         break
-                    
-                    if selected_faq == faq['id']:
-                        y_offset += 220
-                    else:
-                        y_offset += 60
                 
                 # 检查返回按钮
                 if back_btn.check_click(mouse_pos):

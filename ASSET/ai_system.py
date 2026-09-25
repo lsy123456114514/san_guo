@@ -185,6 +185,7 @@ def input_text(screen, font, prompt):
     """输入文本"""
     input_text = ""
     active = True
+    confirm_btn = None
     clock = pygame.time.Clock()
     
     while active:
@@ -236,16 +237,17 @@ def input_text(screen, font, prompt):
         input_surf = font.render(input_text, True, COLORS["text_white"])
         screen.blit(input_surf, (input_rect.x + 10, input_rect.y + 5))
         
-        # 确认按钮
-        confirm_btn = Button(
-            "确认",
-            screen.get_width() // 2 - 75,
-            input_rect.y + 60,
-            150,
-            40,
-            font,
-            normal_color=COLORS["accent_green"]
-        )
+        # 确认按钮（只构建一次 — 每帧重建会重置 hover 动画）
+        if confirm_btn is None:
+            confirm_btn = Button(
+                "确认",
+                screen.get_width() // 2 - 75,
+                input_rect.y + 60,
+                150,
+                40,
+                font,
+                normal_color=COLORS["accent_green"]
+            )
         confirm_btn.check_hover(pygame.mouse.get_pos())
         confirm_btn.draw(screen)
         
@@ -432,6 +434,34 @@ def main():
     running = True
     messages = []
     user_input = ""
+    # 按钮只构建一次 — 每帧重建会重置 hover 动画
+    config_btn = Button(
+        "配置AI",
+        screen_width - 200,
+        20,
+        180,
+        50,
+        FONT_SMALL,
+        normal_color=COLORS["accent_blue"]
+    )
+    send_btn = Button(
+        "发送",
+        screen_width - 130,
+        screen_height - 80,
+        80,
+        40,
+        FONT_SMALL,
+        normal_color=COLORS["accent_green"]
+    )
+    back_btn = Button(
+        "返回主菜单",
+        20,
+        screen_height - 60,
+        180,
+        50,
+        FONT_SMALL,
+        normal_color=COLORS["accent_blue_dark"]
+    )
     
     while running:
         # 渐变背景
@@ -452,15 +482,6 @@ def main():
         screen.blit(status_surf, (screen_width // 2 - status_surf.get_width() // 2, screen_height * 0.28))
         
         # 配置按钮
-        config_btn = Button(
-            "配置AI",
-            screen_width - 200,
-            20,
-            180,
-            50,
-            FONT_SMALL,
-            normal_color=COLORS["accent_blue"]
-        )
         config_btn.check_hover(pygame.mouse.get_pos())
         config_btn.draw(screen)
         
@@ -486,28 +507,10 @@ def main():
         screen.blit(input_surf, (input_rect.x + 10, input_rect.y + 5))
         
         # 发送按钮
-        send_btn = Button(
-            "发送",
-            screen_width - 130,
-            screen_height - 80,
-            80,
-            40,
-            FONT_SMALL,
-            normal_color=COLORS["accent_green"]
-        )
         send_btn.check_hover(pygame.mouse.get_pos())
         send_btn.draw(screen)
         
         # 返回按钮
-        back_btn = Button(
-            "返回主菜单",
-            20,
-            screen_height - 60,
-            180,
-            50,
-            FONT_SMALL,
-            normal_color=COLORS["accent_blue_dark"]
-        )
         back_btn.check_hover(pygame.mouse.get_pos())
         back_btn.draw(screen)
         

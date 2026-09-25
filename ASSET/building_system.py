@@ -142,6 +142,18 @@ def main():
     
     # 主循环
     running = True
+    # 按钮只在规格/分辨率变化时重建 — 每帧重建会重置 hover 动画
+    building_items = []
+    buildings_sig = None
+    back_btn = Button(
+        "返回主菜单",
+        screen_width - 200,
+        screen_height - 60,
+        180,
+        50,
+        FONT_SMALL,
+        normal_color=COLORS["accent_blue_dark"]
+    )
     while running:
         # 渐变背景
         draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
@@ -154,13 +166,13 @@ def main():
         draw_resource_panel(screen, (screen_width - panel_width) // 2, 
                           screen_height * 0.18, panel_width, 50)
         
-        # 建筑列表
-        building_items = []
+        # 建筑列表规格（先算文本/颜色/位置，再决定是否重建按钮）
         button_width = min(400, screen_width * 0.5)
         button_height = min(80, screen_height * 0.12)
         button_spacing = min(15, screen_height * 0.02)
         start_y = screen_height * 0.3
         
+        specs = []
         for building_id, building_info in BUILDINGS.items():
             # 获取建筑当前等级
             current_level = data["buildings"].get(building_id, 0)
@@ -181,7 +193,7 @@ def main():
             else:
                 button_text = f"{building_info['name']} (Lv.{current_level})\n{building_info['description']}\n已达到最高等级"
             
-            y = start_y + len(building_items) * (button_height + button_spacing)
+            y = start_y + len(specs) * (button_height + button_spacing)
             if y + button_height > screen_height - 50:
                 break
             
@@ -193,27 +205,16 @@ def main():
             else:
                 button_color = COLORS["accent_blue_dark"]
             
-            btn = Button(
-                button_text,
-                (screen_width - button_width) // 2,
-                y,
-                button_width,
-                button_height,
-                FONT_SMALL,
-                normal_color=button_color
-            )
-            building_items.append((btn, building_id))
+            specs.append((building_id, button_text, button_color, y))
         
-        # 返回按钮
-        back_btn = Button(
-            "返回主菜单",
-            screen_width - 200,
-            screen_height - 60,
-            180,
-            50,
-            FONT_SMALL,
-            normal_color=COLORS["accent_blue_dark"]
-        )
+        sig = (tuple(specs), screen_width, screen_height)
+        if sig != buildings_sig:
+            buildings_sig = sig
+            building_items = [
+                (Button(text, (screen_width - button_width) // 2, y,
+                        button_width, button_height, FONT_SMALL, normal_color=color), bid)
+                for bid, text, color, y in specs
+            ]
         
         # 鼠标位置
         mouse_pos = pygame.mouse.get_pos()
