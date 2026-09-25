@@ -516,8 +516,9 @@ def main(screen=None):
     
     whiteboard = Whiteboard(screen)
     whiteboard.run()
-    
-    pygame.quit()
+
+    # 不调用 pygame.quit()：由 run_module 统一收尾，
+    # 裸 quit 会拆掉主菜单的字体/显示子系统（黑屏）。
     return True
 
 if __name__ == '__main__':

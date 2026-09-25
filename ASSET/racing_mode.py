@@ -44,7 +44,8 @@ class RacingMode:
 
         # 背景装饰
         self.ground_scroll = 0
-        self.clouds = [(random.randint(0, self.width), random.randint(20, 140), random.randint(40, 90))
+        # 用 list 而非 tuple：update() 里会原地修改云的坐标
+        self.clouds = [[random.randint(0, self.width), random.randint(20, 140), random.randint(40, 90)]
                        for _ in range(5)]
 
     # ---------- 更新逻辑 ----------

@@ -95,37 +95,41 @@ def safe_exit(
         )
 
     # --- pygame teardown & re-init ----------------------------------------
+    # 只关闭显示子系统, 不调用 pygame.quit(): 后者会销毁字体/音频模块,
+    # 回到主菜单后所有已创建 Font 全部失效 ("Invalid font"), 表现为黑屏卡死。
     if pygame.get_init():
         try:
-            pygame.quit()
+            pygame.display.quit()
         except Exception as _e:
-            logger.debug(
-                "[异常静默] pygame.quit: %s: %s",
-                type(_e).__name__,
-                _e,
-            )
-        # Re-initialise pygame so the main menu can keep using it
+            logger.error("[退出异常] pygame.display.quit: %s: %s", type(_e).__name__, _e)
+        # 重新初始化 pygame 子系统 + 显示, 让主菜单可以继续使用
         try:
             pygame.init()
+            from ASSET import game_data as _gd
+            # game_data 没有 SCREEN_WIDTH/HEIGHT 常量；分辨率在 settings 里，
+            # 默认 "auto" 表示跟随屏幕物理分辨率
+            _gfx = _gd.data['settings']['graphics']
+            _res = _gfx.get('resolution', 'auto')
+            if _res and _res != 'auto':
+                _w, _h = map(int, str(_res).split('x'))
+            else:
+                _info = pygame.display.Info()
+                _w, _h = _info.current_w, _info.current_h
+            if _gfx.get('fullscreen'):
+                pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+            else:
+                pygame.display.set_mode((_w, _h))
         except Exception as _e:
-            logger.debug(
-                "[异常静默] pygame.init: %s: %s",
-                type(_e).__name__,
-                _e,
-            )
+            logger.error("[退出异常] pygame.init/set_mode: %s: %s", type(_e).__name__, _e)
 
-    # --- drop caches holding objects invalidated by pygame.quit() ---------
-    # Cached Font/Surface objects cannot be reused after pygame is torn
-    # down, otherwise the next module fails with "Invalid font".
+    # --- drop caches holding stale Surface objects ------------------------
+    # 字体对象在 display 重建后仍可用, 但旧的 Surface/screen 引用必须刷新,
+    # 否则主菜单画到已销毁的 surface 上, 屏幕保持黑屏。
     try:
         from ASSET import game_data as _game_data
         _game_data.clear_caches()
     except Exception as _e:
-        logger.debug(
-            "[异常静默] clear_caches: %s: %s",
-            type(_e).__name__,
-            _e,
-        )
+        logger.error("[退出异常] clear_caches: %s: %s", type(_e).__name__, _e)
 
     # --- Android-specific exit --------------------------------------------
     if _ANDROID_ENV_KEY in os.environ:

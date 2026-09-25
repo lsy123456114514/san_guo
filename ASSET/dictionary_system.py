@@ -857,6 +857,7 @@ class DictionarySystem:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 safe_exit()
+                return False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     if self.current_page == "game":
@@ -1115,6 +1116,7 @@ class DictionarySystem:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     safe_exit()
+                    return
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:
                         mx, my = event.pos

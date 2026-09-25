@@ -308,6 +308,11 @@ class TaskSystem:
     
     def init_tasks(self):
         """初始化任务"""
+        # 旧存档的任务结构可能缺键（如没有 main），先补齐避免 KeyError
+        tasks = data.setdefault("tasks", {})
+        for _key in ("main", "daily", "completed"):
+            tasks.setdefault(_key, [])
+
         # 检查每日任务
         today = datetime.date.today().isoformat()
         if "last_daily_reset" not in data or data["last_daily_reset"] != today:

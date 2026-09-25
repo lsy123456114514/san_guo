@@ -509,6 +509,7 @@ def main():
             if event.type == pygame.QUIT:
                 save()
                 safe_exit("科技树系统")
+                return
             
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:

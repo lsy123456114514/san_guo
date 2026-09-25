@@ -1,7 +1,7 @@
 """时装系统 - 时装装备与外观切换"""
 
 import pygame
-from ASSET.game_data import data, save, FASHION_ITEMS, get_system_font_name, draw_gradient_bg
+from ASSET.game_data import data, save, FASHION_ITEMS, get_font, draw_gradient_bg
 
 # 颜色定义
 COLORS = {
@@ -50,7 +50,7 @@ class Button:
 
 def draw_title(surface, text, y, width):
     """绘制标题"""
-    font = pygame.font.SysFont(get_system_font_name(), 48)
+    font = get_font(48)  # 走缓存：SysFont(get_system_font_name(),...) 每帧会整目录扫描
     text_surf = font.render(text, True, COLORS["accent_gold"])
     text_rect = text_surf.get_rect(center=(width // 2, y))
     surface.blit(text_surf, text_rect)
@@ -147,13 +147,13 @@ def draw_fashion_preview(screen, category, fashion_id, x, y, width, height):
     
     # 时装名称
     fashion_name = FASHION_ITEMS[f"{category}_skins"][fashion_id]["name"]
-    font = pygame.font.SysFont(get_system_font_name(), 24)
+    font = get_font(24)
     name_surf = font.render(fashion_name, True, COLORS["accent_gold"])
     screen.blit(name_surf, (x + 20, y + 20))
     
     # 时装描述
     description = FASHION_ITEMS[f"{category}_skins"][fashion_id]["description"]
-    desc_font = pygame.font.SysFont(get_system_font_name(), 16)
+    desc_font = get_font(16)
     desc_surf = desc_font.render(description, True, COLORS["text_white"])
     screen.blit(desc_surf, (x + 20, y + 50))
     
@@ -299,7 +299,7 @@ def fashion_shop(screen, font_main, font_small, clock):
         effects = get_fashion_effects()
         if effects:
             effect_y = screen.get_height() - 150
-            font = pygame.font.SysFont(get_system_font_name(), 20)
+            font = get_font(20)
             effect_title = font.render("当前时装效果:", True, COLORS["accent_gold"])
             screen.blit(effect_title, (100, effect_y))
             effect_y += 30
@@ -334,26 +334,18 @@ def main():
     pygame.display.set_caption("时装系统")
     clock = pygame.time.Clock()
     
-    # 加载字体
-    font_name = get_system_font_name()
-    try:
-        if font_name:
-            FONT_MAIN = pygame.font.SysFont(font_name, 40)
-            FONT_SMALL = pygame.font.SysFont(font_name, 24)
-        else:
-            FONT_MAIN = pygame.font.Font(None, 40)
-            FONT_SMALL = pygame.font.Font(None, 24)
-    except Exception:
-        FONT_MAIN = pygame.font.Font(None, 40)
-        FONT_SMALL = pygame.font.Font(None, 24)
+    # 加载字体（走 game_data.get_font 缓存）
+    FONT_MAIN = get_font(40)
+    FONT_SMALL = get_font(24)
     
     # 初始化时装数据
     initialize_fashion_data()
     
     # 运行时装商店
     fashion_shop(screen, FONT_MAIN, FONT_SMALL, clock)
-    
-    pygame.quit()
+
+    # 不调用 pygame.quit()：由 run_module 统一收尾，
+    # 裸 quit 会拆掉主菜单的字体/显示子系统（黑屏）。
 
 if __name__ == "__main__":
     main()

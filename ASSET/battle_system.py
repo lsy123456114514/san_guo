@@ -112,6 +112,10 @@ class AnimatedButton:
     def __init__(self, x, y, width, height, text, font, 
                  normal_color=(200, 50, 50), hover_color=(230, 80, 80),
                  text_color=(255, 255, 255)):
+        self.original_x = x
+        self.original_y = y
+        self.original_width = width
+        self.original_height = height
         self.rect = pygame.Rect(x, y, width, height)
         self.text = text
         self.font = font
@@ -122,6 +126,11 @@ class AnimatedButton:
         self.scale = 1.0
         self.glow_alpha = 0
         self.particles = []
+    
+    def update_rect(self):
+        """按 original_x/y/w/h 重新计算按钮矩形（跨帧复用时跟随布局移动）"""
+        self.rect = pygame.Rect(self.original_x, self.original_y,
+                                self.original_width, self.original_height)
     
     def update(self, mouse_pos):
         was_hovered = self.is_hovered

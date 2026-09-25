@@ -605,6 +605,115 @@ def init_fonts():
     FONT_SMALL = pygame.font.Font(None, small_size)
     FONT_BIG = pygame.font.Font(None, big_size)
 
+
+def repair_display():
+    """子模块退出后的统一修复：重建失效的 screen，并探测字体。
+
+    部分子模块退出时会调用 ``safe_exit``（pygame.quit + pygame.init），
+    此后旧的 screen 与所有已缓存的 Font 对象全部作废——仅重建 screen
+    不够，主菜单继续渲染会抛 ``Invalid font``。这里用一次探针渲染检测
+    字体死活，死了就清空 game_data/font_manager 的字体缓存再 ``init_fonts()``。
+    """
+    global screen, FONT_MAIN, FONT_SMALL, FONT_BIG
+    global _BG_CACHE, _BG_CACHE_KEY, _TITLE_CACHE, _SFX_CACHE
+
+    # ── 0) pygame 子系统 ──
+    # 部分旧模块退出时直接调用 pygame.quit()（而不是 safe_exit），
+    # 字体/音频/显示子系统被整体拆除。此时旧 screen 是"僵尸"对象，
+    # 探测可能假通过，继续往已释放的显存上画会触发 0xC0000005 硬崩。
+    # 所以先看子系统状态：掉线就整体重建，并强制换新 screen、清空缓存。
+    subsystem_down = False
+    try:
+        if not pygame.get_init() or not pygame.display.get_init():
+            subsystem_down = True
+            pygame.init()
+            pygame.display.init()
+    except Exception:
+        subsystem_down = True
+        try:
+            pygame.init()
+        except Exception:
+            pass
+
+    if subsystem_down:
+        # 与 safe_exit 一致：丢弃全部缓存的 Font/Surface/Sound
+        try:
+            import ASSET.game_data as _gd
+            if hasattr(_gd, "clear_caches"):
+                _gd.clear_caches()
+        except Exception:
+            pass
+        _BG_CACHE = None
+        _BG_CACHE_KEY = None
+        _TITLE_CACHE.clear()
+        _SFX_CACHE.clear()
+        logger.warning("[显示修复] pygame 子系统曾被整体退出，已重建并清空缓存")
+
+    # ── 1) screen ──
+    if subsystem_down:
+        # 子系统重建前的旧 surface 一律作废，跳过探测直接换新
+        need_screen = True
+    else:
+        need_screen = False
+        try:
+            if screen is None or not screen.get_enabled():
+                raise ValueError("screen invalid")
+            screen.get_size()
+            # safe_exit 走过 display.quit+init+set_mode 后，系统当前 surface
+            # 已经是新对象而我们的 screen 还是旧的 —— 探测会"假通过"，
+            # 必须对比身份后换新
+            _sys_surface = pygame.display.get_surface()
+            if _sys_surface is not None and _sys_surface is not screen:
+                raise ValueError("screen replaced by subsystem rebuild")
+        except Exception:
+            need_screen = True
+
+    if need_screen:
+        _BG_CACHE = None
+        _BG_CACHE_KEY = None
+        _TITLE_CACHE.clear()
+        ensure_defaults()
+        if is_android():
+            sw, sh = _get_physical_resolution()
+            screen = pygame.display.set_mode((sw, sh))
+        elif data['settings']['graphics'].get('fullscreen', False):
+            screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        else:
+            try:
+                w, h = map(int, data['settings']['graphics']['resolution'].split('x'))
+                screen = pygame.display.set_mode((w, h))
+            except Exception:
+                screen = pygame.display.set_mode((800, 600))
+        pygame.display.set_caption("游戏主菜单")
+
+    # ── 2) 字体探针 ──
+    try:
+        if FONT_MAIN is None:
+            raise ValueError("font is None")
+        FONT_MAIN.render("修", True, (255, 255, 255))
+    except Exception:
+        try:
+            pygame.font.init()
+        except Exception:
+            pass
+        try:
+            import ASSET.game_data as _gd
+            if hasattr(_gd, "_FONT_CACHE"):
+                _gd._FONT_CACHE.clear()
+        except Exception:
+            pass
+        try:
+            from ASSET import font_manager as _fm
+            if hasattr(_fm, "clear_font_cache"):
+                _fm.clear_font_cache()
+        except Exception:
+            pass
+        init_fonts()
+        logger.warning("[显示修复] 字体已被子模块 quit 作废，缓存已清空并重建")
+
+    pygame.event.clear()
+
+
 # 颜色主题
 COLORS = {
     "bg_dark": (10, 10, 25),
@@ -1236,40 +1345,25 @@ def run_module(module_file):
         if hasattr(mod, 'main'):
             mod.main()
 
-        # 子模块退出后可能调用了 safe_exit（会 pygame.quit + pygame.init），
-        # 需要重新创建 screen 对象，否则主菜单无法继续绘制
-        try:
-            if screen is None or not screen.get_enabled():
-                raise ValueError("screen invalid")
-            screen.get_size()
-        except Exception:
-            # 重新创建屏幕
-            if is_android():
-                sw, sh = _get_physical_resolution()
-                screen = pygame.display.set_mode((sw, sh))
-            else:
-                ensure_defaults()
-                fullscreen = data['settings']['graphics'].get('fullscreen', False)
-                if fullscreen:
-                    screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-                else:
-                    try:
-                        w, h = map(int, data['settings']['graphics']['resolution'].split('x'))
-                        screen = pygame.display.set_mode((w, h))
-                    except Exception:
-                        screen = pygame.display.set_mode((800, 600))
-            pygame.display.set_caption("游戏主菜单")
-
-        pygame.event.clear()
+        # 子模块退出后可能调用了 safe_exit（pygame.quit + pygame.init），
+        # 统一修复 screen 与被作废的字体缓存
+        repair_display()
 
     except Exception as e:
         logger.error("打开「%s」时出错了：%s", module_file, e)
         import traceback
         logger.error(traceback.format_exc())
+        # 模块异常退出同样可能拆过 pygame/字体（safe_exit、模块内部 quit），
+        # 不修复的话主菜单会黑屏只剩按钮边框，之后点击也像“未响应”。
+        try:
+            repair_display()
+        except Exception as e2:
+            logger.error("子模块异常后修复显示失败：%s", e2)
         # 玩家面前只说人话，技术细节留在 game.log
         try:
             show_message("这个功能一时没能打开，详情已记入日志")
-        except Exception:
+        except Exception as e2:
+            logger.error("提示框绘制失败：%s", e2)
             pygame.time.wait(800)
 
 def mini_games_menu():
@@ -1817,7 +1911,12 @@ def show_message(message):
         # 最后 400ms 淡出
         alpha = min(255, int(remaining / 400 * 255)) if remaining < 400 else 255
 
-        msg_surface = FONT_MAIN.render(message, True, (255, 240, 210))
+        try:
+            msg_surface = FONT_MAIN.render(message, True, (255, 240, 210))
+        except Exception as _e:
+            # 字体被子模块 quit 作废时不静默：记日志并直接结束提示
+            logger.error("提示框字体渲染失败：%s: %s", type(_e).__name__, _e)
+            break
         if msg_surface:
             panel_w = msg_surface.get_width() + 60
             panel_h = msg_surface.get_height() + 36
@@ -1980,25 +2079,31 @@ def main():
     puzzle_trigger = TriggerDetector()  # 卧龙密令·第6环：五行序列触发器
     key_seq = KeySequenceDetector()     # 卧龙密令·第4环：WOLONG键盘拼字
 
-    def restore_screen():
-        """子彩蛋/子模块退出后校验并重建 screen（失效则按设置恢复）。"""
-        global screen
+    # 一键自动测试驱动（SAN_GUO_AUTOTEST=1 时由根目录 auto_test.py 注入）
+    auto_driver = None
+    if os.environ.get("SAN_GUO_AUTOTEST") == "1":
         try:
-            if screen is None or not screen.get_enabled():
-                raise ValueError("screen invalid")
-            screen.get_size()
+            from auto_test import AutoTestDriver
+            auto_driver = AutoTestDriver()
+            logger.info("[自动测试] 驱动已装载，将模拟点击各模块进出")
+        except Exception as _e:
+            logger.error("[自动测试] 驱动装载失败: %s", _e)
+
+    def restore_screen():
+        """子彩蛋/子模块退出后修复显示，并重建菜单元素。
+
+        子模块可能调用 safe_exit 导致 pygame.quit：screen 与所有缓存字体
+        都会作废。repair_display 负责修复本身；但旧菜单按钮对象仍握着
+        死字体引用（无论修复发生在 run_module 内还是这里），所以每次
+        退出子模块后都无条件 build_menu() 重建一遍——开销可忽略。
+        """
+        nonlocal screen_width, screen_height
+        repair_display()
+        try:
+            screen_width, screen_height = screen.get_size()
         except Exception:
-            ensure_defaults()
-            if data['settings']['graphics'].get('fullscreen', False):
-                screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-            else:
-                try:
-                    w, h = map(int, data['settings']['graphics']['resolution'].split('x'))
-                    screen = pygame.display.set_mode((w, h))
-                except Exception:
-                    screen = pygame.display.set_mode((800, 600))
-            pygame.display.set_caption("游戏主菜单")
-        pygame.event.clear()
+            pass
+        menu_elements[:] = build_menu()
 
     def activate_code(code):
         """菜单项激活 — 鼠标点击与键盘 Enter 共用。"""
@@ -2084,8 +2189,13 @@ def main():
                 running = False
         elif code in SPECIAL_HANDLERS:
             SPECIAL_HANDLERS[code]()
+            restore_screen()
         elif code in MODULE_ROUTES:
             run_module(MODULE_ROUTES[code])
+            restore_screen()
+
+    if auto_driver is not None:
+        auto_driver.bind(menu_elements, activate_code)
 
     particles = []
 
@@ -2119,6 +2229,13 @@ def main():
     running = True
     while running:
         current_time += 1
+
+        # 一键自动测试：每帧驱动一步（移动光标→展开菜单→点击模块）
+        if auto_driver is not None:
+            try:
+                auto_driver.step()
+            except Exception as _e:
+                logger.error("[自动测试] 驱动异常: %s", _e)
 
         draw_three_kingdoms_background(screen, screen_width, screen_height)
         

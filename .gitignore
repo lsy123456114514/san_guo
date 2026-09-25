@@ -30,7 +30,9 @@ Thumbs.db
 # Test files
 test_*.py
 *_test.py
+!auto_test.py
 test_*.txt
+auto_test_report.txt
 
 # Temporary files
 *.tmp

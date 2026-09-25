@@ -263,7 +263,10 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 save()
-                pygame.quit()
+                # 必须用 safe_exit（会重新初始化显示子系统），
+                # 裸调 pygame.quit() 会让主菜单在僵尸 surface 上硬崩
+                from ASSET import safe_exit
+                safe_exit("疑难解答")
                 return
             
             if event.type == pygame.MOUSEBUTTONDOWN:

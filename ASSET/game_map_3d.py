@@ -1365,7 +1365,13 @@ class GameMap3D:
             
             # 设置OpenGL显示模式
             pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.OPENGL | pygame.DOUBLEBUF)
-            self.screen = pygame.display.get_surface()
+            # pygame 在 OPENGL 模式下不会把软件绘制显示到屏幕，HUD/暂停菜单等
+            # 必须画在独立的软件层上，再由 _present() 当作纹理叠加进 GL 画面
+            self.display_surface = pygame.display.get_surface()
+            self.screen = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            self.screen.fill((0, 0, 0, 0))
+            self._ui_tex = None
+            self._ui_tex_size = None
             self.clock = pygame.time.Clock()
             
             # 初始化OpenGL
@@ -1427,7 +1433,7 @@ class GameMap3D:
         pygame.draw.rect(self.screen, COLORS["accent_gold"], bg_rect, 2, border_radius=10)
         
         self.screen.blit(text_surf, text_rect)
-        pygame.display.flip()
+        self._present()
         pygame.time.wait(3000)
     
     def load_map_data(self):
@@ -2134,7 +2140,7 @@ class GameMap3D:
             s.fill((0, 0, 0, 180))
             fill = int(bar_w * self.mining["progress"])
             pygame.draw.rect(s, (220, 180, 50), (0, 0, fill, bar_h))
-            pygame.display.get_surface().blit(s, (bar_x, bar_y))
+            self.screen.blit(s, (bar_x, bar_y))
             glEnable(GL_DEPTH_TEST)
         except Exception:
             pass
@@ -2195,6 +2201,73 @@ class GameMap3D:
             self.draw_3d_scene_cpp()
         else:
             self.draw_3d_scene_python()
+
+    def _present(self) -> None:
+        """把 pygame 软件层（HUD/暂停菜单/背包等 UI）叠加到 OpenGL 画面并交换缓冲。
+
+        pygame 在 ``OPENGL`` 显示模式下 ``flip()`` 只交换 GL 双缓冲，
+        软件层的绘制不会显示（SDL2 语义）。因此这里把 ``self.screen``
+        上传为纹理、用全屏四边形叠加，之后再 flip。
+        每帧结束时清空软件层，避免上一帧的 UI 残留。
+        """
+        try:
+            surf = self.screen
+            w, h = surf.get_size()
+            # flipped=False: 第一行=屏幕顶部。四边形 texcoord v=0 对应屏幕顶部，
+            # 若用 True(自底向上) 整个 UI 会上下颠倒（实测按 ESC 后按钮位置错位）。
+            data = pygame.image.tobytes(surf, 'RGBA', False)
+
+            if self._ui_tex is None:
+                self._ui_tex = int(glGenTextures(1))
+                self._ui_tex_size = (w, h)
+                glBindTexture(GL_TEXTURE_2D, self._ui_tex)
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0,
+                             GL_RGBA, GL_UNSIGNED_BYTE, data)
+            elif self._ui_tex_size != (w, h):
+                self._ui_tex_size = (w, h)
+                glBindTexture(GL_TEXTURE_2D, self._ui_tex)
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0,
+                             GL_RGBA, GL_UNSIGNED_BYTE, data)
+            else:
+                glBindTexture(GL_TEXTURE_2D, self._ui_tex)
+                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h,
+                                GL_RGBA, GL_UNSIGNED_BYTE, data)
+
+            glMatrixMode(GL_PROJECTION)
+            glLoadIdentity()
+            glOrtho(0, w, h, 0, -1, 1)
+            glMatrixMode(GL_MODELVIEW)
+            glLoadIdentity()
+
+            glDisable(GL_DEPTH_TEST)
+            glDisable(GL_LIGHTING)
+            glEnable(GL_BLEND)
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+            glEnable(GL_TEXTURE_2D)
+            glBindTexture(GL_TEXTURE_2D, self._ui_tex)
+
+            glBegin(GL_QUADS)
+            glTexCoord2f(0.0, 0.0); glVertex2f(0.0, 0.0)
+            glTexCoord2f(1.0, 0.0); glVertex2f(float(w), 0.0)
+            glTexCoord2f(1.0, 1.0); glVertex2f(float(w), float(h))
+            glTexCoord2f(0.0, 1.0); glVertex2f(0.0, float(h))
+            glEnd()
+
+            glDisable(GL_BLEND)
+            glBindTexture(GL_TEXTURE_2D, 0)
+            glEnable(GL_DEPTH_TEST)
+        except Exception as e:
+            logger.info("3D界面叠加失败: %s", e)
+            self._restore_gl_stack()
+
+        pygame.display.flip()
+        # 清空软件层，下一帧从干净的 UI 层开始
+        try:
+            self.screen.fill((0, 0, 0, 0))
+        except Exception as e:
+            logger.info("3D界面清屏失败: %s", e)
 
     def _restore_gl_stack(self) -> None:
         """异常后恢复 GL 状态，避免连锁报错。
@@ -2310,7 +2383,7 @@ class GameMap3D:
             self.draw_weather()
             
             glEnable(GL_LIGHTING)
-            pygame.display.flip()
+            # 场景不在此翻转：HUD 画完后由 _present() 统一叠加软件层并翻转
         except Exception as e:
             logger.info(f"C++渲染错误: {e}")
             self._restore_gl_stack()
@@ -2393,8 +2466,7 @@ class GameMap3D:
             # 绘制海浪和天气
             self.draw_waves()
             self.draw_weather()
-            
-            pygame.display.flip()
+            # 场景不在此翻转：HUD 画完后由 _present() 统一叠加软件层并翻转
         except Exception as e:
             logger.info(f"Python渲染错误: {e}")
             self._restore_gl_stack()
@@ -4039,6 +4111,20 @@ class GameMap3D:
         except Exception as e:
             logger.info(f"[错误] 检测彩蛋触发失败: {e}")
     
+    PAUSE_MENU_W = 300
+    PAUSE_BTN_H = 40
+    PAUSE_BTN_GAP = 10
+
+    def _pause_menu_geometry(self):
+        """暂停菜单面板几何：绘制与鼠标命中共用，避免两处常量不同步。"""
+        n = len(self.pause_menu_options)
+        menu_width = self.PAUSE_MENU_W
+        # 标题区 70px + 按钮区 + 底部提示 50px
+        menu_height = 70 + n * (self.PAUSE_BTN_H + self.PAUSE_BTN_GAP) + 50
+        menu_x = SCREEN_WIDTH // 2 - menu_width // 2
+        menu_y = SCREEN_HEIGHT // 2 - menu_height // 2
+        return menu_width, menu_height, menu_x, menu_y
+
     def draw_pause_menu(self):
         """绘制暂停菜单（类似MC风格）"""
         glMatrixMode(GL_PROJECTION)
@@ -4048,10 +4134,7 @@ class GameMap3D:
         glLoadIdentity()
         glDisable(GL_DEPTH_TEST)
         
-        menu_width = 300
-        menu_height = 250
-        menu_x = SCREEN_WIDTH // 2 - menu_width // 2
-        menu_y = SCREEN_HEIGHT // 2 - menu_height // 2
+        menu_width, menu_height, menu_x, menu_y = self._pause_menu_geometry()
         
         bg_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
         bg_surf.fill((0, 0, 0, 180))
@@ -4066,8 +4149,8 @@ class GameMap3D:
         title_rect = title_surf.get_rect(center=(SCREEN_WIDTH // 2, menu_y + 30))
         self.screen.blit(title_surf, title_rect)
         
-        button_height = 40
-        button_spacing = 10
+        button_height = self.PAUSE_BTN_H
+        button_spacing = self.PAUSE_BTN_GAP
         button_start_y = menu_y + 70
         
         for i, option in enumerate(self.pause_menu_options):
@@ -4097,6 +4180,27 @@ class GameMap3D:
         
         glEnable(GL_DEPTH_TEST)
     
+    def _activate_pause_option(self, option):
+        """执行暂停菜单选项。
+
+        返回 ``"quit"`` / ``"main_menu"`` 表示要退出 3D 地图，
+        ``None`` 表示留在当前菜单（继续游戏时顺带解锁鼠标）。
+        """
+        if option == "继续游戏":
+            self.is_paused = False
+            self.is_mouse_locked = True
+            pygame.mouse.set_visible(False)
+            pygame.event.set_grab(True)
+        elif option == "设置":
+            # 3D 渲染上下文与设置页互斥，回主菜单调整更稳妥
+            self.message = "画质与分辨率请在主菜单「游戏设置」中调整"
+            self.message_timer = 2500
+        elif option == "保存并退出":
+            return "quit"
+        elif option == "返回主菜单":
+            return "main_menu"
+        return None
+
     def handle_pause_input(self):
         """处理暂停菜单输入"""
         for event in pygame.event.get():
@@ -4113,28 +4217,15 @@ class GameMap3D:
                 elif event.key == pygame.K_DOWN:
                     self.pause_menu_selected = (self.pause_menu_selected + 1) % len(self.pause_menu_options)
                 elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
-                    option = self.pause_menu_options[self.pause_menu_selected]
-                    if option == "继续游戏":
-                        self.is_paused = False
-                        self.is_mouse_locked = True
-                        pygame.mouse.set_visible(False)
-                        pygame.event.set_grab(True)
-                    elif option == "设置":
-                        # 3D 渲染上下文与设置页互斥，回主菜单调整更稳妥
-                        self.message = "画质与分辨率请在主菜单「游戏设置」中调整"
-                        self.message_timer = 2500
-                    elif option == "保存并退出":
-                        return "quit"
-                    elif option == "返回主菜单":
-                        return "main_menu"
+                    result = self._activate_pause_option(
+                        self.pause_menu_options[self.pause_menu_selected])
+                    if result:
+                        return result
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
-                    menu_width = 300
-                    menu_height = 250
-                    menu_x = SCREEN_WIDTH // 2 - menu_width // 2
-                    menu_y = SCREEN_HEIGHT // 2 - menu_height // 2
-                    button_height = 40
-                    button_spacing = 10
+                    menu_width, _menu_height, menu_x, menu_y = self._pause_menu_geometry()
+                    button_height = self.PAUSE_BTN_H
+                    button_spacing = self.PAUSE_BTN_GAP
                     button_start_y = menu_y + 70
                     
                     mx, my = event.pos
@@ -4145,19 +4236,9 @@ class GameMap3D:
                         
                         if button_x <= mx <= button_x + button_width and button_y <= my <= button_y + button_height:
                             self.pause_menu_selected = i
-                            option = self.pause_menu_options[i]
-                            if option == "继续游戏":
-                                self.is_paused = False
-                                self.is_mouse_locked = True
-                                pygame.mouse.set_visible(False)
-                                pygame.event.set_grab(True)
-                            elif option == "设置":
-                                self.message = "画质与分辨率请在主菜单「游戏设置」中调整"
-                                self.message_timer = 2500
-                            elif option == "保存并退出":
-                                return "quit"
-                            elif option == "返回主菜单":
-                                return "main_menu"
+                            result = self._activate_pause_option(self.pause_menu_options[i])
+                            if result:
+                                return result
         return "continue"
     
     def draw_hotbar(self):
@@ -5356,7 +5437,7 @@ class GameMap3D:
                 
                 self.draw_3d_scene()
                 self.draw_pause_menu()
-                pygame.display.flip()
+                self._present()
                 self.clock.tick(60)
                 continue
             
@@ -5367,7 +5448,7 @@ class GameMap3D:
                 
                 self.draw_3d_scene()
                 self.draw_inventory()
-                pygame.display.flip()
+                self._present()
                 self.clock.tick(60)
                 continue
             
@@ -5378,7 +5459,7 @@ class GameMap3D:
                 
                 self.draw_3d_scene()
                 self.draw_crafting_table()
-                pygame.display.flip()
+                self._present()
                 self.clock.tick(60)
                 continue
             
@@ -5387,7 +5468,7 @@ class GameMap3D:
             if self.show_command:
                 self.draw_3d_scene()
                 self.draw_command_input()
-                pygame.display.flip()
+                self._present()
                 self.clock.tick(60)
                 continue
             
@@ -5496,6 +5577,9 @@ class GameMap3D:
             self.draw_mc_hud()
             self.draw_hotbar()
             self.draw_mining_progress()
+            
+            # 叠加 pygame 软件层（HUD/准星等）并交换缓冲
+            self._present()
             
             # 限制帧率
             self.clock.tick(60)
