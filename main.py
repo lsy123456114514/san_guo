@@ -149,7 +149,7 @@ def clear_login_state():
 from ASSET.login_system import main as login_main
 from ASSET.login_system import save_user_progress
 from ASSET.game_main_menu import main as menu_main
-from ASSET.game_data import data, save, unhide_file
+from ASSET.game_data import data, save, unhide_file, ensure_defaults
 from ASSET.dictionary_system import main as dictionary_main
 from ASSET.whiteboard import main as whiteboard_main
 
@@ -187,6 +187,7 @@ def main_game():
             data.clear()
             data.update(saved_user_data)
             data["username"] = saved_username
+            ensure_defaults()
             
             # 重新设置屏幕
             if 'ANDROID_DATA' in os.environ:
@@ -247,6 +248,7 @@ def main_game():
                 data.clear()
                 data.update(user_data)
                 data["username"] = username
+                ensure_defaults()
                 
                 # 保存登录状态
                 save_login_state(username, user_data)

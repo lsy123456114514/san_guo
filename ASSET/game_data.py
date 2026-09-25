@@ -1909,6 +1909,46 @@ def calculate_passive_income() -> None:
     data['last_login'] = current_time
     save()
 
+def ensure_defaults() -> None:
+    """把 ``default_save`` 里缺失的顶层键补进全局 ``data``，并保证设置结构可用。
+
+    ``main``/登录/读档用 ``data.clear(); data.update(...)`` 替换全局数据后，
+    旧档或精简的 login_state 常缺 ``settings`` 等键，导致主菜单入口
+    ``data['settings']['graphics']`` 直接 KeyError。任何整表替换后都应调用本函数。
+    """
+    global data
+    if not isinstance(data, dict):
+        import copy as _copy
+        data = _copy.deepcopy(default_save)
+        return
+    import copy as _copy
+    for key, default in default_save.items():
+        if key not in data or data[key] is None:
+            data[key] = _copy.deepcopy(default)
+        elif isinstance(default, dict) and not isinstance(data[key], dict):
+            data[key] = _copy.deepcopy(default)
+        elif isinstance(default, dict):
+            # 只补缺失的子键，不覆盖玩家已有数据
+            for sk, sv in default.items():
+                if sk not in data[key] or data[key][sk] is None:
+                    data[key][sk] = _copy.deepcopy(sv)
+                elif isinstance(sv, dict) and not isinstance(data[key][sk], dict):
+                    data[key][sk] = _copy.deepcopy(sv)
+    # 分辨率/全屏等关键设置必须可用
+    settings = data.setdefault('settings', {})
+    if not isinstance(settings, dict):
+        settings = data['settings'] = _copy.deepcopy(default_save['settings'])
+    graphics = settings.setdefault('graphics', {})
+    if not isinstance(graphics, dict):
+        graphics = settings['graphics'] = _copy.deepcopy(default_save['settings']['graphics'])
+    graphics.setdefault('resolution', 'auto')
+    graphics.setdefault('fullscreen', False)
+    if not isinstance(data.get('resources'), dict):
+        data['resources'] = dict(default_save.get('resources') or {r: 0 for r in RESOURCES})
+    if not isinstance(data.get('achievements'), dict):
+        data['achievements'] = {}
+
+
 def load() -> None:
     """Load the save file from ``SAVE_PATH`` into the global ``data`` dict.
 
@@ -2083,6 +2123,7 @@ def load() -> None:
                 data['lucky_spins'] = default_save['lucky_spins']
             
             calculate_passive_income()
+            ensure_defaults()
 
         except Exception as e:
             logger.error("[存档] 加载失败: %s，回退到默认存档", e, exc_info=True)

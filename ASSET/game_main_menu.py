@@ -22,7 +22,7 @@ import math
 import random
 import logging
 from ASSET.fun_effects import PetSprite, FloatingParticles
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, cull_dead, get_font, ensure_defaults
 from ASSET import safe_exit
 from ASSET.login_system import save_game
 from ASSET.equipment_system import main as equipment_system_main  # pyright: ignore[reportUnusedImport]
@@ -1155,6 +1155,7 @@ def run_module(module_file):
                 sw, sh = _get_physical_resolution()
                 screen = pygame.display.set_mode((sw, sh))
             else:
+                ensure_defaults()
                 fullscreen = data['settings']['graphics'].get('fullscreen', False)
                 if fullscreen:
                     screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
@@ -1173,15 +1174,18 @@ def run_module(module_file):
         logger.error("详细错误信息：")
         import traceback
         logger.error(traceback.format_exc())
-        if is_android():
-            if FONT_SMALL:
-                error_text = FONT_SMALL.render(f"启动失败：{str(e)}", True, (255, 0, 0))
-                if error_text and screen:
-                    screen.blit(error_text, (50, 50))
+        # 统一走图形提示，避免无控制台时 input() 永久阻塞主菜单
+        try:
+            if screen is not None and FONT_SMALL:
+                err_surf = FONT_SMALL.render(f"启动失败：{str(e)}", True, (255, 80, 80))
+                if err_surf:
+                    screen.blit(err_surf, (40, 40))
                     pygame.display.flip()
-            pygame.time.wait(2000)
-        else:
-            input("按回车返回...")
+                    pygame.time.wait(1800)
+            else:
+                pygame.time.wait(800)
+        except Exception:
+            pygame.time.wait(500)
 
 def mini_games_menu():
     """小游戏中心菜单 — 展示所有小游戏入口按钮并处理启动。"""
@@ -1723,6 +1727,7 @@ def main():
         FONT_SMALL = pygame.font.Font(None, 28)
         FONT_BIG = pygame.font.Font(None, 60)
 
+    ensure_defaults()
     if 'fullscreen' not in data['settings']['graphics']:
         data['settings']['graphics']['fullscreen'] = False
         save()
@@ -2160,6 +2165,7 @@ def main():
                                 if save_result:
                                     data.clear()
                                     data.update(save_result)
+                                    ensure_defaults()
                                     save()
                                     show_message("读取存档成功！")
                             elif code == "5":
