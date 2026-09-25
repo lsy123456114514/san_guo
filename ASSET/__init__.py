@@ -85,6 +85,17 @@ def safe_exit(
     if error:
         print(f"异常：{error}")
 
+    # --- auto-save before tearing down -------------------------------------
+    try:
+        from ASSET.game_data import save as _save
+        _save()
+    except Exception as _e:
+        logger.debug(
+            "[异常静默] safe_exit save: %s: %s",
+            type(_e).__name__,
+            _e,
+        )
+
     # --- pygame teardown & re-init ----------------------------------------
     if pygame.get_init():
         try:

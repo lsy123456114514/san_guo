@@ -2192,3 +2192,16 @@ def auto_save() -> bool:
 
 # 初始化加载存档
 load()
+
+# 进程正常退出（点叉/sys.exit/异常收尾）时自动落盘，防止丢进度
+import atexit as _atexit
+
+
+def _save_on_exit() -> None:
+    try:
+        save()
+    except Exception as _e:
+        logger.debug("[异常静默] atexit save: %s: %s", type(_e).__name__, _e)
+
+
+_atexit.register(_save_on_exit)

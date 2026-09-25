@@ -280,5 +280,16 @@ if __name__ == '__main__':
         print("详细错误信息：")
         import traceback
         traceback.print_exc()
+        try:
+            save()
+        except Exception:
+            pass
         pygame.quit()
         sys.exit(0)
+    finally:
+        # 点叉 / 正常返回 / 异常退出：确保进度落盘
+        try:
+            save()
+            save_user_progress(data.get("username") or "", data)
+        except Exception:
+            pass

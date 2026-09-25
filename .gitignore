@@ -41,3 +41,10 @@ packs/
 downloads/
 mirror_manifest.json
 *.zip.part*
+
+# User / save data (local only, never commit)
+ASSET/save.json
+ASSET/users.json
+ASSET/login_state.json
+ASSET/saves/
+voice_data_ultimate/user_audio.json
