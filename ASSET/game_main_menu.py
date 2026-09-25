@@ -23,6 +23,7 @@ import random
 import logging
 from ASSET.fun_effects import PetSprite, FloatingParticles
 from ASSET.game_data import data, save, draw_gradient_bg, ensure_defaults
+from ASSET.secret_puzzle import TriggerDetector  # 卧龙密令：五行序列触发器（隐藏彩蛋）
 
 # 配置日志系统
 logging.basicConfig(
@@ -903,15 +904,100 @@ for i in range(CLOUD_COUNT):
 # 菜单功能函数
 # ═══════════════════════════════════════════════════════════════════════════════
 
+_BG_CACHE = None
+_BG_CACHE_KEY = None
+_SPARK_SPRITES = {}
+_RAINBOW_SPRITES = {}
+
+
+def _rainbow_sprite(size, hue, alpha):
+    """按（尺寸, 色相档, 透明度档）缓存彩虹粒子精灵，避免每帧新建 Surface。"""
+    key = (size, hue // 12, alpha // 32)
+    sprite = _RAINBOW_SPRITES.get(key)
+    if sprite is None:
+        h = (hue // 12) * 12 + 6
+        r = int(127 + 127 * math.sin(h * math.pi / 180))
+        g = int(127 + 127 * math.sin((h + 120) * math.pi / 180))
+        b = int(127 + 127 * math.sin((h + 240) * math.pi / 180))
+        sprite = pygame.Surface((size * 2, size * 2), pygame.SRCALPHA)
+        pygame.draw.circle(sprite, (r, g, b, alpha), (size, size), size)
+        if len(_RAINBOW_SPRITES) > 500:
+            _RAINBOW_SPRITES.clear()
+        _RAINBOW_SPRITES[key] = sprite
+    return sprite
+
+
+def _build_spark_sprite(size):
+    """预渲染单颗星光的光点，避免每帧新建 SRCALPHA Surface。"""
+    surf = pygame.Surface((size * 4, size * 4), pygame.SRCALPHA)
+    pygame.draw.circle(surf, (255, 215, 0, 255), (size * 2, size * 2), size * 2)
+    return surf
+
+
+def _build_cloud_sprite(cloud):
+    """把一朵云的三层椭圆烘焙成 Surface（尺寸与透明度创建时就固定）。"""
+    size = cloud['size']
+    surf = pygame.Surface((size * 2, size), pygame.SRCALPHA)
+    pygame.draw.ellipse(surf, (255, 215, 0, cloud['alpha']), (0, size // 4, size, size // 2))
+    pygame.draw.ellipse(surf, (255, 215, 0, cloud['alpha'] // 2), (size // 2, 0, size, size // 2))
+    pygame.draw.ellipse(surf, (255, 215, 0, cloud['alpha'] // 3), (size // 3, size // 3, size, size // 2))
+    return surf
+
+
+def _render_static_background(screen_width, screen_height):
+    """渐变天空 + 装饰边框 + 中式纹样 + 印章 — 不随帧变化，只渲染一次并缓存。"""
+    surf = pygame.Surface((screen_width, screen_height))
+    for y in range(screen_height):
+        ratio = y / max(screen_height, 1)
+        r = int(40 * (1 - ratio) + 20 * ratio)
+        g = int(20 * (1 - ratio) + 10 * ratio)
+        b = int(30 * (1 - ratio) + 40 * ratio)
+        pygame.draw.line(surf, (r, g, b), (0, y), (screen_width, y))
+
+    border_width = 15
+    border_color = (139, 69, 19, 30)
+    pygame.draw.rect(surf, border_color, (0, 0, screen_width, border_width))
+    pygame.draw.rect(surf, border_color, (0, screen_height - border_width, screen_width, border_width))
+    pygame.draw.rect(surf, border_color, (0, 0, border_width, screen_height))
+    pygame.draw.rect(surf, border_color, (screen_width - border_width, 0, border_width, screen_height))
+
+    inner_border = 30
+    pygame.draw.rect(surf, border_color, (inner_border, inner_border, screen_width - inner_border * 2, 2))
+    pygame.draw.rect(surf, border_color, (inner_border, screen_height - inner_border, screen_width - inner_border * 2, 2))
+    pygame.draw.rect(surf, border_color, (inner_border, inner_border, 2, screen_height - inner_border * 2))
+    pygame.draw.rect(surf, border_color, (screen_width - inner_border, inner_border, 2, screen_height - inner_border * 2))
+
+    draw_chinese_pattern(surf, 50, 50, 40, (139, 69, 19))
+    draw_chinese_pattern(surf, screen_width - 90, 50, 40, (139, 69, 19))
+    draw_chinese_pattern(surf, 50, screen_height - 90, 40, (139, 69, 19))
+    draw_chinese_pattern(surf, screen_width - 90, screen_height - 90, 40, (139, 69, 19))
+
+    def draw_seal(target, x, y, size, text):
+        try:
+            pygame.draw.circle(target, (200, 80, 80, 120), (x, y), size // 2)
+            pygame.draw.circle(target, (200, 80, 80, 150), (x, y), size // 2 - 5, 3)
+            if FONT_SMALL:
+                text_surf = FONT_SMALL.render(text, True, (200, 80, 80, 180))
+                if text_surf:
+                    text_rect = text_surf.get_rect(center=(x, y))
+                    target.blit(text_surf, text_rect)
+        except Exception as _e:
+            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
+
+    draw_seal(surf, screen_width - 100, 100, 60, "三国")
+    draw_seal(surf, 100, screen_height - 100, 60, "霸业")
+    return surf
+
+
 def draw_three_kingdoms_background(surface, screen_width, screen_height):
-    """绘制三国主题背景 — 渐变天空、飘动金色云层、散落星光、装饰边框与中式印章。"""
+    """绘制三国主题背景 — 静态层走缓存 blit，只有云与星光逐帧绘制。"""
+    global _BG_CACHE, _BG_CACHE_KEY
     try:
-        for y in range(screen_height):
-            ratio = y / max(screen_height, 1)
-            r = int(40 * (1 - ratio) + 20 * ratio)
-            g = int(20 * (1 - ratio) + 10 * ratio)
-            b = int(30 * (1 - ratio) + 40 * ratio)
-            pygame.draw.line(surface, (r, g, b), (0, y), (screen_width, y))
+        key = (screen_width, screen_height, id(FONT_SMALL))
+        if key != _BG_CACHE_KEY:
+            _BG_CACHE = _render_static_background(screen_width, screen_height)
+            _BG_CACHE_KEY = key
+        surface.blit(_BG_CACHE, (0, 0))
 
         for cloud in clouds:
             cloud['x'] += cloud['speed_x']
@@ -927,53 +1013,21 @@ def draw_three_kingdoms_background(surface, screen_width, screen_height):
             elif cloud['y'] < -50:
                 cloud['y'] = screen_height + 50
 
-            cloud_surf = pygame.Surface((cloud['size'] * 2, cloud['size']), pygame.SRCALPHA)
-            pygame.draw.ellipse(cloud_surf, (255, 215, 0, cloud['alpha']), (0, cloud['size'] // 4, cloud['size'], cloud['size'] // 2))
-            pygame.draw.ellipse(cloud_surf, (255, 215, 0, cloud['alpha'] // 2), (cloud['size'] // 2, 0, cloud['size'], cloud['size'] // 2))
-            pygame.draw.ellipse(cloud_surf, (255, 215, 0, cloud['alpha'] // 3), (cloud['size'] // 3, cloud['size'] // 3, cloud['size'], cloud['size'] // 2))
-            surface.blit(cloud_surf, (cloud['x'] - cloud['size'], cloud['y']))
+            sprite = cloud.get('sprite')
+            if sprite is None:
+                sprite = cloud['sprite'] = _build_cloud_sprite(cloud)
+            surface.blit(sprite, (cloud['x'] - cloud['size'], cloud['y']))
 
         for i in range(6):
             x = random.randint(0, screen_width)
             y = random.randint(0, screen_height)
             size = random.randint(1, 2)
             alpha = random.randint(20, 40)
-            glow_surf = pygame.Surface((size * 4, size * 4), pygame.SRCALPHA)
-            pygame.draw.circle(glow_surf, (255, 215, 0, alpha), (size * 2, size * 2), size * 2)
-            surface.blit(glow_surf, (x - size * 2, y - size * 2))
-
-        border_width = 15
-        border_color = (139, 69, 19, 30)
-        pygame.draw.rect(surface, border_color, (0, 0, screen_width, border_width))
-        pygame.draw.rect(surface, border_color, (0, screen_height - border_width, screen_width, border_width))
-        pygame.draw.rect(surface, border_color, (0, 0, border_width, screen_height))
-        pygame.draw.rect(surface, border_color, (screen_width - border_width, 0, border_width, screen_height))
-
-        inner_border = 30
-        pygame.draw.rect(surface, border_color, (inner_border, inner_border, screen_width - inner_border * 2, 2))
-        pygame.draw.rect(surface, border_color, (inner_border, screen_height - inner_border, screen_width - inner_border * 2, 2))
-        pygame.draw.rect(surface, border_color, (inner_border, inner_border, 2, screen_height - inner_border * 2))
-        pygame.draw.rect(surface, border_color, (screen_width - inner_border, inner_border, 2, screen_height - inner_border * 2))
-
-        draw_chinese_pattern(surface, 50, 50, 40, (139, 69, 19))
-        draw_chinese_pattern(surface, screen_width - 90, 50, 40, (139, 69, 19))
-        draw_chinese_pattern(surface, 50, screen_height - 90, 40, (139, 69, 19))
-        draw_chinese_pattern(surface, screen_width - 90, screen_height - 90, 40, (139, 69, 19))
-
-        def draw_seal(surface, x, y, size, text):
-            try:
-                pygame.draw.circle(surface, (200, 80, 80, 120), (x, y), size // 2)
-                pygame.draw.circle(surface, (200, 80, 80, 150), (x, y), size // 2 - 5, 3)
-                if FONT_SMALL:
-                    text_surf = FONT_SMALL.render(text, True, (200, 80, 80, 180))
-                    if text_surf:
-                        text_rect = text_surf.get_rect(center=(x, y))
-                        surface.blit(text_surf, text_rect)
-            except Exception as _e:
-                logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
-
-        draw_seal(surface, screen_width - 100, 100, 60, "三国")
-        draw_seal(surface, 100, screen_height - 100, 60, "霸业")
+            sprite = _SPARK_SPRITES.get(size)
+            if sprite is None:
+                sprite = _SPARK_SPRITES[size] = _build_spark_sprite(size)
+            sprite.set_alpha(alpha)
+            surface.blit(sprite, (x - size * 2, y - size * 2))
     except Exception:
         surface.fill((10, 10, 25))
 
@@ -998,53 +1052,70 @@ def draw_chinese_pattern(surface, x, y, size, color):
     except Exception as _e:
         logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
+_TITLE_CACHE = {}
+
+
+def _render_title_block(text, y_pos, screen_width):
+    """把标题横幅（底板+纹样+辉光字+下划线）整体渲染进一张缓存图。"""
+    title_width = FONT_BIG.size(text)[0] + 100
+    title_height = 80
+    title_x = (screen_width - title_width) // 2
+    title_y = y_pos - 20
+    block_height = int(y_pos + 70)
+    block = pygame.Surface((screen_width, block_height), pygame.SRCALPHA)
+
+    scroll_surf = pygame.Surface((title_width, title_height), pygame.SRCALPHA)
+    pygame.draw.rect(scroll_surf, (60, 30, 20, 200), (0, 0, title_width, title_height), border_radius=5)
+    pygame.draw.rect(scroll_surf, (139, 69, 19), (0, 0, title_width, title_height), 3, border_radius=5)
+    block.blit(scroll_surf, (title_x, title_y))
+
+    pattern_size = 40
+    draw_chinese_pattern(block, title_x - pattern_size - 10, title_y + 20, pattern_size, COLORS["accent_gold"])
+    draw_chinese_pattern(block, title_x + title_width + 10, title_y + 20, pattern_size, COLORS["accent_gold"])
+
+    for offset in range(8, 0, -1):
+        alpha = 60 - offset * 7
+        glow_surf = FONT_BIG.render(text, True, (255, 215, 0))
+        if glow_surf:
+            glow_rect = glow_surf.get_rect(center=(screen_width // 2, y_pos))
+            glow_surf.set_alpha(alpha)
+            block.blit(glow_surf, (glow_rect.x - offset, glow_rect.y))
+            block.blit(glow_surf, (glow_rect.x + offset, glow_rect.y))
+
+    title = FONT_BIG.render(text, True, (255, 215, 0))
+    if title:
+        title_rect = title.get_rect(center=(screen_width // 2, y_pos))
+        shadow = FONT_BIG.render(text, True, (0, 0, 0))
+        if shadow:
+            block.blit(shadow, (title_rect.x + 4, title_rect.y + 4))
+        block.blit(title, title_rect)
+
+    line_y = y_pos + 50
+    line_color = (139, 69, 19)
+    pygame.draw.line(block, line_color, (screen_width // 2 - 200, line_y), (screen_width // 2 - 80, line_y), 3)
+    pygame.draw.line(block, line_color, (screen_width // 2 - 200, line_y - 5), (screen_width // 2 - 200, line_y + 5), 3)
+    pygame.draw.line(block, line_color, (screen_width // 2 - 80, line_y - 5), (screen_width // 2 - 80, line_y + 5), 3)
+    pygame.draw.line(block, line_color, (screen_width // 2 + 80, line_y), (screen_width // 2 + 200, line_y), 3)
+    pygame.draw.line(block, line_color, (screen_width // 2 + 80, line_y - 5), (screen_width // 2 + 80, line_y + 5), 3)
+    pygame.draw.line(block, line_color, (screen_width // 2 + 200, line_y - 5), (screen_width // 2 + 200, line_y + 5), 3)
+    pygame.draw.circle(block, COLORS["accent_gold"], (screen_width // 2, line_y), 10)
+    pygame.draw.circle(block, (139, 69, 19), (screen_width // 2, line_y), 6)
+    return block
+
+
 def draw_three_kingdoms_title(surface, text, y_pos, screen_width):
-    """绘制三国风格标题"""
+    """绘制三国风格标题 — 静态横幅走缓存，避免每帧十几次字体渲染。"""
     try:
         if FONT_BIG is None:
             return
-
-        title_width = FONT_BIG.size(text)[0] + 100
-        title_height = 80
-        title_x = (screen_width - title_width) // 2
-        title_y = y_pos - 20
-
-        scroll_surf = pygame.Surface((title_width, title_height), pygame.SRCALPHA)
-        pygame.draw.rect(scroll_surf, (60, 30, 20, 200), (0, 0, title_width, title_height), border_radius=5)
-        pygame.draw.rect(scroll_surf, (139, 69, 19), (0, 0, title_width, title_height), 3, border_radius=5)
-        surface.blit(scroll_surf, (title_x, title_y))
-
-        pattern_size = 40
-        draw_chinese_pattern(surface, title_x - pattern_size - 10, title_y + 20, pattern_size, COLORS["accent_gold"])
-        draw_chinese_pattern(surface, title_x + title_width + 10, title_y + 20, pattern_size, COLORS["accent_gold"])
-
-        for offset in range(8, 0, -1):
-            alpha = 60 - offset * 7
-            glow_surf = FONT_BIG.render(text, True, (255, 215, 0))
-            if glow_surf:
-                glow_rect = glow_surf.get_rect(center=(screen_width // 2, y_pos))
-                glow_surf.set_alpha(alpha)
-                surface.blit(glow_surf, (glow_rect.x - offset, glow_rect.y))
-                surface.blit(glow_surf, (glow_rect.x + offset, glow_rect.y))
-
-        title = FONT_BIG.render(text, True, (255, 215, 0))
-        if title:
-            title_rect = title.get_rect(center=(screen_width // 2, y_pos))
-            shadow = FONT_BIG.render(text, True, (0, 0, 0))
-            if shadow:
-                surface.blit(shadow, (title_rect.x + 4, title_rect.y + 4))
-            surface.blit(title, title_rect)
-
-        line_y = y_pos + 50
-        line_color = (139, 69, 19)
-        pygame.draw.line(surface, line_color, (screen_width // 2 - 200, line_y), (screen_width // 2 - 80, line_y), 3)
-        pygame.draw.line(surface, line_color, (screen_width // 2 - 200, line_y - 5), (screen_width // 2 - 200, line_y + 5), 3)
-        pygame.draw.line(surface, line_color, (screen_width // 2 - 80, line_y - 5), (screen_width // 2 - 80, line_y + 5), 3)
-        pygame.draw.line(surface, line_color, (screen_width // 2 + 80, line_y), (screen_width // 2 + 200, line_y), 3)
-        pygame.draw.line(surface, line_color, (screen_width // 2 + 80, line_y - 5), (screen_width // 2 + 80, line_y + 5), 3)
-        pygame.draw.line(surface, line_color, (screen_width // 2 + 200, line_y - 5), (screen_width // 2 + 200, line_y + 5), 3)
-        pygame.draw.circle(surface, COLORS["accent_gold"], (screen_width // 2, line_y), 10)
-        pygame.draw.circle(surface, (139, 69, 19), (screen_width // 2, line_y), 6)
+        key = (text, y_pos, screen_width, id(FONT_BIG))
+        block = _TITLE_CACHE.get(key)
+        if block is None:
+            block = _render_title_block(text, y_pos, screen_width)
+            if len(_TITLE_CACHE) > 4:
+                _TITLE_CACHE.clear()
+            _TITLE_CACHE[key] = block
+        surface.blit(block, (0, 0))
     except Exception as _e:
         logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
@@ -1907,11 +1978,43 @@ def main():
 
     menu_elements = build_menu()
     focus_idx = [0]  # 键盘焦点索引（list 包一层便于闭包内修改）
+    puzzle_trigger = TriggerDetector()  # 卧龙密令：五行序列触发器（隐藏彩蛋）
 
     def activate_code(code):
         """菜单项激活 — 鼠标点击与键盘 Enter 共用。"""
         nonlocal running, screen_width, screen_height
+        global screen
         play_sfx("click.wav")
+
+        # 卧龙密令：检测五行序列（水→火→木→金→土），完成则打开秘密密室
+        try:
+            if puzzle_trigger.on_menu_click(code, pygame.time.get_ticks()):
+                play_sfx("confirm.wav")
+                from ASSET.secret_puzzle import SecretChamber
+                SecretChamber(screen).run()
+                # 密室退出后 screen 可能已失效，复用 run_module 的重建逻辑
+                try:
+                    if screen is None or not screen.get_enabled():
+                        raise ValueError("screen invalid")
+                    screen.get_size()
+                except Exception:
+                    ensure_defaults()
+                    if data['settings']['graphics'].get('fullscreen', False):
+                        screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+                    else:
+                        try:
+                            w, h = map(int, data['settings']['graphics']['resolution'].split('x'))
+                            screen = pygame.display.set_mode((w, h))
+                        except Exception:
+                            screen = pygame.display.set_mode((800, 600))
+                    pygame.display.set_caption("游戏主菜单")
+                pygame.event.clear()
+                return
+            if puzzle_trigger.progress > 0:
+                # 序列进行中：静默吞掉该次点击，不打开任何界面
+                return
+        except Exception as _e:
+            logger.debug("[卧龙密令] 触发器异常: %s", _e)
         if code == "4":
             username = data.get("username", "player")
             save_name = input_save_name(screen, FONT_MAIN, FONT_SMALL)
@@ -2008,31 +2111,34 @@ def main():
         draw_three_kingdoms_background(screen, screen_width, screen_height)
         
         if random.random() < 0.005 and len(comet_trails) < COMET_MAX:
+            hue = random.randint(0, 360)
+            r = int(127 + 127 * math.sin(hue * math.pi / 180))
+            g = int(127 + 127 * math.sin((hue + 120) * math.pi / 180))
+            b = int(127 + 127 * math.sin((hue + 240) * math.pi / 180))
+            dot = pygame.Surface((3, 3), pygame.SRCALPHA)
+            pygame.draw.circle(dot, (r, g, b, 255), (1, 1), 1)
             comet_trails.append({
                 'x': screen_width + 50,
                 'y': random.randint(0, screen_height // 2),
                 'speed': random.uniform(3.0, 6.0),
                 'length': random.randint(80, 150),
                 'alpha': random.randint(100, 200),
-                'hue': random.randint(0, 360)
+                'hue': hue,
+                'dot': dot
             })
         
         for comet in comet_trails:
             comet['x'] -= comet['speed']
             try:
-                h = comet['hue']
-                r = int(127 + 127 * math.sin(h * math.pi / 180))
-                g = int(127 + 127 * math.sin((h + 120) * math.pi / 180))
-                b = int(127 + 127 * math.sin((h + 240) * math.pi / 180))
+                dot = comet['dot']
                 for i in range(int(comet['length'])):
                     alpha = int(comet['alpha'] * (1 - i / comet['length']))
                     x_pos = comet['x'] + i
                     y_pos = comet['y'] + math.sin(current_time * 0.05 + i * 0.1) * 3
                     if 0 <= x_pos <= screen_width and 0 <= y_pos <= screen_height:
                         try:
-                            trail_surf = pygame.Surface((3, 3), pygame.SRCALPHA)
-                            pygame.draw.circle(trail_surf, (r, g, b, alpha), (1, 1), 1)
-                            screen.blit(trail_surf, (int(x_pos), int(y_pos)))
+                            dot.set_alpha(alpha)
+                            screen.blit(dot, (int(x_pos), int(y_pos)))
                         except Exception as _e:
                             logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
             except Exception as _e:
@@ -2055,13 +2161,8 @@ def main():
             rp['x'] += math.sin(current_time * 0.02 + rp['hue'] * 0.1) * 0.5
             rp['hue'] = (rp['hue'] + 1) % 360
             try:
-                h = rp['hue']
-                r = int(127 + 127 * math.sin(h * math.pi / 180))
-                g = int(127 + 127 * math.sin((h + 120) * math.pi / 180))
-                b = int(127 + 127 * math.sin((h + 240) * math.pi / 180))
-                rainbow_surf = pygame.Surface((int(rp['size'] * 2), int(rp['size'] * 2)), pygame.SRCALPHA)
-                pygame.draw.circle(rainbow_surf, (r, g, b, rp['alpha']), (int(rp['size']), int(rp['size'])), int(rp['size']))
-                screen.blit(rainbow_surf, (int(rp['x'] - rp['size']), int(rp['y'] - rp['size'])))
+                sprite = _rainbow_sprite(int(rp['size']), rp['hue'], rp['alpha'])
+                screen.blit(sprite, (int(rp['x'] - rp['size']), int(rp['y'] - rp['size'])))
             except Exception as _e:
                 logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
@@ -2080,22 +2181,23 @@ def main():
                 decor['y'] = -50
 
             try:
-                size = int(decor['size'])
-                if size <= 0:
-                    size = 5
-                surf = pygame.Surface((size * 2, size * 2), pygame.SRCALPHA)
-                if decor['type'] == 'star':
+                surf = decor.get('sprite')
+                if surf is None:
+                    size = int(decor['size'])
+                    if size <= 0:
+                        size = 5
+                    surf = pygame.Surface((size * 2, size * 2), pygame.SRCALPHA)
                     decor_alpha = max(1, min(255, decor['alpha']))
-                    pygame.draw.polygon(surf, (255, 215, 0, decor_alpha), 
-                                      [(size, 0), (size + size//2, size), (size, size * 2), 
-                                       (size - size//2, size)])
-                elif decor['type'] == 'diamond':
-                    decor_alpha = max(1, min(255, decor['alpha']))
-                    pygame.draw.polygon(surf, (255, 215, 0, decor_alpha),
-                                      [(size, 0), (size * 2, size), (size, size * 2), (0, size)])
-                else:
-                    decor_alpha = max(1, min(255, decor['alpha']))
-                    pygame.draw.circle(surf, (255, 215, 0, decor_alpha), (size, size), size)
+                    if decor['type'] == 'star':
+                        pygame.draw.polygon(surf, (255, 215, 0, decor_alpha), 
+                                          [(size, 0), (size + size//2, size), (size, size * 2), 
+                                           (size - size//2, size)])
+                    elif decor['type'] == 'diamond':
+                        pygame.draw.polygon(surf, (255, 215, 0, decor_alpha),
+                                          [(size, 0), (size * 2, size), (size, size * 2), (0, size)])
+                    else:
+                        pygame.draw.circle(surf, (255, 215, 0, decor_alpha), (size, size), size)
+                    decor['sprite'] = surf
                 screen.blit(surf, (int(decor['x'] - decor['size']), int(decor['y'] - decor['size'])))
             except Exception as _e:
                 logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
@@ -2118,8 +2220,13 @@ def main():
 
             if element['life'] > 0:
                 try:
-                    surf = pygame.Surface((int(element['size']), int(element['size'] // 2)), pygame.SRCALPHA)
-                    pygame.draw.ellipse(surf, (255, 215, 0, element['alpha']), (0, 0, element['size'], element['size'] // 2))
+                    surf = element.get('sprite')
+                    if surf is None:
+                        w = int(element['size'])
+                        h = int(element['size'] // 2)
+                        surf = pygame.Surface((w, h), pygame.SRCALPHA)
+                        pygame.draw.ellipse(surf, (255, 215, 0, element['alpha']), (0, 0, w, h))
+                        element['sprite'] = surf
                     screen.blit(surf, (int(element['x']), int(element['y'])))
                 except Exception as _e:
                     logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
@@ -2169,6 +2276,14 @@ def main():
         try:
             mouse_trail.update()
             mouse_trail.draw(screen)
+        except Exception as _e:
+            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
+
+        # 卧龙密令：五行序列的闪光特效提示（屏幕顶部）
+        try:
+            puzzle_trigger.update(pygame.time.get_ticks())
+            if FONT_SMALL:
+                puzzle_trigger.draw_flash(screen, FONT_SMALL)
         except Exception as _e:
             logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
         
