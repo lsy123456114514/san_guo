@@ -35,3 +35,9 @@ test_*.txt
 # Temporary files
 *.tmp
 temp/
+
+# Mirror packs (large local archives)
+packs/
+downloads/
+mirror_manifest.json
+*.zip.part*
