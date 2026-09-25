@@ -23,7 +23,13 @@ import random
 import logging
 from ASSET.fun_effects import PetSprite, FloatingParticles
 from ASSET.game_data import data, save, draw_gradient_bg, ensure_defaults
-from ASSET.secret_puzzle import TriggerDetector  # 卧龙密令：五行序列触发器（隐藏彩蛋）
+from ASSET.secret_puzzle import (
+    TriggerDetector,        # 卧龙密令·第6环 五行序列触发器
+    KeySequenceDetector,    # 卧龙密令·第4环 WOLONG键盘拼字
+    PasswordGate,           # 卧龙密令·第5环 前厅密码锁
+    TrigramPuzzle,          # 卧龙密令·第7环 八阵图（成功后级联密室）
+    puzzle_flags,
+)
 
 # 配置日志系统
 logging.basicConfig(
@@ -1971,7 +1977,28 @@ def main():
 
     menu_elements = build_menu()
     focus_idx = [0]  # 键盘焦点索引（list 包一层便于闭包内修改）
-    puzzle_trigger = TriggerDetector()  # 卧龙密令：五行序列触发器（隐藏彩蛋）
+    puzzle_trigger = TriggerDetector()  # 卧龙密令·第6环：五行序列触发器
+    key_seq = KeySequenceDetector()     # 卧龙密令·第4环：WOLONG键盘拼字
+
+    def restore_screen():
+        """子彩蛋/子模块退出后校验并重建 screen（失效则按设置恢复）。"""
+        global screen
+        try:
+            if screen is None or not screen.get_enabled():
+                raise ValueError("screen invalid")
+            screen.get_size()
+        except Exception:
+            ensure_defaults()
+            if data['settings']['graphics'].get('fullscreen', False):
+                screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+            else:
+                try:
+                    w, h = map(int, data['settings']['graphics']['resolution'].split('x'))
+                    screen = pygame.display.set_mode((w, h))
+                except Exception:
+                    screen = pygame.display.set_mode((800, 600))
+            pygame.display.set_caption("游戏主菜单")
+        pygame.event.clear()
 
     def activate_code(code):
         """菜单项激活 — 鼠标点击与键盘 Enter 共用。"""
@@ -1979,29 +2006,23 @@ def main():
         global screen
         play_sfx("click.wav")
 
-        # 卧龙密令：检测五行序列（水→火→木→金→土），完成则打开秘密密室
+        # 卧龙密令·第6环：检测五行序列（水→火→木→金→土）
         try:
             if puzzle_trigger.on_menu_click(code, pygame.time.get_ticks()):
+                flags = puzzle_flags()
+                if not flags.get("gate_passed"):
+                    # 五行之力被前厅之门挡住（第5环未过）
+                    play_sfx("deny.wav")
+                    show_message("五行之力涌动，却被一道无形之门挡住……（残卷二曰：先开前厅）")
+                    return
+                if flags.get("completed"):
+                    play_sfx("confirm.wav")
+                    show_message("密室已空，卧龙之谜尽数解开。")
+                    return
                 play_sfx("confirm.wav")
-                from ASSET.secret_puzzle import SecretChamber
-                SecretChamber(screen).run()
-                # 密室退出后 screen 可能已失效，复用 run_module 的重建逻辑
-                try:
-                    if screen is None or not screen.get_enabled():
-                        raise ValueError("screen invalid")
-                    screen.get_size()
-                except Exception:
-                    ensure_defaults()
-                    if data['settings']['graphics'].get('fullscreen', False):
-                        screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-                    else:
-                        try:
-                            w, h = map(int, data['settings']['graphics']['resolution'].split('x'))
-                            screen = pygame.display.set_mode((w, h))
-                        except Exception:
-                            screen = pygame.display.set_mode((800, 600))
-                    pygame.display.set_caption("游戏主菜单")
-                pygame.event.clear()
+                # 第7环八阵图，成功后其内部级联第8-10环密室
+                TrigramPuzzle(screen).run()
+                restore_screen()
                 return
             if puzzle_trigger.progress > 0:
                 # 序列进行中：静默吞掉该次点击，不打开任何界面
@@ -2367,6 +2388,16 @@ def main():
 
             # 键盘导航：↑↓ 移焦点，Enter 确认，Esc 关下拉
             if event.type == pygame.KEYDOWN:
+                # 卧龙密令·第4环：主菜单默念 WOLONG 即叩前厅（第5环密码锁）
+                try:
+                    if key_seq.on_key(event):
+                        play_sfx("confirm.wav")
+                        PasswordGate(screen).run()
+                        restore_screen()
+                        continue
+                except Exception as _e:
+                    logger.debug("[卧龙密令] 键序异常: %s", _e)
+
                 if event.key == pygame.K_ESCAPE:
                     _open = [e for t, e in menu_elements
                              if t == "dropdown" and e.is_open]
