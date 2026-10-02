@@ -10,7 +10,6 @@ hiddenimports = [
     'OpenGL',
     'OpenGL.GL',
     'OpenGL.GLU',
-    'numpy',
     'math',
     'random',
     'time',
@@ -43,6 +42,8 @@ asset_modules = [
     'hero_recruitment',
     'hero_warehouse',
     'login_system',
+    'whiteboard',
+    'dictionary_system',
     'pet_arena',
     'pet_system',
     'quest_system',
@@ -59,7 +60,7 @@ for mod in asset_modules:
     hiddenimports.append(mod)
 
 a = Analysis(
-    ['ASSET\\game_main_menu.py'],
+    ['main.py'],
     pathex=[],
     binaries=[],
     datas=[
@@ -74,10 +75,25 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['numpy', 'numpy.libs', 'setuptools', 'pip', 'tkinter',
+              'PyQt5', 'matplotlib', 'scipy', 'pandas', 'PIL'],
     noarchive=False,
     optimize=0,
 )
+
+# 排除缓存字节码（运行时用不到，白占 ~3MB）
+a.datas = [d for d in a.datas if '__pycache__' not in d[0]]
+
+# 去重：pygame 子目录里的 DLL 与顶层同名 DLL 重复（~6MB），留顶层即可
+def _bn(p):
+    return os.path.basename(p.replace('/', os.sep)).lower()
+
+def _dirname(p):
+    return os.path.dirname(p.replace('/', os.sep))
+
+_top = {_bn(d[0]) for d in a.binaries if _dirname(d[0]) in ('', '.')}
+a.binaries = [d for d in a.binaries
+              if _dirname(d[0]) in ('', '.') or _bn(d[0]) not in _top]
 
 pyz = PYZ(a.pure)
 
