@@ -3,7 +3,7 @@
 import os
 import pygame
 import datetime
-from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font
+from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font, open_window
 from ASSET import safe_exit
 
 # 颜色主题
@@ -143,9 +143,9 @@ class ScrollableContainer:
         container_surface.set_clip(clip_rect)
         
         for i, item in enumerate(self.items):
-            item_y = self.y + i * self.item_height - self.scroll_offset
-            if -self.item_height <= item_y <= self.height:
-                render_func(container_surface, item, self.x, item_y)
+            local_y = i * self.item_height - self.scroll_offset
+            if -self.item_height <= local_y <= self.height:
+                render_func(container_surface, item, self.x, local_y)
         
         container_surface.set_clip(None)
         surface.blit(container_surface, (self.x, self.y))
@@ -308,14 +308,17 @@ class TaskSystem:
     
     def init_tasks(self):
         """初始化任务"""
-        # 旧存档的任务结构可能缺键（如没有 main），先补齐避免 KeyError
+        # 旧存档的任务结构可能缺键（如没有 main），先补齐避免 KeyError；
+        # 另外存档里的 daily 可能是遗留的 dict 结构（{"last_reset":...}），统一归一成 list
         tasks = data.setdefault("tasks", {})
+        daily_needs_refill = not isinstance(tasks.get("daily"), list)
         for _key in ("main", "daily", "completed"):
-            tasks.setdefault(_key, [])
+            if not isinstance(tasks.get(_key), list):
+                tasks[_key] = []
 
         # 检查每日任务
         today = datetime.date.today().isoformat()
-        if "last_daily_reset" not in data or data["last_daily_reset"] != today:
+        if daily_needs_refill or "last_daily_reset" not in data or data["last_daily_reset"] != today:
             data["tasks"]["daily"] = []
             for task in self.daily_tasks:
                 data["tasks"]["daily"].append(task.copy())
@@ -713,22 +716,8 @@ def main():
             pygame.init()
         
         # 分辨率适配
-        if 'ANDROID_DATA' in os.environ:
-            info = pygame.display.Info()
-            SCREEN_WIDTH = info.current_w
-            SCREEN_HEIGHT = info.current_h
-        else:
-            # 使用设置的分辨率
-            resolution = data['settings']['graphics']['resolution']
-            try:
-                width, height = map(int, resolution.split('x'))
-                SCREEN_WIDTH = width
-                SCREEN_HEIGHT = height
-            except ValueError:
-                SCREEN_WIDTH = 900
-                SCREEN_HEIGHT = 700
-        
-        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        screen = open_window()
+        SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_size()
         pygame.display.set_caption("社交系统")
         clock = pygame.time.Clock()
 
@@ -758,11 +747,13 @@ def main():
         # 当前页面
         current_page = "pet"  # pet, task, mail, friend
         
-        # 滚动容器
-        pet_container = ScrollableContainer(50, 120, SCREEN_WIDTH - 100, SCREEN_HEIGHT - 200, 90)
-        task_container = ScrollableContainer(50, 120, SCREEN_WIDTH - 100, SCREEN_HEIGHT - 200, 90)
-        mail_container = ScrollableContainer(50, 120, SCREEN_WIDTH - 100, SCREEN_HEIGHT - 200, 100)
-        friend_container = ScrollableContainer(50, 120, SCREEN_WIDTH - 100, SCREEN_HEIGHT - 200, 80)
+        # 滚动容器（起点让开标题，底边让开底部导航按钮）
+        container_y = int(SCREEN_HEIGHT * 0.1) + 55
+        container_h = max(200, SCREEN_HEIGHT - 95 - container_y)
+        pet_container = ScrollableContainer(50, container_y, SCREEN_WIDTH - 100, container_h, 90)
+        task_container = ScrollableContainer(50, container_y, SCREEN_WIDTH - 100, container_h, 90)
+        mail_container = ScrollableContainer(50, container_y, SCREEN_WIDTH - 100, container_h, 100)
+        friend_container = ScrollableContainer(50, container_y, SCREEN_WIDTH - 100, container_h, 80)
 
         # 主循环
         running = True
@@ -794,7 +785,7 @@ def main():
                 
                 def render_pet(surface, pet, x, y):
                     screen_width = surface.get_width()
-                    pet_rect = pygame.Rect(0, y - 120, screen_width, 80)
+                    pet_rect = pygame.Rect(0, y, screen_width, 80)
                     pygame.draw.rect(surface, (40, 40, 70, 200), pet_rect, border_radius=10)
                     pygame.draw.rect(surface, COLORS["accent_gold"], pet_rect, 2, border_radius=10)
                     
@@ -803,12 +794,12 @@ def main():
                     rarity_surf = font_small.render(f"稀有度: {pet['rarity']}", True, COLORS["text_gray"])
                     effect_surf = font_small.render(f"效果: {pet['effect']}", True, COLORS["text_white"])
                     
-                    surface.blit(name_surf, (10, y - 120 + 10))
-                    surface.blit(type_surf, (10, y - 120 + 35))
-                    surface.blit(rarity_surf, (10, y - 120 + 55))
-                    surface.blit(effect_surf, (150, y - 120 + 35))
+                    surface.blit(name_surf, (10, y + 6))
+                    surface.blit(type_surf, (10, y + 44))
+                    surface.blit(rarity_surf, (160, y + 44))
+                    surface.blit(effect_surf, (screen_width - 130 - effect_surf.get_width(), y + 44))
                     
-                    adopt_btn = Button("领养", screen_width - 110, y - 120 + 20, 100, 40, font_small)
+                    adopt_btn = Button("领养", screen_width - 110, y + 20, 100, 40, font_small)
                     adopt_btn.draw(surface)
                 
                 pet_container.draw(screen, render_pet)
@@ -820,67 +811,89 @@ def main():
                 
                 def render_task(surface, task, x, y):
                     screen_width = surface.get_width()
-                    task_rect = pygame.Rect(0, y - 120, screen_width, 80)
+                    task_rect = pygame.Rect(0, y, screen_width, 80)
                     pygame.draw.rect(surface, (40, 40, 70, 200), task_rect, border_radius=10)
                     pygame.draw.rect(surface, COLORS["accent_gold"], task_rect, 2, border_radius=10)
                     
                     name_surf = font_main.render(task["name"], True, COLORS["accent_gold"])
-                    desc_surf = font_small.render(task["description"], True, COLORS["text_white"])
-                    reward_text = ", ".join([f"{k}:{v}" for k, v in task["reward"].items()])
-                    reward_surf = font_small.render(f"奖励: {reward_text}", True, COLORS["text_gray"])
+                    desc_text = task.get("description") or f"进度: {task.get('progress', 0)}/{task.get('target', 1)}"
+                    desc_surf = font_small.render(desc_text, True, COLORS["text_white"])
+                    reward_text = "奖励: " + ", ".join([f"{k}:{v}" for k, v in task["reward"].items()])
+                    size = font_small.get_height()
+                    reward_surf = get_font(size).render(reward_text, True, COLORS["text_gray"])
+                    # 奖励靠右对齐，装不下逐级降字号
+                    limit = screen_width - 130 - (10 + desc_surf.get_width() + 10)
+                    while reward_surf.get_width() > limit and size > 12:
+                        size -= 2
+                        reward_surf = get_font(size).render(reward_text, True, COLORS["text_gray"])
                     
-                    surface.blit(name_surf, (10, y - 120 + 10))
-                    surface.blit(desc_surf, (10, y - 120 + 35))
-                    surface.blit(reward_surf, (10, y - 120 + 55))
+                    surface.blit(name_surf, (10, y + 6))
+                    surface.blit(desc_surf, (10, y + 44))
+                    surface.blit(reward_surf, (screen_width - 130 - reward_surf.get_width(), y + 44))
                     
-                    complete_btn = Button("完成", screen_width - 110, y - 120 + 20, 100, 40, font_small)
+                    complete_btn = Button("完成", screen_width - 110, y + 20, 100, 40, font_small)
                     complete_btn.draw(surface)
                 
                 task_container.draw(screen, render_task)
             elif current_page == "mail":
                 draw_title(screen, "邮件系统", SCREEN_HEIGHT * 0.1, SCREEN_WIDTH, font_big)
-                mail_container.set_items(data["mail"]["inbox"])
+                mail_items = data["mail"]["inbox"]
+                mail_container.set_items(mail_items)
+                if not mail_items:
+                    hint = font_small.render("暂无邮件", True, COLORS["text_gray"])
+                    screen.blit(hint, hint.get_rect(center=(SCREEN_WIDTH // 2, container_y + 40)))
                 
                 def render_mail(surface, mail, x, y):
                     screen_width = surface.get_width()
-                    mail_rect = pygame.Rect(0, y - 120, screen_width, 90)
+                    mail_rect = pygame.Rect(0, y, screen_width, 90)
                     bg_color = (40, 60, 90, 200) if mail["read"] else (40, 40, 70, 200)
                     pygame.draw.rect(surface, bg_color, mail_rect, border_radius=10)
                     pygame.draw.rect(surface, COLORS["accent_gold"], mail_rect, 2, border_radius=10)
                     
                     subject_surf = font_main.render(mail["subject"], True, COLORS["accent_gold"])
                     sender_surf = font_small.render(f"发件人: {mail['sender']}", True, COLORS["text_white"])
-                    time_surf = font_small.render(mail["time"], True, COLORS["text_gray"])
+                    time_text = str(mail.get("timestamp", mail.get("time", "")))[:10]
+                    time_surf = font_small.render(time_text, True, COLORS["text_gray"])
                     
-                    surface.blit(subject_surf, (10, y - 120 + 10))
-                    surface.blit(sender_surf, (10, y - 120 + 40))
-                    surface.blit(time_surf, (10, y - 120 + 65))
+                    surface.blit(subject_surf, (10, y + 6))
+                    surface.blit(sender_surf, (10, y + 46))
+                    surface.blit(time_surf, (240, y + 46))
                     
-                    read_btn = Button("读取", screen_width - 110, y - 120 + 25, 100, 40, font_small)
+                    read_btn = Button("读取", screen_width - 110, y + 25, 100, 40, font_small)
                     read_btn.draw(surface)
                 
                 mail_container.draw(screen, render_mail)
             elif current_page == "friend":
                 draw_title(screen, "好友系统", SCREEN_HEIGHT * 0.1, SCREEN_WIDTH, font_big)
-                friend_container.set_items(data["friends"]["list"] + data["friends"]["requests"])
+                friend_items = data["friends"]["list"] + data["friends"]["requests"]
+                friend_container.set_items(friend_items)
+                if not friend_items:
+                    hint = font_small.render("暂无好友，也还没有好友请求", True, COLORS["text_gray"])
+                    screen.blit(hint, hint.get_rect(center=(SCREEN_WIDTH // 2, container_y + 40)))
                 
                 def render_friend(surface, friend, x, y):
                     screen_width = surface.get_width()
-                    friend_rect = pygame.Rect(0, y - 120, screen_width, 70)
+                    friend_rect = pygame.Rect(0, y, screen_width, 70)
                     pygame.draw.rect(surface, (40, 40, 70, 200), friend_rect, border_radius=10)
                     pygame.draw.rect(surface, COLORS["accent_gold"], friend_rect, 2, border_radius=10)
                     
-                    name_surf = font_main.render(friend["username"], True, COLORS["accent_gold"])
-                    status_surf = font_small.render("状态: 在线" if friend.get("status", "online") == "online" else "状态: 离线", True, COLORS["text_white"])
+                    is_request = "username" not in friend
+                    label = friend.get("username") or friend.get("from") or "?"
+                    name_surf = font_main.render(label, True, COLORS["accent_gold"])
+                    if is_request:
+                        status_text = f"好友请求 · {str(friend.get('timestamp', ''))[:10]}"
+                    else:
+                        status_text = "状态: 在线" if friend.get("status", "online") == "online" else "状态: 离线"
+                    status_surf = font_small.render(status_text, True, COLORS["text_white"])
                     
-                    surface.blit(name_surf, (10, y - 120 + 10))
-                    surface.blit(status_surf, (10, y - 120 + 40))
+                    surface.blit(name_surf, (10, y + 2))
+                    surface.blit(status_surf, (10, y + 36))
                     
-                    if "requests" in str(friend):
-                        accept_btn = Button("接受", screen_width - 110, y - 120 + 15, 100, 40, font_small)
+                    if is_request:
+                        accept_btn = Button("接受", screen_width - 110, y + 15, 100, 40, font_small, normal_color=COLORS["accent_green"])
                         accept_btn.draw(surface)
                     else:
-                        chat_btn = Button("聊天", screen_width - 110, y - 120 + 15, 100, 40, font_small)
+                        chat_btn = Button("聊天", screen_width - 110, y + 15, 100, 40, font_small)
                         chat_btn.draw(surface)
                 
                 friend_container.draw(screen, render_friend)

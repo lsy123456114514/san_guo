@@ -31,7 +31,7 @@ import random
 import pygame
 from typing import List, Tuple, Optional, Dict, Any
 
-from ASSET.game_data import data, save, get_font, draw_gradient_bg, logger
+from ASSET.game_data import data, save, get_font, draw_gradient_bg, logger, open_window
 
 # ══════════════════════════════════════════════════════════════
 # 常量配置
@@ -961,7 +961,7 @@ def main() -> None:
     """直接运行（调试用）：从八阵图开始走完整条链路。"""
     if not pygame.get_init():
         pygame.init()
-    screen = pygame.display.set_mode((900, 650))
+    screen = open_window()
     pygame.display.set_caption("卧龙密令")
     TrigramPuzzle(screen).run()
 

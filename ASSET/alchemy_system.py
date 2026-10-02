@@ -4,7 +4,7 @@ import os
 import time
 import pygame
 import datetime
-from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font
+from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font, open_window
 from ASSET import safe_exit
 
 # 颜色主题
@@ -273,6 +273,31 @@ class AlchemySystem:
         """获取所有药水"""
         return data["alchemy"]["potions"]
 
+# 配方卡/药水卡的排布参数（绘制与点击命中共用，保证两处坐标一致）
+RECIPE_CARD_H, RECIPE_CARD_STEP = 134, 144
+POTION_CARD_H, POTION_CARD_STEP = 84, 94
+BOTTOM_RESERVE = 90
+
+
+def _fit_count(y0, card_h, step, total, screen_h):
+    """按屏幕剩余高度算还能排下几行，排不下的不画也不参与命中"""
+    n = 0
+    y = y0
+    while n < total and y + card_h <= screen_h - BOTTOM_RESERVE:
+        n += 1
+        y += step
+    return n
+
+
+def _alchemy_layout(screen_h, n_recipes, n_potions):
+    """返回 (可见配方数, 配方起始y, 可见药水数, 药水起始y)"""
+    recipes_y0 = screen_h * 0.2 + 40
+    n_rec = _fit_count(recipes_y0, RECIPE_CARD_H, RECIPE_CARD_STEP, n_recipes, screen_h)
+    potions_y0 = recipes_y0 + n_rec * RECIPE_CARD_STEP + 60
+    n_pot = _fit_count(potions_y0, POTION_CARD_H, POTION_CARD_STEP, n_potions, screen_h)
+    return n_rec, recipes_y0, n_pot, potions_y0
+
+
 def draw_alchemy_system(screen, font_big, font_main, font_small):
     """绘制炼金系统"""
     screen_width = screen.get_width()
@@ -283,76 +308,72 @@ def draw_alchemy_system(screen, font_big, font_main, font_small):
     
     alchemy_system = AlchemySystem()
     
-    # 配方列表
-    y_offset = screen_height * 0.2
-    
     # 已解锁的配方
-    recipes_title = font_main.render("可制作的药水", True, COLORS["accent_gold"])
-    screen.blit(recipes_title, (50, y_offset))
-    y_offset += 40
-    
     unlocked_recipes = alchemy_system.get_unlocked_recipes()
+    potions = alchemy_system.get_potions()
+    n_rec, recipes_y, n_pot, potions_y = _alchemy_layout(screen_height, len(unlocked_recipes), len(potions))
+    
+    recipes_title = font_main.render("可制作的药水", True, COLORS["accent_gold"])
+    screen.blit(recipes_title, (50, recipes_y - 40))
+    
     if not unlocked_recipes:
         empty_surf = font_small.render("暂无解锁的配方", True, COLORS["text_gray"])
-        screen.blit(empty_surf, (60, y_offset))
-    else:
-        for recipe in unlocked_recipes:
-            recipe_rect = pygame.Rect(50, y_offset, screen_width - 100, 100)
-            
-            # 背景
-            pygame.draw.rect(screen, (40, 40, 70, 200), recipe_rect, border_radius=10)
-            pygame.draw.rect(screen, COLORS["accent_gold"], recipe_rect, 2, border_radius=10)
-            
-            # 配方信息
-            name_surf = font_main.render(recipe["name"], True, COLORS["accent_gold"])
-            ingredients_text = "材料: " + ", ".join([f"{k} x{v}" for k, v in recipe["ingredients"].items()])
-            ingredients_surf = font_small.render(ingredients_text, True, COLORS["text_white"])
-            effect_text = "效果: " + ", ".join([f"{k}:+{v}" for k, v in recipe["effect"].items()])
-            effect_surf = font_small.render(effect_text, True, COLORS["text_white"])
-            time_surf = font_small.render(f"制作时间: {recipe['time']}秒", True, COLORS["text_gray"])
-            
-            screen.blit(name_surf, (60, y_offset + 10))
-            screen.blit(ingredients_surf, (60, y_offset + 35))
-            screen.blit(effect_surf, (60, y_offset + 60))
-            screen.blit(time_surf, (60, y_offset + 85))
-            
-            # 制作按钮
-            craft_btn = Button("制作", screen_width - 150, y_offset + 30, 100, 40, font_small, normal_color=COLORS["accent_green"])
-            craft_btn.draw(screen)
-            
-            y_offset += 110
+        screen.blit(empty_surf, (60, recipes_y))
+    y_offset = recipes_y
+    for recipe in unlocked_recipes[:n_rec]:
+        recipe_rect = pygame.Rect(50, y_offset, screen_width - 100, RECIPE_CARD_H)
+        
+        # 背景
+        pygame.draw.rect(screen, (40, 40, 70, 200), recipe_rect, border_radius=10)
+        pygame.draw.rect(screen, COLORS["accent_gold"], recipe_rect, 2, border_radius=10)
+        
+        # 配方信息
+        name_surf = font_main.render(recipe["name"], True, COLORS["accent_gold"])
+        ingredients_text = "材料: " + ", ".join([f"{k} x{v}" for k, v in recipe["ingredients"].items()])
+        ingredients_surf = font_small.render(ingredients_text, True, COLORS["text_white"])
+        effect_text = "效果: " + ", ".join([f"{k}:+{v}" for k, v in recipe["effect"].items()])
+        effect_surf = font_small.render(effect_text, True, COLORS["text_white"])
+        time_surf = font_small.render(f"制作时间: {recipe['time']}秒", True, COLORS["text_gray"])
+        
+        screen.blit(name_surf, (60, y_offset + 8))
+        screen.blit(ingredients_surf, (60, y_offset + 46))
+        screen.blit(effect_surf, (60, y_offset + 72))
+        screen.blit(time_surf, (60, y_offset + 98))
+        
+        # 制作按钮
+        craft_btn = Button("制作", screen_width - 150, y_offset + 42, 100, 40, font_small, normal_color=COLORS["accent_green"])
+        craft_btn.draw(screen)
+        
+        y_offset += RECIPE_CARD_STEP
     
     # 药水列表
-    y_offset += 20
     potions_title = font_main.render("我的药水", True, COLORS["accent_blue"])
-    screen.blit(potions_title, (50, y_offset))
-    y_offset += 40
+    screen.blit(potions_title, (50, potions_y - 40))
     
-    potions = alchemy_system.get_potions()
     if not potions:
         empty_surf = font_small.render("暂无药水", True, COLORS["text_gray"])
-        screen.blit(empty_surf, (60, y_offset))
-    else:
-        for potion in potions:
-            potion_rect = pygame.Rect(50, y_offset, screen_width - 100, 80)
-            
-            # 背景
-            pygame.draw.rect(screen, (40, 40, 70, 200), potion_rect, border_radius=10)
-            pygame.draw.rect(screen, COLORS["accent_blue"], potion_rect, 2, border_radius=10)
-            
-            # 药水信息
-            name_surf = font_main.render(potion["name"], True, COLORS["accent_blue"])
-            effect_text = "效果: " + ", ".join([f"{k}:+{v}" for k, v in potion["effect"].items()])
-            effect_surf = font_small.render(effect_text, True, COLORS["text_white"])
-            
-            screen.blit(name_surf, (60, y_offset + 10))
-            screen.blit(effect_surf, (60, y_offset + 40))
-            
-            # 使用按钮
-            use_btn = Button("使用", screen_width - 150, y_offset + 20, 100, 40, font_small, normal_color=COLORS["accent_green"])
-            use_btn.draw(screen)
-            
-            y_offset += 90
+        screen.blit(empty_surf, (60, potions_y))
+    y_offset = potions_y
+    for potion in potions[:n_pot]:
+        potion_rect = pygame.Rect(50, y_offset, screen_width - 100, POTION_CARD_H)
+        
+        # 背景
+        pygame.draw.rect(screen, (40, 40, 70, 200), potion_rect, border_radius=10)
+        pygame.draw.rect(screen, COLORS["accent_blue"], potion_rect, 2, border_radius=10)
+        
+        # 药水信息
+        name_surf = font_main.render(potion["name"], True, COLORS["accent_blue"])
+        effect_text = "效果: " + ", ".join([f"{k}:+{v}" for k, v in potion["effect"].items()])
+        effect_surf = font_small.render(effect_text, True, COLORS["text_white"])
+        
+        screen.blit(name_surf, (60, y_offset + 8))
+        screen.blit(effect_surf, (60, y_offset + 44))
+        
+        # 使用按钮
+        use_btn = Button("使用", screen_width - 150, y_offset + 22, 100, 40, font_small, normal_color=COLORS["accent_green"])
+        use_btn.draw(screen)
+        
+        y_offset += POTION_CARD_STEP
 
 def main():
     """炼金系统主函数"""
@@ -362,22 +383,8 @@ def main():
             pygame.init()
         
         # 分辨率适配
-        if 'ANDROID_DATA' in os.environ:
-            info = pygame.display.Info()
-            SCREEN_WIDTH = info.current_w
-            SCREEN_HEIGHT = info.current_h
-        else:
-            # 使用设置的分辨率
-            resolution = data['settings']['graphics']['resolution']
-            try:
-                width, height = map(int, resolution.split('x'))
-                SCREEN_WIDTH = width
-                SCREEN_HEIGHT = height
-            except ValueError:
-                SCREEN_WIDTH = 900
-                SCREEN_HEIGHT = 700
-        
-        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        screen = open_window()
+        SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_size()
         pygame.display.set_caption("炼金系统")
         clock = pygame.time.Clock()
 
@@ -462,23 +469,27 @@ def main():
                     if back_btn.rect.collidepoint(event.pos):
                         running = False
                     
-                    # 处理制作按钮
-                    y_offset = SCREEN_HEIGHT * 0.2 + 40
-                    for recipe in alchemy_system.get_unlocked_recipes():
-                        craft_btn = Button("制作", SCREEN_WIDTH - 150, y_offset + 30, 100, 40, font_small)
+                    # 处理制作按钮（与 draw_alchemy_system 共用同一套排布计算）
+                    n_rec, recipes_y, n_pot, potions_y = _alchemy_layout(
+                        SCREEN_HEIGHT,
+                        len(alchemy_system.get_unlocked_recipes()),
+                        len(alchemy_system.get_potions()))
+                    y_offset = recipes_y
+                    for recipe in alchemy_system.get_unlocked_recipes()[:n_rec]:
+                        craft_btn = Button("制作", SCREEN_WIDTH - 150, y_offset + 42, 100, 40, font_small)
                         if craft_btn.rect.collidepoint(event.pos):
                             success, message = alchemy_system.craft_potion(recipe["id"])
                             show_message(screen, message, font_main)
-                        y_offset += 110
+                        y_offset += RECIPE_CARD_STEP
                     
                     # 处理使用按钮
-                    y_offset = SCREEN_HEIGHT * 0.2 + 40 + len(alchemy_system.get_unlocked_recipes()) * 110 + 20 + 40
-                    for potion in alchemy_system.get_potions():
-                        use_btn = Button("使用", SCREEN_WIDTH - 150, y_offset + 20, 100, 40, font_small)
+                    y_offset = potions_y
+                    for potion in alchemy_system.get_potions()[:n_pot]:
+                        use_btn = Button("使用", SCREEN_WIDTH - 150, y_offset + 22, 100, 40, font_small)
                         if use_btn.rect.collidepoint(event.pos):
                             success, message = alchemy_system.use_potion(potion["id"])
                             show_message(screen, message, font_main)
-                        y_offset += 90
+                        y_offset += POTION_CARD_STEP
             
             clock.tick(60)
         

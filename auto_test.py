@@ -6,27 +6,36 @@
 
 用法（项目根目录）::
 
-    py auto_test.py
+    py auto_test.py                 # 全量测试
+    py auto_test.py --list          # 只列出计划点击的菜单项，不执行
+    py auto_test.py --only 23,17    # 只测指定菜单码
+    py auto_test.py --rounds 3      # 连测 3 轮（查偶发问题）
+    py auto_test.py --fast          # 压缩界面延时，跑得更快
+    py auto_test.py --keep-save     # 不备份/恢复存档（保留测试改动）
 
 测试流程::
 
     1. 备份存档 → 启动真实主菜单（跳过开场动画与新手引导）
     2. AutoTestDriver 每帧驱动一步：
          移动光标到下拉菜单 → 展开 → 逐项悬停 → 点击进入模块
-    3. 每个模块由看门狗线程投递 ESC/QUIT 事件使其自动退出
-    4. 记录 OK / FAIL / HANG，写入 auto_test_report.txt
-    5. 全部走完后发送 QUIT 退出主菜单，恢复存档，输出汇总
+    3. 每个模块先由看门狗投递一轮“按键漫游”（方向/Tab/空格/回车/数字），
+       再交替投递 ESC/QUIT 使其自动退出——顺带覆盖模块内部交互
+    4. 记录 OK / FAIL / HANG；若上次进程硬崩（段错误等），本轮报告会点名
+    5. 全部走完后发送 QUIT 退出主菜单，恢复存档，输出明细与汇总
 
 退出码::
 
     0 = 全部通过   1 = 有失败   2 = 有模块挂起（看门狗超时强杀）
+    3 = 已有实例在运行（报告文件被占用）
 """
 
 import os
 import sys
+import json
 import time
 import shutil
 import logging
+import argparse
 import threading
 
 # ══════════════════════════════════════════════════════════════
@@ -36,6 +45,9 @@ import threading
 ROOT = os.path.dirname(os.path.abspath(__file__))
 REPORT_PATH = os.path.join(ROOT, "auto_test_report.txt")
 SAVE_PATH = os.path.join(ROOT, "ASSET", "save.json")
+STATE_PATH = os.path.join(ROOT, "auto_test_state.json")
+SHOT_DIR = os.path.join(ROOT, "test_shots")
+SHOT_TIMES = (0.5, 1.6, 4.0)   # --shots 时：进模块后第几秒截图（布局期 / 漫游期 / 慢启动模块）
 
 # 不自动点击的菜单码：存档对话框 / 设置 / 退出确认 / 读档（含弹窗或会结束进程）
 SKIP_CODES = {"4", "5", "9", "15"}
@@ -45,8 +57,10 @@ DELAY_HOVER = 0.25    # 悬停到条目上的停留
 DELAY_SCROLL = 0.12   # 长列表滚动一格的间隔
 DELAY_SETTLE = 0.70   # 模块退出后回到菜单的安定时间
 
-WATCHDOG_START = 1.0     # 模块启动多久后开始投递退出事件
-WATCHDOG_INTERVAL = 0.35 # 退出事件投递间隔
+WATCHDOG_START = 1.0     # 模块启动多久后开始投递事件
+WATCHDOG_INTERVAL = 0.35 # ESC/QUIT 投递间隔
+SPRAY_DURATION = 1.6     # 进入模块后先“按键漫游”的时长（秒）
+SPRAY_INTERVAL = 0.20    # 漫游按键投递间隔
 HANG_TIMEOUT = 90.0      # 无任何进展多久判定为挂起
 
 STATE_OPEN = "open"
@@ -57,8 +71,10 @@ STATE_AFTER = "after"
 
 _results = []          # [(file, label, status, elapsed, note)]
 _heartbeat = {"t": time.perf_counter()}
-_current = {"label": "", "file": ""}
+_current = {"label": "", "file": "", "code": ""}
 _report_lock = threading.Lock()
+_opts = None           # argparse 选项（run() 里赋值，驱动器从中读取）
+_driver = {"obj": None}  # 当前驱动器实例（gmm.main() 内创建，run() 检查完成状态）
 
 
 # ══════════════════════════════════════════════════════════════
@@ -80,13 +96,28 @@ def _report(line: str, echo: bool = True) -> None:
             pass
 
 
+def _git_rev() -> str:
+    """取当前 git 短提交号（失败返回 unknown）。"""
+    try:
+        import subprocess
+        out = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                             cwd=ROOT, capture_output=True, text=True, timeout=5)
+        return out.stdout.strip() or "unknown"
+    except Exception:
+        return "unknown"
+
+
 def _init_report() -> None:
     """覆盖写入报告头。"""
     stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    args = " ".join(sys.argv[1:]) or "(无)"
     header = (
         "==== 三国群英传 · 一键自动测试 ====\n"
-        f"start: {stamp}\n"
-        f"mode  : 模拟手动点击，逐模块进入并退出\n"
+        f"start   : {stamp}\n"
+        f"python  : {sys.version.split()[0]}  platform: {sys.platform}  "
+        f"git: {_git_rev()}\n"
+        f"args    : {args}\n"
+        f"mode    : 菜单点击 + 模块内按键漫游，逐模块进入并退出\n"
         "------------------------------------\n"
     )
     with open(REPORT_PATH, "w", encoding="utf-8") as f:
@@ -94,12 +125,155 @@ def _init_report() -> None:
     print(header, end="", flush=True)
 
 
+def _write_state(code: str, label: str, mod_file: str) -> None:
+    """进入模块前落盘状态标记：进程硬崩（段错误等）时残留，供下轮点名。"""
+    try:
+        tmp = STATE_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"pid": os.getpid(), "code": code, "label": label,
+                       "file": mod_file, "t": time.strftime("%Y-%m-%d %H:%M:%S")},
+                      f, ensure_ascii=False)
+        os.replace(tmp, STATE_PATH)
+    except Exception:
+        pass
+
+
+def _clear_state() -> None:
+    try:
+        if os.path.exists(STATE_PATH):
+            os.remove(STATE_PATH)
+    except Exception:
+        pass
+
+
+# ── 截图：挂在 display.flip/update 上，只在“整帧画完、即将翻页”时保存 ──
+# 旧实现用后台线程到点直接读屏幕，会截到渲染到一半的帧（表现为“内容丢失”假象）。
+_pending_shots = []      # [{"deadline": float, "path": str}]
+_shot_hooked = {"on": False}
+
+
+def _install_shot_hook() -> None:
+    """把截图动作插到 pygame.display.flip/update 调用之前（帧内容最完整的一刻）。"""
+    if _shot_hooked["on"]:
+        return
+    _shot_hooked["on"] = True
+    try:
+        import pygame
+
+        orig_flip = pygame.display.flip
+        orig_update = pygame.display.update
+
+        def _grab_surface():
+            """取当前帧画面。OPENGL 模式下 display surface 不含 GL 内容，
+            需在翻页前直接从帧缓冲 glReadPixels 读取（翻页前读的是 BACK 缓冲）。"""
+            surf = pygame.display.get_surface()
+            if surf is None:
+                return None
+            if not (surf.get_flags() & pygame.OPENGL):
+                return surf
+            if threading.current_thread() is not threading.main_thread():
+                return surf  # 非主线程没有当前 GL 上下文，读不了
+            try:
+                from OpenGL.GL import glReadPixels, glFinish, GL_RGB, GL_UNSIGNED_BYTE
+                import ctypes
+
+                w, h = surf.get_size()
+                glFinish()
+                buf = (ctypes.c_ubyte * (w * h * 3))()
+                glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, buf)
+                gl_surf = pygame.image.frombuffer(bytes(buf), (w, h), "RGB")
+                return pygame.transform.flip(gl_surf, False, True)
+            except Exception:
+                return surf
+
+        def _save_due():
+            if not _pending_shots:
+                return
+            now = time.perf_counter()
+            for shot in list(_pending_shots):
+                if now < shot["deadline"]:
+                    continue
+                _pending_shots.remove(shot)
+                try:
+                    surf = _grab_surface()
+                    if surf is not None:
+                        os.makedirs(SHOT_DIR, exist_ok=True)
+                        pygame.image.save(surf, shot["path"])
+                except Exception:
+                    pass
+
+        def flip(*a, **k):
+            _save_due()
+            return orig_flip(*a, **k)
+
+        def update(*a, **k):
+            _save_due()
+            return orig_update(*a, **k)
+
+        pygame.display.flip = flip
+        pygame.display.update = update
+    except Exception:
+        pass
+
+
+def _take_shot_async(tag: str, delay: float) -> None:
+    """delay 秒后截当前窗口存为 test_shots/<code>_<label>_<tag>.png。"""
+    code = _current.get("code") or "0"
+    label = (_current.get("label") or "unknown").strip()
+    for ch in '\\/:*?"<>|':
+        label = label.replace(ch, "_")
+    path = os.path.join(SHOT_DIR, f"{code}_{label}_{tag}.png")
+
+    _install_shot_hook()
+    _pending_shots.append({"deadline": time.perf_counter() + delay, "path": path})
+
+    def _worker():
+        # 兜底：deadline+1.5s 还没翻过页（模块卡死/无帧）就直接读屏，聊胜于无
+        time.sleep(delay + 1.5)
+        for shot in list(_pending_shots):
+            if shot["path"] == path:
+                _pending_shots.remove(shot)
+                try:
+                    import pygame
+                    surf = pygame.display.get_surface()
+                    if surf is not None:
+                        if surf.get_flags() & pygame.OPENGL:
+                            # GL 模式非主线程读不到帧缓冲，白图没意义，留给翻页钩子
+                            continue
+                        os.makedirs(SHOT_DIR, exist_ok=True)
+                        pygame.image.save(surf, path)
+                except Exception:
+                    pass
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
+def _cancel_pending_shots() -> None:
+    """模块结束时丢掉未拍的截图，避免拍到主菜单却顶着模块的文件名。"""
+    _pending_shots.clear()
+
+
+def _check_stale_state() -> None:
+    """上轮进程硬崩时状态文件会残留 → 在本轮报告开头点名。"""
+    if not os.path.exists(STATE_PATH):
+        return
+    try:
+        with open(STATE_PATH, encoding="utf-8") as f:
+            st = json.load(f)
+        _report(f"[CRASH] 上次运行进程硬崩于 {st.get('label', '?')} "
+                f"({st.get('code', '?')}) {st.get('file', '?')}  "
+                f"@{st.get('t', '?')}，本轮重点观察")
+    except Exception:
+        _report("[CRASH] 上次运行残留状态文件（无法解析）")
+    _clear_state()
+
+
 # ══════════════════════════════════════════════════════════════
 # 看门狗：让子模块自动退出
 # ══════════════════════════════════════════════════════════════
 
 class _Watchdog(threading.Thread):
-    """模块运行期间持续投递 ESC/QUIT，使其自动退回主菜单。"""
+    """模块运行期间自动投递按键：先漫游交互，再 ESC/QUIT 退出。"""
 
     def __init__(self) -> None:
         super().__init__(daemon=True)
@@ -109,11 +283,31 @@ class _Watchdog(threading.Thread):
         self._stop_flag = True
 
     def run(self) -> None:
+        try:
+            import pygame
+        except Exception:
+            return
         time.sleep(WATCHDOG_START)
+        # 漫游按键：模拟玩家在模块里随便按，覆盖内部交互路径
+        spray_keys = [pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN,
+                      pygame.K_TAB, pygame.K_RETURN, pygame.K_SPACE,
+                      pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_BACKSPACE]
+        spray_unicode = {pygame.K_RETURN: "\r", pygame.K_SPACE: " ",
+                         pygame.K_TAB: "\t", pygame.K_1: "1",
+                         pygame.K_2: "2", pygame.K_3: "3"}
+        t0 = time.perf_counter()
         flip = 0
         while not self._stop_flag:
             try:
-                import pygame
+                if time.perf_counter() - t0 < SPRAY_DURATION:
+                    k = spray_keys[flip % len(spray_keys)]
+                    ev = pygame.event.Event(pygame.KEYDOWN, key=k,
+                                            unicode=spray_unicode.get(k, ""),
+                                            mod=0)
+                    pygame.event.post(ev)
+                    flip += 1
+                    time.sleep(SPRAY_INTERVAL)
+                    continue
                 if flip % 2 == 0:
                     ev = pygame.event.Event(pygame.KEYDOWN,
                                             key=pygame.K_ESCAPE, unicode="", mod=0)
@@ -148,6 +342,10 @@ class AutoTestDriver:
         self.next_at = 0.0
         self.finished = False
         self.entered = 0
+        self.total_rounds = max(1, int(getattr(_opts, "rounds", 1) or 1))
+        self.rounds_left = self.total_rounds
+        self.list_only = bool(getattr(_opts, "list_only", False))
+        _driver["obj"] = self
 
     # ── 组装目标队列 ──────────────────────────────────
 
@@ -174,8 +372,26 @@ class AutoTestDriver:
                 # 只存下拉标题：子模块退出后菜单会被重建，旧对象引用会失效
                 self.queue.append((code, text, el.text))
 
+        # --only 过滤：只保留指定菜单码
+        only = getattr(_opts, "only", None)
+        if only:
+            missing = [c for c in only if c not in {q[0] for q in self.queue}]
+            self.queue = [q for q in self.queue if q[0] in only]
+            for c in sorted(missing):
+                _report(f"[SKIP] --only 菜单码 {c} 未匹配到可测菜单项"
+                        f"（不存在 / 被跳过 / 模块文件重复）")
+
         total = len(self.queue)
         _report(f"计划点击 {total} 个模块（跳过存档/设置/退出类菜单项）")
+        if self.total_rounds > 1:
+            _report(f"轮次  : 共 {self.total_rounds} 轮")
+        if getattr(_opts, "fast", False):
+            _report("模式  : --fast（界面延时已压缩）")
+        if self.list_only:
+            for code, label, title in self.queue:
+                _report(f"  {code:>4}  {label}  [下拉:{title}]  "
+                        f"{MODULE_ROUTES_FILE(code)}")
+            self.idx = len(self.queue)  # 只列出：让 step 直接走收尾，不点击
         _report("------------------------------------")
 
     def _dropdown(self, title: str):
@@ -250,11 +466,14 @@ class AutoTestDriver:
             # 模拟点击：直接进入（激活函数内部会同步运行模块）
             _current["label"] = label
             _current["file"] = MODULE_ROUTES_FILE(code)
+            _current["code"] = code
             # 先落盘再进入：若模块硬崩（如 0xC0000005），报告里能看出崩在谁身上
+            _write_state(code, label, MODULE_ROUTES_FILE(code))
             _report(f"-> 进入 {label} ({code}) {MODULE_ROUTES_FILE(code)}", echo=False)
             self.activate(code)
             # 走到这里 = 模块已退回主菜单
             self.entered += 1
+            _clear_state()
             _heartbeat["t"] = time.perf_counter()
             self.state = STATE_AFTER
             self.next_at = time.perf_counter() + DELAY_SETTLE
@@ -281,14 +500,28 @@ class AutoTestDriver:
         self.next_at = time.perf_counter()
 
     def _finish(self) -> None:
-        """全部点击完成：关闭菜单并投递 QUIT 结束主菜单循环。"""
+        """队列走完：多轮则重开一轮；否则关闭菜单并投递 QUIT。"""
         import pygame
         for etype, el in self.menu_elements:
             if etype == "dropdown":
                 el.is_open = False
+        if self.rounds_left > 1:
+            # 还有下一轮：重置状态机继续，不退出主菜单
+            self.rounds_left -= 1
+            done = self.total_rounds - self.rounds_left
+            self.idx = 0
+            self.state = STATE_OPEN
+            self.next_at = time.perf_counter() + DELAY_SETTLE
+            self._dbg_key = None
+            _report(f"==== 第 {done} 轮完成（累计进入 {self.entered}），"
+                    f"开始第 {done + 1}/{self.total_rounds} 轮 ====")
+            return
         self.finished = True
         _report("------------------------------------")
-        _report(f"点击完成，共进入 {self.entered} 个模块，正在退出主菜单…")
+        if self.list_only:
+            _report(f"--list 完成：计划 {len(self.queue)} 项，仅列出不点击")
+        else:
+            _report(f"点击完成，共进入 {self.entered} 个模块，正在退出主菜单…")
         try:
             pygame.event.post(pygame.event.Event(pygame.QUIT))
         except Exception:
@@ -339,6 +572,9 @@ def _make_wrapper(orig_fn, kind: str):
         wd.start()
         t0 = time.perf_counter()
         _heartbeat["t"] = t0
+        if getattr(_opts, "shots", False):
+            for _i, _t in enumerate(SHOT_TIMES):
+                _take_shot_async("abcd"[_i] if _i < 4 else str(_i), _t)
         status, note = "OK", ""
         target = args[0] if args else kind
         _current["file"] = target if isinstance(target, str) else str(target)
@@ -353,6 +589,7 @@ def _make_wrapper(orig_fn, kind: str):
         finally:
             wd.stop()
             wd.join(timeout=1.0)
+            _cancel_pending_shots()
             # 清掉看门狗可能残留的退出事件，避免误杀主菜单
             time.sleep(0.05)
             try:
@@ -403,8 +640,62 @@ def _deadman() -> None:
 # 主入口
 # ══════════════════════════════════════════════════════════════
 
-def run() -> int:
+def _acquire_instance_lock():
+    """单实例锁：同一时刻只允许一个 auto_test 写报告。
+
+    返回 fd（持有到进程退出，由操作系统自动释放，无残留问题）；
+    已有实例占用时返回 None。
+    """
+    lock_path = os.path.join(ROOT, ".auto_test.lock")
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o666)
+    try:
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        return None
+    os.lseek(fd, 0, os.SEEK_SET)
+    os.ftruncate(fd, 0)
+    os.write(fd, str(os.getpid()).encode("ascii"))
+    return fd
+
+
+def _parse_args(argv=None):
+    """解析命令行参数。"""
+    ap = argparse.ArgumentParser(
+        prog="auto_test",
+        description="三国群英传 · 一键自动测试（模拟手动点击各模块进出）")
+    ap.add_argument("--only", metavar="码[,码…]",
+                    help="只测指定菜单码，逗号分隔（配合 --list 查码）")
+    ap.add_argument("--rounds", type=int, default=1,
+                    help="重复测试轮数（默认 1，查偶发问题可加到 3+）")
+    ap.add_argument("--fast", action="store_true",
+                    help="压缩界面延时，跑得更快")
+    ap.add_argument("--list", dest="list_only", action="store_true",
+                    help="只列出计划点击的菜单项，不执行点击")
+    ap.add_argument("--keep-save", action="store_true",
+                    help="不备份/恢复存档（保留测试期间的改动）")
+    ap.add_argument("--shots", action="store_true",
+                    help="每个模块截图两张存入 test_shots/（排查界面布局问题）")
+    return ap.parse_args(argv)
+
+
+def run(opts) -> int:
     """执行一键自动测试，返回退出码。"""
+    global _opts, DELAY_OPEN, DELAY_HOVER, DELAY_SCROLL, DELAY_SETTLE
+    _opts = opts
+    if opts.only:
+        opts.only = {c.strip() for c in opts.only.split(",") if c.strip()}
+    opts.rounds = max(1, int(opts.rounds or 1))
+
+    lock_fd = _acquire_instance_lock()
+    if lock_fd is None:
+        print("[auto_test] 已有实例在运行（报告被先启动者占用），本次退出")
+        return 3
     os.environ["SAN_GUO_AUTOTEST"] = "1"
     os.chdir(ROOT)
     if ROOT not in sys.path:
@@ -415,10 +706,27 @@ def run() -> int:
     sys.modules["auto_test"] = sys.modules[__name__]
 
     _init_report()
+    _check_stale_state()
+
+    if opts.fast:
+        DELAY_OPEN *= 0.6
+        DELAY_HOVER *= 0.6
+        DELAY_SCROLL *= 0.6
+        DELAY_SETTLE *= 0.6
+
+    if opts.shots and not opts.only:
+        # 全量跑才清空；--only 增量复验时保留已有截图
+        try:
+            shutil.rmtree(SHOT_DIR, ignore_errors=True)
+            os.makedirs(SHOT_DIR, exist_ok=True)
+        except Exception:
+            pass
+    elif opts.shots:
+        os.makedirs(SHOT_DIR, exist_ok=True)
 
     # 备份存档，测试结束后恢复
     save_backup = None
-    if os.path.exists(SAVE_PATH):
+    if not opts.keep_save and os.path.exists(SAVE_PATH):
         save_backup = SAVE_PATH + ".autotest_bak"
         shutil.copy2(SAVE_PATH, save_backup)
 
@@ -446,6 +754,14 @@ def run() -> int:
         # 跑真实主菜单，由 AutoTestDriver 驱动点击
         gmm.main()
 
+        # 主循环若中途退出（driver 未走完队列），如实记 FAIL
+        drv = _driver["obj"]
+        if drv is not None and not drv.finished and not opts.list_only:
+            _report(f"[FAIL] 主循环提前退出：driver 停在 idx={drv.idx} "
+                    f"state={drv.state}（队列共 {len(drv.queue)} 项，"
+                    f"已进入 {drv.entered} 项）")
+            exit_code = 1
+
     except Exception as e:
         _report(f"[CRASH] 主流程异常: {type(e).__name__}: {e}")
         import traceback
@@ -458,11 +774,25 @@ def run() -> int:
                 shutil.move(save_backup, SAVE_PATH)
         except Exception:
             pass
+        _clear_state()
 
-    # 汇总
+    # --only 全部没匹配上 → 视为参数错误
+    if opts.only and not opts.list_only and not _results:
+        _report("[FAIL] --only 未匹配到任何可测模块")
+        exit_code = 1 if exit_code == 0 else exit_code
+
+    # 明细 + 汇总
     ok = sum(1 for r in _results if r[2] == "OK")
     fail = len(_results) - ok
     _report("------------------------------------")
+    if _results:
+        _report("模块明细（按进入顺序）:")
+        for i, (name, label, status, elapsed, note) in enumerate(_results, 1):
+            _report(f"  {i:>2}. {status:<4} {elapsed:6.2f}s  {name}  ({label})"
+                    + (f"  — {note}" if note else ""))
+        total_t = sum(r[3] for r in _results)
+        _report(f"  小计: {len(_results)} 项，OK {ok} / FAIL {fail}，"
+                f"模块累计耗时 {total_t:.1f}s")
     _report(f"summary : 共 {len(_results)} 个模块，OK {ok}，FAIL {fail}")
     if fail and exit_code == 0:
         exit_code = 1
@@ -473,7 +803,7 @@ def run() -> int:
 
 def main() -> None:
     """控制台入口。"""
-    sys.exit(run())
+    sys.exit(run(_parse_args()))
 
 
 if __name__ == "__main__":

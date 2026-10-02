@@ -2,7 +2,7 @@
 
 import os
 import pygame
-from ASSET.game_data import data, save, TECH_TREE, get_system_font_name, logger, draw_gradient_bg
+from ASSET.game_data import data, save, TECH_TREE, get_system_font_name, logger, draw_gradient_bg, open_window
 from ASSET import safe_exit
 
 # 全局变量（延迟初始化）
@@ -103,6 +103,21 @@ class TechNode:
         # 检查是否有子节点未解锁
         return len(self.tech_data.get("children", [])) > 0
     
+    @staticmethod
+    def _fit_text(font, text, color, max_width, zoom):
+        """渲染文本：超宽截断加省略号，并按缩放系数缩放，保证不溢出节点卡片。"""
+        surf = font.render(text, True, color)
+        if surf.get_width() > max_width:
+            cut = text
+            while cut and font.render(cut + "…", True, color).get_width() > max_width:
+                cut = cut[:-1]
+            surf = font.render((cut + "…") if cut else "", True, color)
+        if zoom != 1.0:
+            w = max(1, int(surf.get_width() * zoom))
+            h = max(1, int(surf.get_height() * zoom))
+            surf = pygame.transform.smoothscale(surf, (w, h))
+        return surf
+
     def draw(self, surface, offset_x=0, offset_y=0, zoom=1.0):
         # 应用偏移和缩放
         adjusted_rect = pygame.Rect(
@@ -124,28 +139,34 @@ class TechNode:
         pygame.draw.rect(surface, color, adjusted_rect, border_radius=15)
         pygame.draw.rect(surface, COLORS["text_white"], adjusted_rect, 2, border_radius=15)
         
-        # 绘制科技名称
-        name_surf = FONT_SMALL.render(self.tech_data["name"], True, COLORS["text_white"])
-        name_rect = name_surf.get_rect(center=(adjusted_rect.x + adjusted_rect.width // 2, adjusted_rect.y + 35 * zoom))
+        # 绘制科技名称（按缩放缩放字面，按节点宽度截断，防止溢出卡片）
+        name_surf = self._fit_text(FONT_SMALL, self.tech_data["name"], COLORS["text_white"], self.rect.width - 12, zoom)
+        name_rect = name_surf.get_rect(center=(adjusted_rect.centerx, adjusted_rect.y + int(35 * zoom)))
         surface.blit(name_surf, name_rect)
         
-        # 绘制科技描述（简短版）
-        desc_text = self.tech_data["description"][:18] + "..." if len(self.tech_data["description"]) > 18 else self.tech_data["description"]
-        desc_surf = FONT_TINY.render(desc_text, True, COLORS["text_gray"])
-        desc_rect = desc_surf.get_rect(center=(adjusted_rect.x + adjusted_rect.width // 2, adjusted_rect.y + 65 * zoom))
+        # 绘制科技描述（逐级降字号直到整句放得下，不用省略号截断）
+        desc_text = self.tech_data["description"]
+        _sz = max(8, int(15 * zoom))
+        _desc_font = get_scaled_font(_sz)
+        while _sz > 7 and _desc_font.size(desc_text)[0] > self.rect.width - 12:
+            _sz -= 1
+            _desc_font = get_scaled_font(_sz)
+        desc_surf = _desc_font.render(desc_text, True, COLORS["text_gray"])
+        desc_rect = desc_surf.get_rect(center=(adjusted_rect.centerx, adjusted_rect.y + int(65 * zoom)))
         surface.blit(desc_surf, desc_rect)
         
-        # 绘制升级按钮
+        # 绘制升级按钮（宽高已在 adjusted_rect 里缩放过，不再二次缩放；字号随缩放）
         if self.can_upgrade():
+            btn_font = get_scaled_font(int(30 * zoom))
             upgrade_btn = Button("解锁", 
                                int(adjusted_rect.x + 25 * zoom), 
                                int(adjusted_rect.y + 95 * zoom), 
-                               int((adjusted_rect.width - 50) * zoom), 
+                               int(adjusted_rect.width - 50 * zoom), 
                                int(30 * zoom), 
-                               FONT_TINY, 
+                               btn_font, 
                                normal_color=COLORS["accent_green"])
             mouse_pos = pygame.mouse.get_pos()
-            upgrade_btn.check_hover((mouse_pos[0] - offset_x, mouse_pos[1] - offset_y))
+            upgrade_btn.check_hover(mouse_pos)
             upgrade_btn.draw(surface)
             return upgrade_btn
         
@@ -168,27 +189,31 @@ class TechNode:
         save()
         return True
 
+_scaled_font_cache = {}
+
+def get_scaled_font(size):
+    """按字号取字体（带缓存），用于缩放后仍保持文字与按钮比例。"""
+    size = max(8, int(size))
+    font = _scaled_font_cache.get(size)
+    if font is None:
+        font_name = get_system_font_name()
+        try:
+            if font_name:
+                font = pygame.font.SysFont(font_name, size)
+            else:
+                font = pygame.font.Font(None, size)
+        except Exception:
+            font = pygame.font.Font(None, size)
+        _scaled_font_cache[size] = font
+    return font
+
 def init_fonts():
     """初始化字体"""
     global FONT_MAIN, FONT_SMALL, FONT_BIG, FONT_TINY
-    font_name = get_system_font_name()
-    
-    try:
-        if font_name:
-            FONT_MAIN = pygame.font.SysFont(font_name, 36)
-            FONT_SMALL = pygame.font.SysFont(font_name, 24)
-            FONT_TINY = pygame.font.SysFont(font_name, 20)
-            FONT_BIG = pygame.font.SysFont(font_name, 50)
-        else:
-            FONT_MAIN = pygame.font.Font(None, 36)
-            FONT_SMALL = pygame.font.Font(None, 24)
-            FONT_TINY = pygame.font.Font(None, 20)
-            FONT_BIG = pygame.font.Font(None, 50)
-    except Exception:
-        FONT_MAIN = pygame.font.Font(None, 36)
-        FONT_SMALL = pygame.font.Font(None, 24)
-        FONT_TINY = pygame.font.Font(None, 20)
-        FONT_BIG = pygame.font.Font(None, 50)
+    FONT_MAIN = get_scaled_font(36)
+    FONT_SMALL = get_scaled_font(24)
+    FONT_TINY = get_scaled_font(20)
+    FONT_BIG = get_scaled_font(50)
 
 def draw_title(surface, text, y_pos, screen_width):
     """绘制标题"""
@@ -333,38 +358,49 @@ def draw_tech_info(surface, tech_node):
             y_offset += 25
 
 def build_tech_tree():
-    """构建科技树节点"""
+    """构建科技树节点（整齐树布局：先量子树宽度，再居中放置，避免互相压盖/出屏）"""
     nodes = {}
     node_width = 200
     node_height = 150
-    
-    # 计算节点位置（树状布局）
-    def calculate_positions(tech_id, x, y, level=0):
-        tech_data = TECH_TREE[tech_id]
-        nodes[tech_id] = TechNode(tech_id, tech_data, x, y, node_width, node_height)
-        
-        # 计算子节点位置
-        children = tech_data.get("children", [])
-        if children:
-            child_count = len(children)
-            spacing = 300  # 子节点之间的间距（增加）
-            start_x = x - (child_count - 1) * spacing // 2
-            
-            for i, child_id in enumerate(children):
-                child_x = start_x + i * spacing
-                child_y = y + 250  # 垂直间距（增加）
-                calculate_positions(child_id, child_x, child_y, level + 1)
+    h_gap = 60   # 兄弟子树之间的水平间距
+    v_gap = 70   # 层与层之间的垂直间距
 
-    # 从根节点开始构建
-    root_techs = ["resource", "occupation", "combat", "defense", "special"]
-    start_x = 400
-    start_y = 100
-    spacing = 350  # 根节点之间的间距（增加）
-    
-    for i, tech_id in enumerate(root_techs):
-        x = start_x - (len(root_techs) - 1) * spacing // 2 + i * spacing
-        calculate_positions(tech_id, x, start_y)
-    
+    # 自底向上量每棵子树需要的宽度
+    widths = {}
+
+    def measure(tech_id):
+        children = TECH_TREE[tech_id].get("children", [])
+        if children:
+            total = sum(measure(c) for c in children) + h_gap * (len(children) - 1)
+            widths[tech_id] = max(node_width, total)
+        else:
+            widths[tech_id] = node_width
+        return widths[tech_id]
+
+    # 自顶向下放置：节点在自己子树宽度内水平居中
+    def place(tech_id, left, y):
+        w = widths[tech_id]
+        x = left + (w - node_width) // 2
+        nodes[tech_id] = TechNode(tech_id, TECH_TREE[tech_id], x, y, node_width, node_height)
+        children = TECH_TREE[tech_id].get("children", [])
+        child_left = left
+        for child_id in children:
+            place(child_id, child_left, y + node_height + v_gap)
+            child_left += widths[child_id] + h_gap
+
+    root_order = ["resource", "occupation", "combat", "defense", "special"]
+    roots = [t for t in root_order if t in TECH_TREE]
+    roots += [t for t in TECH_TREE if not TECH_TREE[t].get("parent") and t not in roots]
+
+    for tech_id in roots:
+        measure(tech_id)
+
+    # 根节点排成一行，从 x=0 开始（main() 里再按视口居中）
+    x = 0
+    for tech_id in roots:
+        place(tech_id, x, 0)
+        x += widths[tech_id] + h_gap
+
     return nodes
 
 def draw_connections(surface, nodes, offset_x=0, offset_y=0, zoom=1.0):
@@ -390,23 +426,8 @@ def main():
         pygame.init()
     
     # 分辨率适配
-    if 'ANDROID_DATA' in os.environ:
-        info = pygame.display.Info()
-        screen_width = info.current_w
-        screen_height = info.current_h
-    else:
-        # 使用设置的分辨率
-        resolution = data['settings']['graphics']['resolution']
-        try:
-            width, height = map(int, resolution.split('x'))
-            screen_width = width
-            screen_height = height
-        except ValueError:
-            # 默认分辨率
-            screen_width = 1200
-            screen_height = 800
-    
-    screen = pygame.display.set_mode((screen_width, screen_height))
+    screen = open_window()
+    screen_width, screen_height = screen.get_size()
     pygame.display.set_caption("科技树系统")
     clock = pygame.time.Clock()
     
@@ -415,11 +436,29 @@ def main():
     
     # 构建科技树
     tech_nodes = build_tech_tree()
-    
-    # 滚动偏移
-    view_offset = [0, 0]
+
+    # 计算树的包围盒，缩放到可视区域并居中（避免出屏/压在标题栏上）
+    min_x = min(n.rect.x for n in tech_nodes.values())
+    max_x = max(n.rect.right for n in tech_nodes.values())
+    min_y = min(n.rect.y for n in tech_nodes.values())
+    max_y = max(n.rect.bottom for n in tech_nodes.values())
+    tree_w = max(1, max_x - min_x)
+    tree_h = max(1, max_y - min_y)
+
+    view_top = 150          # 标题 + 资源栏 + 返回/缩放按钮
+    view_bottom = 60        # 底部操作提示
+    fit_w = (screen_width - 40) / tree_w
+    fit_h = (screen_height - view_top - view_bottom) / tree_h
+    zoom_level = max(0.4, min(1.0, fit_w, fit_h))  # 缩放级别（整树塞进视口）
+
+    # 视口中心对准树中心
+    view_center_x = screen_width / 2
+    view_center_y = view_top + (screen_height - view_top - view_bottom) / 2
+    tree_cx = (min_x + max_x) / 2
+    tree_cy = (min_y + max_y) / 2
+    view_offset = [int(view_center_x - tree_cx * zoom_level),
+                   int(view_center_y - tree_cy * zoom_level)]
     drag_start = None
-    zoom_level = 1.0  # 缩放级别
     
     # 返回按钮
     back_button = Button("返回主菜单", 20, 20, 180, 50, FONT_SMALL, normal_color=COLORS["accent_red"])
@@ -439,8 +478,8 @@ def main():
         # 标题
         draw_title(screen, "科技树系统", 60, screen_width)
         
-        # 资源面板
-        draw_resource_panel(screen, 20, 80, 300, 50)
+        # 资源面板（宽度要放得下三组"名称: 数值"）
+        draw_resource_panel(screen, 20, 80, 520, 50)
         
         # 绘制科技连接
         draw_connections(screen, tech_nodes, view_offset[0], view_offset[1], zoom_level)
@@ -526,9 +565,9 @@ def main():
                         if zoom_level > 0.5:
                             zoom_level -= 0.2
                     
-                    # 检查升级按钮
+                    # 检查升级按钮（按钮矩形已是屏幕坐标）
                     for btn, node in upgrade_buttons:
-                        if btn.check_click((mx - view_offset[0], my - view_offset[1])):
+                        if btn.check_click((mx, my)):
                             if node.upgrade():
                                 # 升级成功
                                 logger.info(f"成功解锁 {node.tech_data['name']} 的子科技")

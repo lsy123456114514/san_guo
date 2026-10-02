@@ -10,7 +10,7 @@ import math
 # 添加父目录到Python路径，确保可以正确导入ASSET模块
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ASSET.game_data import data, save, get_system_font_name, draw_gradient_bg
+from ASSET.game_data import data, save, get_system_font_name, draw_gradient_bg, open_window
 from ASSET.game_main_menu import Button, COLORS, draw_title, Particle
 from ASSET.pet_system import Pet
 
@@ -393,10 +393,13 @@ def pet_arena_menu():
         screen_width = screen.get_width()
         screen_height = screen.get_height()
         
-        # 按钮设置
-        button_width = min(200, screen_width * 0.3)
-        button_height = min(60, screen_height * 0.08)
-        button_spacing = min(20, screen_height * 0.03)
+        # 按钮设置（纵向按可用区均分，保证第4项和返回按钮都在屏内）
+        button_width = min(300, int(screen_width * 0.5))
+        rows = len(challenge_levels) + 1  # 4 个挑战 + 返回
+        start_y = int(screen_height * 0.5)
+        step = int((screen_height - 20 - start_y) // rows)
+        button_height = step - 10
+        button_spacing = 10
         
         # 渐变背景
         draw_gradient_bg(screen, COLORS["bg_dark"], COLORS["bg_light"])
@@ -413,40 +416,36 @@ def pet_arena_menu():
             p.update()
             p.draw(screen)
         
-        # 标题
-        draw_title(screen, "宠物竞技场", screen_height * 0.12, screen_width)
+        # 标题（下划线在 y+40，位置上移给副标题让位）
+        draw_title(screen, "宠物竞技场", screen_height * 0.075, screen_width)
         
         # 绘制宠物信息
         pet_x = screen_width // 2
-        pet_y = screen_height // 2 - 100
+        pet_y = int(screen_height * 0.383)
         
         # 绘制宠物视觉效果
-        draw_pet_visual(screen, pet, pet_x, pet_y, 150)
+        draw_pet_visual(screen, pet, pet_x, pet_y, int(screen_height * 0.15))
         
-        # 宠物信息
+        # 宠物信息（标题下划线与宠物头像之间，类型/元素并一行避免压头像）
         name_text = FONT_MAIN.render(f"{pet.name} (Lv.{pet.level})", True, COLORS["text_white"])
-        type_text = FONT_SMALL.render(f"类型: {pet.type}", True, COLORS["text_white"])
-        element_text = FONT_SMALL.render(f"元素: {pet.element}", True, COLORS["text_white"])
+        info_text = FONT_SMALL.render(f"类型: {pet.type}    元素: {pet.element}", True, COLORS["text_white"])
         
-        screen.blit(name_text, (pet_x - name_text.get_width() // 2, pet_y - 100))
-        screen.blit(type_text, (pet_x - type_text.get_width() // 2, pet_y - 60))
-        screen.blit(element_text, (pet_x - element_text.get_width() // 2, pet_y - 30))
+        screen.blit(name_text, (pet_x - name_text.get_width() // 2, pet_y - 138))
+        screen.blit(info_text, (pet_x - info_text.get_width() // 2, pet_y - 90))
         
         # 挑战按钮（按等级/分辨率签名重建）
-        start_y = screen_height * 0.7
-        
-        sig = (pet.level, screen_width, screen_height)
+        sig = (pet.level, screen_width, screen_height, button_width, button_height)
         if sig != menu_sig:
             menu_sig = sig
             challenge_buttons = [
                 (Button(label, screen_width // 2 - button_width // 2,
-                        start_y + i * (button_height + button_spacing),
+                        start_y + i * step,
                         button_width, button_height, FONT_SMALL), level)
                 for i, (level, label) in enumerate(challenge_levels)
                 if pet.level >= level - 5
             ]
             back_button = Button("返回", screen_width // 2 - button_width // 2,
-                                 start_y + len(challenge_levels) * (button_height + button_spacing) + 20,
+                                 start_y + len(challenge_levels) * step,
                                  button_width, button_height, FONT_SMALL, normal_color=(100, 100, 150))
         
         btn_by_level = {level: btn for btn, level in challenge_buttons}
@@ -458,7 +457,8 @@ def pet_arena_menu():
             else:
                 # 未解锁的挑战
                 lock_text = FONT_SMALL.render(f"{label} (Lv.{level}解锁)", True, (100, 100, 100))
-                screen.blit(lock_text, (screen_width // 2 - lock_text.get_width() // 2, start_y + i * (button_height + button_spacing) + 15))
+                screen.blit(lock_text, (screen_width // 2 - lock_text.get_width() // 2,
+                                        start_y + i * step + (button_height - lock_text.get_height()) // 2))
         
         # 返回按钮
         back_button.check_hover(pygame.mouse.get_pos())
@@ -517,7 +517,7 @@ def main():
     # 确保屏幕和时钟初始化
     if screen is None:
         # 如果屏幕未初始化，创建一个默认屏幕
-        screen = pygame.display.set_mode((800, 600))
+        screen = open_window()
     if clock is None:
         clock = pygame.time.Clock()
     

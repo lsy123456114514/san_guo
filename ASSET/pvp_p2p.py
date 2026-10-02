@@ -4,7 +4,7 @@ import os
 import pygame
 import random
 import math
-from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font
+from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font, open_window
 
 # 颜色主题
 COLORS = {
@@ -171,14 +171,12 @@ class AnimatedButton:
 def draw_title(surface, text, y_pos, screen_width, font, color=COLORS["accent_gold"]):
     """绘制带特效的标题"""
     # 发光效果
-    for offset in range(5, 0, -1):
-        alpha = max(0, 60 - offset * 10)
+    for offset in (3, 2, 1):
+        alpha = max(0, 40 - offset * 10)
         glow_surf = font.render(text, True, (*color[:3], alpha))
         glow_rect = glow_surf.get_rect(center=(screen_width // 2, y_pos))
-        for dx in [-offset, 0, offset]:
-            for dy in [-offset, 0, offset]:
-                if dx != 0 or dy != 0:
-                    surface.blit(glow_surf, (glow_rect.x + dx, glow_rect.y + dy))
+        for dx, dy in ((-offset, 0), (offset, 0), (0, -offset), (0, offset)):
+            surface.blit(glow_surf, (glow_rect.x + dx, glow_rect.y + dy))
     
     # 主标题
     title = font.render(text, True, color)
@@ -228,22 +226,8 @@ def main():
             pygame.init()
         
         # 分辨率适配
-        if 'ANDROID_DATA' in os.environ:
-            info = pygame.display.Info()
-            SCREEN_WIDTH = info.current_w
-            SCREEN_HEIGHT = info.current_h
-        else:
-            # 使用设置的分辨率
-            resolution = data['settings']['graphics']['resolution']
-            try:
-                width, height = map(int, resolution.split('x'))
-                SCREEN_WIDTH = width
-                SCREEN_HEIGHT = height
-            except ValueError:
-                SCREEN_WIDTH = 800
-                SCREEN_HEIGHT = 600
-        
-        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        screen = open_window()
+        SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_size()
         pygame.display.set_caption("⚔️ PVP联机对战")
         clock = pygame.time.Clock()
 

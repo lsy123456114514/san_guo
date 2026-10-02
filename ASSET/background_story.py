@@ -6,6 +6,7 @@
 import pygame
 import math
 import random
+from ASSET.game_data import open_window
 from ASSET.game_main_menu import Button, init_fonts
 
 # 全局变量
@@ -114,12 +115,8 @@ def main():
     FONT_BIG = BIG_FONT
     
     # 获取当前屏幕大小
-    info = pygame.display.Info()
-    screen_width = info.current_w
-    screen_height = info.current_h
-    
-    # 设置屏幕（保持当前分辨率）
-    screen = pygame.display.set_mode((screen_width, screen_height))
+    screen = open_window()
+    screen_width, screen_height = screen.get_size()
     pygame.display.set_caption("游戏背景故事")
     clock = pygame.time.Clock()
     

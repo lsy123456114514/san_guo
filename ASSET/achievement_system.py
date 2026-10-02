@@ -3,7 +3,7 @@
 import os
 import time
 import pygame
-from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font
+from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font, open_window
 
 class AchievementSystem:
     """成就系统 - 给予玩家成就感和目标感"""
@@ -408,17 +408,8 @@ def main():
         if not pygame.get_init():
             pygame.init()
 
-        if 'ANDROID_DATA' in os.environ:
-            info = pygame.display.Info()
-            screen_width, screen_height = info.current_w, info.current_h
-        else:
-            try:
-                screen_width, screen_height = map(
-                    int, data['settings']['graphics']['resolution'].split('x'))
-            except (ValueError, KeyError, AttributeError):
-                screen_width, screen_height = 900, 700
-
-        screen = pygame.display.set_mode((screen_width, screen_height))
+        screen = open_window()
+        screen_width, screen_height = screen.get_size()
         pygame.display.set_caption("成就")
         clock = pygame.time.Clock()
 
@@ -448,9 +439,16 @@ def main():
             screen.blit(title, ((screen_width - title.get_width()) // 2, 30))
 
             achievements = system.get_all_achievements()
+            # 每帧清掉上一帧的命中矩形，滚出视口的“领取”按钮不能残留命中
+            for ach in achievements:
+                ach.pop("_btn", None)
+
+            # 列表容器（给裁剪一个明确的边框，卡片不会“凭空”断在屏幕边）
+            list_rect = pygame.Rect(24, top, screen_width - 48, visible_height)
+            pygame.draw.rect(screen, (24, 29, 48), list_rect, border_radius=10)
 
             prev_clip = screen.get_clip()
-            screen.set_clip(pygame.Rect(0, top, screen_width, visible_height))
+            screen.set_clip(list_rect)
 
             for i, ach in enumerate(achievements):
                 y = top + i * row_height - scroll
@@ -492,6 +490,18 @@ def main():
                     screen.blit(txt, txt.get_rect(center=status_rect.center))
 
             screen.set_clip(prev_clip)
+            pygame.draw.rect(screen, (60, 70, 110), list_rect, 2, border_radius=10)
+
+            # 滚动条：内容超出视口时给出可见提示（支持滚轮/拖拽提示）
+            if max_scroll > 0:
+                track = pygame.Rect(list_rect.right - 14, list_rect.y + 8,
+                                    8, list_rect.height - 16)
+                pygame.draw.rect(screen, (40, 46, 70), track, border_radius=4)
+                thumb_h = max(30, int(track.height * visible_height /
+                                      (visible_height + max_scroll)))
+                thumb_y = track.y + int((track.height - thumb_h) * (scroll / max_scroll))
+                pygame.draw.rect(screen, (255, 210, 0),
+                                 (track.x, thumb_y, track.width, thumb_h), border_radius=4)
 
             back_rect = pygame.Rect((screen_width - 160) // 2, screen_height - 60, 160, 42)
             hover = back_rect.collidepoint(mx, my)
@@ -516,7 +526,7 @@ def main():
                     else:
                         for ach in achievements:
                             btn = ach.get("_btn")
-                            if btn and btn.collidepoint(mx, my):
+                            if btn and list_rect.collidepoint(mx, my) and btn.collidepoint(mx, my):
                                 ok, reward = system.claim_reward(ach["id"])
                                 message = f'领取成功：{reward}' if ok else reward
                                 message_time = now

@@ -145,7 +145,7 @@ class Particle:
             logger.warning("[特效] alpha 计算 max_life=%s 异常，alpha 置 0", self.max_life)
             alpha = 0
         else:
-            alpha = int(255 * (self.life / self.max_life))
+            alpha = max(0, min(255, int(255 * (self.life / self.max_life))))
         try:
             pygame.draw.circle(surface, (*self.color[:3], alpha), (int(self.x), int(self.y)), int(self.size))
         except Exception as _e:

@@ -799,13 +799,7 @@ class DictionarySystem:
         self.screen = screen
         self.width, self.height = self.screen.get_size()
         
-        # 获取屏幕尺寸，确保窗口不超出
-        info = pygame.display.Info()
-        screen_w, screen_h = info.current_w, info.current_h
-        if self.width > screen_w - 50 or self.height > screen_h - 50:
-            self.width, self.height = get_safe_resolution(screen_w, screen_h, 800, 600)
-            self.screen = pygame.display.set_mode((self.width, self.height))
-        
+        # 分辨率已由 open_window 统一保证不超出屏幕，无需再二次收缩
         self.clock = pygame.time.Clock()
         
         # 根据屏幕宽度调整字体大小

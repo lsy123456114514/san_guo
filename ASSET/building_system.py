@@ -4,7 +4,7 @@
 
 import pygame
 import os
-from ASSET.game_data import data, save, BUILDINGS, get_system_font_name, draw_gradient_bg
+from ASSET.game_data import data, save, BUILDINGS, get_system_font_name, draw_gradient_bg, get_font, open_window
 from ASSET.game_main_menu import Button
 
 # 颜色主题
@@ -101,38 +101,17 @@ def main():
         pygame.init()
     
     # 获取屏幕大小
-    if 'ANDROID_DATA' in os.environ:
-        # Android设备使用全屏
-        info = pygame.display.Info()
-        screen_width = info.current_w
-        screen_height = info.current_h
-        screen = pygame.display.set_mode((screen_width, screen_height))
-    else:
-        # PC设备
-        screen_width = 800
-        screen_height = 600
-        screen = pygame.display.set_mode((screen_width, screen_height))
+    screen = open_window()
+    screen_width, screen_height = screen.get_size()
     
     pygame.display.set_caption("建筑系统")
     clock = pygame.time.Clock()
     
-    # 初始化字体
+    # 初始化字体（get_font 带缓存且支持中文，SysFont(路径) 会告警并回退默认字体）
     global FONT_MAIN, FONT_SMALL, FONT_BIG
-    # 使用支持中文的字体
-    font_name = get_system_font_name()
-    try:
-        if font_name:
-            FONT_MAIN = pygame.font.SysFont(font_name, 40)
-            FONT_SMALL = pygame.font.SysFont(font_name, 28)
-            FONT_BIG = pygame.font.SysFont(font_name, 60)
-        else:
-            FONT_MAIN = pygame.font.Font(None, 40)
-            FONT_SMALL = pygame.font.Font(None, 28)
-            FONT_BIG = pygame.font.Font(None, 60)
-    except Exception:
-        FONT_MAIN = pygame.font.Font(None, 40)
-        FONT_SMALL = pygame.font.Font(None, 28)
-        FONT_BIG = pygame.font.Font(None, 60)
+    FONT_MAIN = get_font(40)
+    FONT_SMALL = get_font(28)
+    FONT_BIG = get_font(60)
     
     # 确保建筑数据存在
     if "buildings" not in data:
@@ -165,10 +144,24 @@ def main():
                           screen_height * 0.18, panel_width, 50)
         
         # 建筑列表规格（先算文本/颜色/位置，再决定是否重建按钮）
+        # 卡片高度按"3行文字+内边距"来算，并保证 5 张卡整体落在可视区内；
+        # 放不下就逐级缩小卡片字号，避免文字压到下一张卡。
         button_width = min(400, screen_width * 0.5)
-        button_height = min(80, screen_height * 0.12)
-        button_spacing = min(15, screen_height * 0.02)
-        start_y = screen_height * 0.3
+        start_y = screen_height * 0.28
+        bottom_y = screen_height - 45
+        avail_h = bottom_y - start_y
+        button_spacing = 8
+        n_build = len(BUILDINGS)
+        card_font = FONT_SMALL
+        card_h = max(30, (avail_h - (n_build - 1) * button_spacing) // n_build)
+        for _sz in (24, 22, 20, 18, 16, 14, 12):
+            # 用 game_data.get_font（带缓存），避免每帧 SysFont 探测系统字体刷告警
+            _f = get_font(_sz)
+            _h = 3 * _f.get_linesize() + 8
+            if _h <= card_h:
+                card_font = _f
+                card_h = _h
+                break
         
         specs = []
         for building_id, building_info in BUILDINGS.items():
@@ -191,9 +184,7 @@ def main():
             else:
                 button_text = f"{building_info['name']} (Lv.{current_level})\n{building_info['description']}\n已达到最高等级"
             
-            y = start_y + len(specs) * (button_height + button_spacing)
-            if y + button_height > screen_height - 50:
-                break
+            y = start_y + len(specs) * (card_h + button_spacing)
             
             # 根据是否可以升级设置按钮颜色
             if current_level < max_level and can_afford:
@@ -205,12 +196,12 @@ def main():
             
             specs.append((building_id, button_text, button_color, y))
         
-        sig = (tuple(specs), screen_width, screen_height)
+        sig = (tuple(specs), screen_width, screen_height, card_h, card_font.get_height())
         if sig != buildings_sig:
             buildings_sig = sig
             building_items = [
                 (Button(text, (screen_width - button_width) // 2, y,
-                        button_width, button_height, FONT_SMALL, normal_color=color), bid)
+                        button_width, card_h, card_font, normal_color=color), bid)
                 for bid, text, color, y in specs
             ]
         

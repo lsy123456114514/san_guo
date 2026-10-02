@@ -4,7 +4,7 @@
 
 import pygame
 import os
-from ASSET.game_data import data, save, TALENT_TREE, get_system_font_name, draw_gradient_bg
+from ASSET.game_data import data, save, TALENT_TREE, get_system_font_name, draw_gradient_bg, get_font, open_window
 from ASSET.game_main_menu import Button
 
 # 颜色主题
@@ -101,38 +101,17 @@ def main():
         pygame.init()
     
     # 获取屏幕大小
-    if 'ANDROID_DATA' in os.environ:
-        # Android设备使用全屏
-        info = pygame.display.Info()
-        screen_width = info.current_w
-        screen_height = info.current_h
-        screen = pygame.display.set_mode((screen_width, screen_height))
-    else:
-        # PC设备
-        screen_width = 800
-        screen_height = 600
-        screen = pygame.display.set_mode((screen_width, screen_height))
+    screen = open_window()
+    screen_width, screen_height = screen.get_size()
     
     pygame.display.set_caption("天赋系统")
     clock = pygame.time.Clock()
     
-    # 初始化字体
+    # 初始化字体（get_font 带缓存且支持中文，SysFont(路径) 会告警并回退默认字体）
     global FONT_MAIN, FONT_SMALL, FONT_BIG
-    # 使用支持中文的字体
-    font_name = get_system_font_name()
-    try:
-        if font_name:
-            FONT_MAIN = pygame.font.SysFont(font_name, 40)
-            FONT_SMALL = pygame.font.SysFont(font_name, 28)
-            FONT_BIG = pygame.font.SysFont(font_name, 60)
-        else:
-            FONT_MAIN = pygame.font.Font(None, 40)
-            FONT_SMALL = pygame.font.Font(None, 28)
-            FONT_BIG = pygame.font.Font(None, 60)
-    except Exception:
-        FONT_MAIN = pygame.font.Font(None, 40)
-        FONT_SMALL = pygame.font.Font(None, 28)
-        FONT_BIG = pygame.font.Font(None, 60)
+    FONT_MAIN = get_font(40)
+    FONT_SMALL = get_font(28)
+    FONT_BIG = get_font(60)
     
     # 确保天赋数据存在
     if "talents" not in data:
@@ -166,21 +145,48 @@ def main():
         screen.blit(points_surf, (screen_width // 2 - points_surf.get_width() // 2, screen_height * 0.25))
         
         # 天赋树：先算规格（标题照常绘制），签名变化才重建按钮
+        # 每个天赋分类一列，列内分类标题 + 4张卡，避免纵向堆叠溢出屏幕
         talent_specs = []
-        button_width = min(350, screen_width * 0.45)
-        button_height = min(70, screen_height * 0.1)
-        button_spacing = min(10, screen_height * 0.015)
-        start_y = screen_height * 0.35
-        
-        # 绘制每个天赋类别
-        category_y = start_y
-        for category_id, category_info in TALENT_TREE.items():
-            # 类别标题
+        n_cat = max(1, len(TALENT_TREE))
+        col_gap = 24
+        col_width = (screen_width - col_gap * (n_cat + 1)) // n_cat
+        card_width = int(col_width * 0.9)
+        top_y = int(screen_height * 0.32)
+        bottom_y = screen_height - 70   # 给底部返回按钮留位
+        avail_h = bottom_y - top_y
+
+        # 列内布局：分类标题高 + N张卡（卡高按剩余空间和3行文字取小）
+        n_cards = max(len(c["talents"]) for c in TALENT_TREE.values())
+        header_h = FONT_MAIN.get_linesize() + 6
+        card_spacing = 8
+        max_card_h = (avail_h - header_h - (n_cards - 1) * card_spacing) // max(1, n_cards)
+        card_font = FONT_SMALL
+        card_h = max(40, max_card_h)
+        for _sz in (26, 24, 22, 20, 18, 16, 14):
+            # 用 game_data.get_font（带缓存），避免每帧 SysFont 探测系统字体刷告警
+            _f = get_font(_sz)
+            _h = 3 * _f.get_linesize() + 8
+            if _h <= max_card_h:
+                card_font = _f
+                card_h = _h
+                break
+
+        for ci, (category_id, category_info) in enumerate(TALENT_TREE.items()):
+            col_x = col_gap + ci * (col_width + col_gap)
+            category_y = top_y
+
+            # 类别标题（截断到列宽，防止压到相邻列）
             category_text = f"{category_info['name']}: {category_info['description']}"
-            category_surf = FONT_MAIN.render(category_text, True, COLORS["accent_blue"])
-            screen.blit(category_surf, (screen_width // 2 - category_surf.get_width() // 2, category_y))
-            category_y += 40
-            
+            cat_surf = FONT_MAIN.render(category_text, True, COLORS["accent_blue"])
+            max_cat_w = col_width - 8
+            if cat_surf.get_width() > max_cat_w:
+                cut = category_text
+                while cut and FONT_MAIN.render(cut + "…", True, COLORS["accent_blue"]).get_width() > max_cat_w:
+                    cut = cut[:-1]
+                cat_surf = FONT_MAIN.render(cut + "…" if cut else "", True, COLORS["accent_blue"])
+            screen.blit(cat_surf, (col_x + (col_width - cat_surf.get_width()) // 2, category_y))
+            category_y += header_h
+
             # 类别下的天赋
             for talent in category_info["talents"]:
                 # 检查天赋是否已解锁
@@ -194,8 +200,11 @@ def main():
                 if is_unlocked:
                     button_text += " (已解锁)"
                 
-                y = category_y + len(talent_specs) * (button_height + button_spacing)
-                if y + button_height > screen_height - 50:
+                y = category_y
+                category_y += card_h + card_spacing
+                
+                # 超出底部就停（分列布局下不应发生，保险起见保留）
+                if y + card_h > screen_height - 50:
                     break
                 
                 # 根据状态设置按钮颜色
@@ -206,18 +215,16 @@ def main():
                 else:
                     button_color = COLORS["accent_red"]
                 
-                talent_specs.append((talent, button_text, button_color, y))
-            
-            category_y += len(category_info["talents"]) * (button_height + button_spacing) + 20
+                talent_specs.append((talent, button_text, button_color, y, col_x))
         
-        sig = (tuple((t["id"], text, color, y) for t, text, color, y in talent_specs),
-               screen_width, screen_height)
+        sig = (tuple((t["id"], text, color, y, x) for t, text, color, y, x in talent_specs),
+               screen_width, screen_height, card_h, card_font.get_height())
         if sig != talent_sig:
             talent_sig = sig
             talent_items = [
-                (Button(text, (screen_width - button_width) // 2, y,
-                        button_width, button_height, FONT_SMALL, normal_color=color), talent)
-                for talent, text, color, y in talent_specs
+                (Button(text, x + (col_width - card_width) // 2, y,
+                        card_width, card_h, card_font, normal_color=color), talent)
+                for talent, text, color, y, x in talent_specs
             ]
             back_btn = Button(
                 "返回主菜单",

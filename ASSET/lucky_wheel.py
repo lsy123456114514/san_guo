@@ -18,7 +18,7 @@ import pygame
 
 logger = logging.getLogger(__name__)
 
-from ASSET.game_data import data, save, get_font, draw_gradient_bg
+from ASSET.game_data import data, save, get_font, draw_gradient_bg, open_window
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -214,16 +214,15 @@ class LuckyWheel:
             except Exception:
                 pass
 
-            # 奖品文字
+            # 奖品文字（水平绘制；pygame.Rect 没有 rotate，原先静默失败导致无文字）
             mid_angle = (start_angle + end_angle) / 2
             tx = int(cx + r * 0.62 * math.cos(mid_angle))
             ty = int(cy + r * 0.62 * math.sin(mid_angle))
             try:
                 txt_surf = self.font_small.render(prize["name"], True, (255, 255, 255))
+                shadow = self.font_small.render(prize["name"], True, (10, 10, 20))
                 txt_rect = txt_surf.get_rect(center=(tx, ty))
-                old_center = txt_rect.center
-                txt_rect = txt_rect.rotate(-(self.angle + i * sector_angle + sector_angle / 2))
-                txt_rect.center = old_center
+                self.screen.blit(shadow, (txt_rect.x + 1, txt_rect.y + 1))
                 self.screen.blit(txt_surf, txt_rect)
             except Exception:
                 pass
@@ -394,16 +393,7 @@ def main(screen: Optional[pygame.Surface] = None) -> None:
     if screen is None:
         if not pygame.get_init():
             pygame.init()
-        if 'ANDROID_DATA' in os.environ:
-            info = pygame.display.Info()
-            size = (info.current_w, info.current_h)
-        else:
-            resolution = data.get('settings', {}).get('graphics', {}).get('resolution', '900x700')
-            try:
-                size = tuple(map(int, str(resolution).split('x')))
-            except (ValueError, TypeError):
-                size = (900, 700)
-        screen = pygame.display.set_mode(size)
+        screen = open_window()
         pygame.display.set_caption("幸运转盘")
 
     wheel = LuckyWheel(screen)

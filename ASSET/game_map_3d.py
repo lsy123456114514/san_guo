@@ -13,7 +13,7 @@ import random
 import json
 import os
 import time
-from ASSET.game_data import data, save, get_system_font_name, logger
+from ASSET.game_data import data, save, get_system_font_name, logger, open_window
 
 MC_WORLD_KEY = "mc_world"
 
@@ -1354,17 +1354,9 @@ class GameMap3D:
             # 初始化pygame
             pygame.init()
 
-            # 跟随全局设置的分辨率（默认 600x500），避免固定 1024x768
-            try:
-                _res = data['settings']['graphics']['resolution']
-                _w, _h = map(int, _res.split('x'))
-                if _w > 0 and _h > 0:
-                    SCREEN_WIDTH, SCREEN_HEIGHT = _w, _h
-            except (ValueError, KeyError, AttributeError):
-                pass
-            
             # 设置OpenGL显示模式
-            pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.OPENGL | pygame.DOUBLEBUF)
+            screen = open_window(flags=pygame.OPENGL | pygame.DOUBLEBUF)
+            SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_size()
             # pygame 在 OPENGL 模式下不会把软件绘制显示到屏幕，HUD/暂停菜单等
             # 必须画在独立的软件层上，再由 _present() 当作纹理叠加进 GL 画面
             self.display_surface = pygame.display.get_surface()
@@ -1434,7 +1426,7 @@ class GameMap3D:
         
         self.screen.blit(text_surf, text_rect)
         self._present()
-        pygame.time.wait(3000)
+        pygame.time.wait(800)
     
     def load_map_data(self):
         """加载地图数据"""

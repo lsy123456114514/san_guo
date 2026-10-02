@@ -3,7 +3,7 @@
 import os
 import pygame
 import random
-from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font
+from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font, open_window
 from ASSET import safe_exit
 
 # 颜色主题
@@ -102,9 +102,10 @@ class ScrollableContainer:
         container_surface.set_clip(clip_rect)
         
         for i, item in enumerate(self.items):
-            item_y = self.y + i * self.item_height - self.scroll_offset
-            if -self.item_height <= item_y <= self.height:
-                self.render_item(container_surface, item, self.x, item_y, i)
+            # 局部坐标绘制：容器 surface 以 (0,0) 为原点，再整体 blit 到 (self.x, self.y)
+            local_y = i * self.item_height - self.scroll_offset
+            if -self.item_height <= local_y <= self.height:
+                self.render_item(container_surface, item, 0, local_y, i)
         
         container_surface.set_clip(None)
         surface.blit(container_surface, (self.x, self.y))
@@ -168,7 +169,7 @@ class Particle:
         self.size = max(0.5, self.size - 0.05)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = max(0, min(255, int(255 * (self.life / self.max_life))))
         color = (*self.color[:3], alpha)
         pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
 
@@ -210,22 +211,8 @@ def main():
             pygame.mixer.init()
         
         # 分辨率适配
-        if 'ANDROID_DATA' in os.environ:
-            info = pygame.display.Info()
-            SCREEN_WIDTH = info.current_w
-            SCREEN_HEIGHT = info.current_h
-        else:
-            # 使用设置的分辨率
-            resolution = data['settings']['graphics']['resolution']
-            try:
-                width, height = map(int, resolution.split('x'))
-                SCREEN_WIDTH = width
-                SCREEN_HEIGHT = height
-            except ValueError:
-                SCREEN_WIDTH = 900
-                SCREEN_HEIGHT = 700
-        
-        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        screen = open_window()
+        SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_size()
         pygame.display.set_caption("排行榜系统")
         clock = pygame.time.Clock()
 
@@ -369,7 +356,7 @@ def main():
             
             screen.blit(rank_header, (list_x + 30, list_start_y + 20))
             screen.blit(player_header, (list_x + 100, list_start_y + 20))
-            screen.blit(score_header, (list_x + list_width - 150, list_start_y + 20))
+            screen.blit(score_header, (list_x + list_width - 160, list_start_y + 20))
 
             # 分隔线
             pygame.draw.line(screen, COLORS["accent_gold"], 

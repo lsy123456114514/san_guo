@@ -5,7 +5,7 @@ import pygame
 import random
 import math
 import traceback
-from ASSET.game_data import data, save, load_sound, logger, draw_gradient_bg, get_font
+from ASSET.game_data import data, save, load_sound, logger, draw_gradient_bg, get_font, open_window
 from ASSET import safe_exit
 
 # 颜色主题
@@ -101,13 +101,13 @@ class Particle:
         if self.glow_radius > 0:
             glow_surf = pygame.Surface((self.glow_radius * 2, self.glow_radius * 2), pygame.SRCALPHA)
             # 颜色渐变
-            alpha = int(255 * (self.life / self.max_life))
+            alpha = max(0, min(255, int(255 * (self.life / self.max_life))))
             glow_color = (*self.color[:3], alpha // 4)
             pygame.draw.circle(glow_surf, glow_color, (int(self.glow_radius), int(self.glow_radius)), int(self.glow_radius))
             surface.blit(glow_surf, (int(self.x - self.glow_radius), int(self.y - self.glow_radius)))
         
         # 粒子主体
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = max(0, min(255, int(255 * (self.life / self.max_life))))
         color = (*self.color[:3], alpha)
         # 绘制旋转的粒子
         particle_surf = pygame.Surface((self.size * 2, self.size * 2), pygame.SRCALPHA)
@@ -139,7 +139,7 @@ class FloatingText:
             self.scale = max(1.0, self.scale - 0.02)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = max(0, min(255, int(255 * (self.life / self.max_life))))
         text_surf = self.font.render(self.text, True, self.color)
         scaled_size = (int(text_surf.get_width() * self.scale), int(text_surf.get_height() * self.scale))
         scaled_surf = pygame.transform.scale(text_surf, scaled_size)
@@ -425,22 +425,8 @@ def main():
             pygame.mixer.init()
         
         # 分辨率适配
-        if 'ANDROID_DATA' in os.environ:
-            info = pygame.display.Info()
-            SCREEN_WIDTH = info.current_w
-            SCREEN_HEIGHT = info.current_h
-        else:
-            # 使用设置的分辨率
-            resolution = data['settings']['graphics']['resolution']
-            try:
-                width, height = map(int, resolution.split('x'))
-                SCREEN_WIDTH = width
-                SCREEN_HEIGHT = height
-            except ValueError:
-                SCREEN_WIDTH = 900
-                SCREEN_HEIGHT = 700
-        
-        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        screen = open_window()
+        SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_size()
         pygame.display.set_caption("游戏商城")
         clock = pygame.time.Clock()
 
@@ -600,21 +586,22 @@ def main():
         # 计算滚动容器的高度，确保它不会挡住返回按钮
         return_btn_height = min(50, SCREEN_HEIGHT * 0.08)
         container_height = SCREEN_HEIGHT - container_y - return_btn_height - 60  # 为返回按钮留出足够的空间
+        container_rect = pygame.Rect(container_x, container_y, container_width, container_height)
         scroll_container = ScrollableContainer(container_x, container_y, container_width, container_height, screen)
         
-        # 计算内容高度
+        # 计算内容高度（列数按容器宽度铺满，右侧不再大片留白）
         # 资源购买区
-        resource_cols = min(5, max(3, container_width // int((card_width + 20))))
+        resource_cols = max(1, int((container_width - 20) // (card_width + 15)))
         resource_rows = (len(RESOURCE_SHOP) + resource_cols - 1) // resource_cols
         resource_section_height = 40 * scale + resource_rows * (card_height + 20)
         
         # 武将碎片区
-        hero_cols = min(3, max(2, container_width // int((card_width + 20))))
+        hero_cols = max(1, int((container_width - 20) // (card_width + 20)))
         hero_rows = (len(HERO_SHOP) + hero_cols - 1) // hero_cols
         hero_section_height = 40 * scale + hero_rows * (card_height + 20)
         
         # 装备购买区
-        equip_cols = min(4, max(2, container_width // int((card_width + 20))))
+        equip_cols = max(1, int((container_width - 20) // (card_width + 15)))
         equip_rows = (len(EQUIP_SHOP) + equip_cols - 1) // equip_cols
         equip_section_height = 40 * scale + equip_rows * (card_height + 20)
         
@@ -690,6 +677,9 @@ def main():
             
             # 先绘制滚动容器背景（在按钮之前）
             scroll_container.draw_background()
+            
+            # 内容裁剪在容器里，滚动到边缘的卡片只露一半、绝不许压出面板边框
+            screen.set_clip(container_rect)
             
             # 绘制内容
             content_y = 0 + scroll_offset
@@ -903,6 +893,8 @@ def main():
                 draw_card_btn.update((mx, my))
                 draw_card_btn.draw(screen)
             
+            screen.set_clip(None)
+            
             # 绘制滚动容器
             scroll_container.draw()
 
@@ -946,10 +938,12 @@ def main():
                     # 如果点击了滚动条，跳过按钮点击处理
                     if clicked_scrollbar:
                         continue
+                    # 容器外的点击不参与容器内按钮命中（部分卡片可能被裁掉一半）
+                    in_container = container_rect.collidepoint(mx, my)
                         
                     # 资源购买
                     for btn, res_name, amount in resource_btns:
-                        if btn.rect.collidepoint(mx, my):
+                        if in_container and btn.rect.collidepoint(mx, my):
                             play_sound(click_sound)
                             if buy_resource(res_name, amount):
                                 play_sound(success_sound)
@@ -962,7 +956,7 @@ def main():
                                     particles.append(Particle(mx, my, particle_color, random.uniform(3, 6), random.uniform(3, 7), random.randint(30, 40)))
                     # 武将碎片
                     for btn, hero_name, fragments in hero_btns:
-                        if btn.rect.collidepoint(mx, my):
+                        if in_container and btn.rect.collidepoint(mx, my):
                             play_sound(click_sound)
                             if buy_hero_fragments(hero_name, fragments):
                                 play_sound(success_sound)
@@ -975,7 +969,7 @@ def main():
                                     particles.append(Particle(mx, my, particle_color, random.uniform(3, 6), random.uniform(3, 7), random.randint(30, 40)))
                     # 装备购买
                     for btn, equip_name, equip_type in equip_btns:
-                        if btn.rect.collidepoint(mx, my):
+                        if in_container and btn.rect.collidepoint(mx, my):
                             play_sound(click_sound)
                             if buy_equip(equip_name, equip_type):
                                 play_sound(success_sound)
@@ -989,13 +983,13 @@ def main():
                     # 时间卡等级选择
                     for i, level in enumerate(card_levels):
                         level_rect = pygame.Rect(container_x + 10 + i * 100, container_y + craft_start_y, 90, 35)
-                        if level_rect.collidepoint(mx, my):
+                        if in_container and level_rect.collidepoint(mx, my):
                             selected_level = i
                             play_sound(click_sound)
                             break
                     
                     # 合成时间卡
-                    if craft_btn and craft_btn.rect.collidepoint(mx, my):
+                    if craft_btn and in_container and craft_btn.rect.collidepoint(mx, my):
                         play_sound(click_sound)
                         selected_card = card_levels[selected_level]
                         success, message = craft_time_card(selected_card)
@@ -1013,7 +1007,7 @@ def main():
                                 message, mx, my, (255, 100, 100), font_normal
                             ))
                     # 抽卡
-                    if draw_card_btn and draw_card_btn.rect.collidepoint(mx, my):
+                    if draw_card_btn and in_container and draw_card_btn.rect.collidepoint(mx, my):
                         play_sound(click_sound)
                         hero, fragments = random_draw_hero()
                         play_sound(success_sound)

@@ -10,7 +10,7 @@ import math
 # 添加父目录到Python路径，确保可以正确导入ASSET模块
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, get_font, open_window
 from ASSET.game_main_menu import Button, COLORS, draw_title, Particle
 
 # 全局变量（延迟初始化）
@@ -343,106 +343,102 @@ def init_fonts():
         logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
 def draw_pet_status(surface, pet, x, y, width, height):
-    """绘制宠物状态面板"""
-    # 面板背景
+    """绘制宠物状态面板（按行推进排版，全部内容裁剪在面板内）"""
+    panel_rect = pygame.Rect(x, y, width, height)
     panel_surf = pygame.Surface((width, height), pygame.SRCALPHA)
     pygame.draw.rect(panel_surf, (30, 30, 55, 180), (0, 0, width, height), border_radius=10)
     surface.blit(panel_surf, (x, y))
     
     # 边框
-    pygame.draw.rect(surface, COLORS["accent_gold"], (x, y, width, height), 2, border_radius=10)
+    pygame.draw.rect(surface, COLORS["accent_gold"], panel_rect, 2, border_radius=10)
     
-    # 宠物信息 - 分两行显示避免重叠
-    name_text = FONT_MAIN.render(f"{pet.name} ({pet.get_stage_name()})", True, COLORS["accent_gold"])
-    evolution_text = FONT_SMALL.render(f"进化阶段: {pet.get_evolution_name()}", True, COLORS["accent_gold"])
-    type_text = FONT_SMALL.render(f"类型: {pet.type}", True, COLORS["text_white"])
-    element_text = FONT_SMALL.render(f"元素: {pet.element}", True, COLORS["text_white"])
-    age_text = FONT_SMALL.render(f"年龄: {pet.age} 天", True, COLORS["text_white"])
-    level_text = FONT_SMALL.render(f"等级: {pet.level}", True, COLORS["text_white"])
+    pad = 20
+    inner_w = width - pad * 2
+    cur_y = y + pad
+    bottom = y + height - pad
+    surface.set_clip(panel_rect)
     
-    surface.blit(name_text, (x + 20, y + 20))
-    surface.blit(evolution_text, (x + 20, y + 50))
-    # 第一行：类型和元素
-    surface.blit(type_text, (x + 20, y + 80))
-    surface.blit(element_text, (x + 200, y + 80))
-    # 第二行：年龄和等级
-    surface.blit(age_text, (x + 20, y + 110))
-    surface.blit(level_text, (x + 200, y + 110))
+    def blit(font, text, color, at_x=None):
+        surf = font.render(text, True, color)
+        surface.blit(surf, (x + pad if at_x is None else at_x, cur_y))
+        return surf
     
-    # 进化信息
+    def advance(extra=4, height=None):
+        nonlocal cur_y
+        cur_y += (FONT_SMALL.get_height() if height is None else height) + extra
+    
+    # 名称
+    surf = blit(FONT_MAIN, f"{pet.name} ({pet.get_stage_name()})", COLORS["accent_gold"])
+    cur_y += surf.get_height() + 2
+    # 进化阶段
+    surf = blit(FONT_SMALL, f"进化阶段: {pet.get_evolution_name()}", COLORS["accent_gold"])
+    cur_y += surf.get_height() + 4
+    # 类型/元素
+    right_x = x + pad + inner_w // 2
+    blit(FONT_SMALL, f"类型: {pet.type}", COLORS["text_white"])
+    blit(FONT_SMALL, f"元素: {pet.element}", COLORS["text_white"], right_x)
+    advance(4)
+    # 年龄/等级（可进化提示放最右列）
+    blit(FONT_SMALL, f"年龄: {pet.age} 天", COLORS["text_white"])
+    blit(FONT_SMALL, f"等级: {pet.level}", COLORS["text_white"], right_x)
     if pet.can_evolve():
-        evolve_text = FONT_SMALL.render("可以进化！", True, COLORS["accent_green"])
-        surface.blit(evolve_text, (x + 350, y + 110))
-    elif pet.stage == 3:
-        evolve_needed = 30 - pet.level
-        if evolve_needed > 0:
-            evolve_text = FONT_SMALL.render(f"还需 {evolve_needed} 级可进化", True, COLORS["text_white"])
-            surface.blit(evolve_text, (x + 350, y + 110))
+        blit(FONT_SMALL, "可以进化！", COLORS["accent_green"], x + pad + int(inner_w * 0.7))
+    advance(8)
     
-    # 经验值条
-    exp_percent = pet.experience / pet.max_experience
-    exp_width = width - 40
-    pygame.draw.rect(surface, (80, 80, 100), (x + 20, y + 140, exp_width, 20), border_radius=10)
-    pygame.draw.rect(surface, COLORS["accent_purple"], (x + 20, y + 140, exp_width * exp_percent, 20), border_radius=10)
-    exp_text = FONT_SMALL.render(f"经验值: {pet.experience}/{pet.max_experience}", True, COLORS["text_white"])
-    surface.blit(exp_text, (x + 20, y + 170))
+    def stat_bar(label, percent, color):
+        nonlocal cur_y
+        surf = FONT_SMALL.render(label, True, COLORS["text_white"])
+        surface.blit(surf, (x + pad, cur_y))
+        cur_y += surf.get_height() + 4
+        pygame.draw.rect(surface, (80, 80, 100), (x + pad, cur_y, inner_w, 18), border_radius=9)
+        pygame.draw.rect(surface, color,
+                         (x + pad, cur_y, max(0, min(inner_w, int(inner_w * percent))), 18),
+                         border_radius=9)
+        cur_y += 18 + 8
     
-    # 饥饿度条
-    hunger_percent = pet.hunger / 100
-    pygame.draw.rect(surface, (80, 80, 100), (x + 20, y + 210, exp_width, 20), border_radius=10)
-    pygame.draw.rect(surface, COLORS["accent_green"], (x + 20, y + 210, exp_width * hunger_percent, 20), border_radius=10)
-    hunger_text = FONT_SMALL.render(f"饥饿度: {pet.hunger}%", True, COLORS["text_white"])
-    surface.blit(hunger_text, (x + 20, y + 240))
+    # 四条状态条
+    stat_bar(f"经验值: {pet.experience}/{pet.max_experience}",
+             pet.experience / max(1, pet.max_experience), COLORS["accent_purple"])
+    stat_bar(f"饥饿度: {pet.hunger}%", pet.hunger / 100, COLORS["accent_green"])
+    stat_bar(f"快乐度: {pet.happiness}%", pet.happiness / 100, COLORS["accent_blue"])
+    stat_bar(f"成长值: {pet.growth}%", pet.growth / 100, COLORS["accent_gold"])
     
-    # 快乐度条
-    happiness_percent = pet.happiness / 100
-    pygame.draw.rect(surface, (80, 80, 100), (x + 20, y + 280, exp_width, 20), border_radius=10)
-    pygame.draw.rect(surface, COLORS["accent_blue"], (x + 20, y + 280, exp_width * happiness_percent, 20), border_radius=10)
-    happiness_text = FONT_SMALL.render(f"快乐度: {pet.happiness}%", True, COLORS["text_white"])
-    surface.blit(happiness_text, (x + 20, y + 310))
+    # 属性（一行四列）+ 技能点
+    if cur_y + FONT_SMALL.get_height() <= bottom:
+        attr_names = {"attack": "攻击力", "defense": "防御力", "speed": "速度", "luck": "幸运值"}
+        col_w = inner_w // 4
+        for i, (attr, value) in enumerate(pet.attributes.items()):
+            blit(FONT_SMALL, f"{attr_names.get(attr, attr)}: {value}", COLORS["text_white"],
+                 x + pad + i * col_w)
+        advance(6)
+    if cur_y + FONT_SMALL.get_height() <= bottom:
+        blit(FONT_SMALL, f"技能点: {pet.skill_points}", COLORS["accent_gold"])
+        advance(4)
     
-    # 成长值条
-    growth_percent = pet.growth / 100
-    pygame.draw.rect(surface, (80, 80, 100), (x + 20, y + 350, exp_width, 20), border_radius=10)
-    pygame.draw.rect(surface, COLORS["accent_gold"], (x + 20, y + 350, exp_width * growth_percent, 20), border_radius=10)
-    growth_text = FONT_SMALL.render(f"成长值: {pet.growth}%", True, COLORS["text_white"])
-    surface.blit(growth_text, (x + 20, y + 380))
+    # 技能（最多 3 个，装不下就停，不许越出面板）
+    if cur_y + FONT_SMALL.get_height() <= bottom:
+        blit(FONT_SMALL, "技能:", COLORS["accent_gold"])
+        advance(2)
+        for skill in pet.skills[:3]:
+            if cur_y + FONT_SMALL.get_height() > bottom:
+                break
+            blit(FONT_SMALL, f"{skill['name']} (Lv.{skill['level']})", COLORS["text_white"])
+            advance(2)
     
-    # 属性显示
-    attr_y = y + 420
-    attr_names = {"attack": "攻击力", "defense": "防御力", "speed": "速度", "luck": "幸运值"}
-    for i, (attr, value) in enumerate(pet.attributes.items()):
-        attr_text = FONT_SMALL.render(f"{attr_names.get(attr, attr)}: {value}", True, COLORS["text_white"])
-        surface.blit(attr_text, (x + 20 + i * 100, attr_y))
-    
-    # 技能点显示
-    skill_points_y = attr_y + 40
-    skill_points_text = FONT_SMALL.render(f"技能点: {pet.skill_points}", True, COLORS["accent_gold"])
-
-    surface.blit(skill_points_text, (x + 20, skill_points_y))
-    
-    # 技能显示
-    skills_y = skill_points_y + 40
-    skills_title = FONT_SMALL.render("技能:", True, COLORS["accent_gold"])
-    surface.blit(skills_title, (x + 20, skills_y))
-    
-    for i, skill in enumerate(pet.skills[:3]):  # 只显示前3个技能
-        skill_text = FONT_SMALL.render(f"{skill['name']} (Lv.{skill['level']})", True, COLORS["text_white"])
-        surface.blit(skill_text, (x + 20, skills_y + 30 + i * 25))
-
-    # 装备显示
-    equipment_y = skills_y + 150
-    equipment_title = FONT_SMALL.render("装备:", True, COLORS["accent_gold"])
-    surface.blit(equipment_title, (x + 20, equipment_y))
-    
+    # 装备
     equipment_types = {"collar": "项圈", "accessory": "饰品", "armor": "护甲"}
-    for i, (eq_type, eq_name) in enumerate(equipment_types.items()):
-        equipment = pet.equipment.get(eq_type, None)
-        if equipment:
-            eq_text = FONT_SMALL.render(f"{eq_name}: {equipment}", True, COLORS["text_white"])
-        else:
-            eq_text = FONT_SMALL.render(f"{eq_name}: 未装备", True, COLORS["text_gray"])
-        surface.blit(eq_text, (x + 20, equipment_y + 30 + i * 25))
+    if cur_y + FONT_SMALL.get_height() <= bottom:
+        blit(FONT_SMALL, "装备:", COLORS["accent_gold"])
+        advance(2)
+        for eq_type, eq_name in equipment_types.items():
+            if cur_y + FONT_SMALL.get_height() > bottom:
+                break
+            equipment = pet.equipment.get(eq_type, None)
+            text = f"{eq_name}: {equipment}" if equipment else f"{eq_name}: 未装备"
+            blit(FONT_SMALL, text, COLORS["text_white"] if equipment else COLORS.get("text_gray", (150, 150, 150)))
+            advance(2)
+    
+    surface.set_clip(None)
 
 def draw_pet_visual(surface, pet, x, y, size):
     """绘制宠物视觉效果"""
@@ -492,20 +488,15 @@ def pet_menu():
     # 保存原始屏幕
     original_screen = screen
     
-    # 设置宠物系统专用分辨率 1000x1000
-    PET_SCREEN_WIDTH = 1800
-    PET_SCREEN_HEIGHT = 1000
-    
     # 创建宠物系统专用屏幕
-    pet_screen = pygame.display.set_mode((PET_SCREEN_WIDTH, PET_SCREEN_HEIGHT))
+    pet_screen = open_window()
     screen = pet_screen
     
     # 更新game_main_menu模块的屏幕引用
     import ASSET.game_main_menu
     ASSET.game_main_menu.screen = pet_screen
     
-    screen_width = PET_SCREEN_WIDTH
-    screen_height = PET_SCREEN_HEIGHT
+    screen_width, screen_height = pet_screen.get_size()
     
     # 确保宠物数据存在
     if 'pet' not in data:
@@ -593,33 +584,40 @@ def pet_menu():
         pet_y = screen_height // 2
         draw_pet_visual(screen, pet, pet_x, pet_y, 150)
         
-        # 绘制宠物状态面板
+        # 绘制宠物状态面板（面板加高，容纳全部状态行）
         status_x = screen_width // 2
-        status_y = screen_height // 2 - 200
-        draw_pet_status(screen, pet, status_x, status_y, 400, 420)
+        status_y = screen_height // 2 - 300
+        draw_pet_status(screen, pet, status_x, status_y, 560, 650)
         
-        # 绘制资源数量
-        resources_y = screen_height * 0.75
-        food_text = FONT_SMALL.render(f"宠物食物: {data['resources'].get('pet_food', 0)}", True, COLORS["text_white"])
-        eggs_text = FONT_SMALL.render(f"宠物蛋: {data['resources'].get('pet_eggs', 0)}", True, COLORS["text_white"])
-        rare_eggs_text = FONT_SMALL.render(f"稀有宠物蛋: {data['resources'].get('rare_pet_eggs', 0)}", True, COLORS["text_white"])
-        epic_eggs_text = FONT_SMALL.render(f"史诗宠物蛋: {data['resources'].get('epic_pet_eggs', 0)}", True, COLORS["text_white"])
-        legendary_eggs_text = FONT_SMALL.render(f"传说宠物蛋: {data['resources'].get('legendary_pet_eggs', 0)}", True, COLORS["text_white"])
+        # 绘制资源数量（排在左半区宠物下方，一行排不下就自动降字号）
+        resources_y = int(screen_height * 0.75)
+        left_cx = screen_width // 4
+        resource_line = "    ".join([
+            f"宠物食物: {data['resources'].get('pet_food', 0)}",
+            f"宠物蛋: {data['resources'].get('pet_eggs', 0)}",
+            f"稀有宠物蛋: {data['resources'].get('rare_pet_eggs', 0)}",
+            f"史诗宠物蛋: {data['resources'].get('epic_pet_eggs', 0)}",
+            f"传说宠物蛋: {data['resources'].get('legendary_pet_eggs', 0)}",
+        ])
+        res_size = FONT_SMALL.get_height()
+        while res_size > 14:
+            res_font = get_font(res_size)
+            if res_font.size(resource_line)[0] <= screen_width // 2 - 40:
+                break
+            res_size -= 2
+        res_font = get_font(res_size)
+        res_surf = res_font.render(resource_line, True, COLORS["text_white"])
+        screen.blit(res_surf, (left_cx - res_surf.get_width() // 2, resources_y))
         
-        screen.blit(food_text, (screen_width // 2 - food_text.get_width() // 2, resources_y))
-        screen.blit(eggs_text, (screen_width // 2 - eggs_text.get_width() // 2, resources_y + 30))
-        screen.blit(rare_eggs_text, (screen_width // 4 - rare_eggs_text.get_width() // 2, resources_y + 60))
-        screen.blit(epic_eggs_text, (screen_width // 2 - epic_eggs_text.get_width() // 2, resources_y + 60))
-        screen.blit(legendary_eggs_text, (screen_width * 3 // 4 - legendary_eggs_text.get_width() // 2, resources_y + 60))
-        
-        # 绘制孵化队列
+        # 绘制孵化队列（左半区，逐行推进，行数多了往下排但不进按钮行）
         if data['hatch_queue']:
-            hatch_y = resources_y + 90
+            hatch_y = resources_y + 40
             hatch_title = FONT_SMALL.render("孵化中:", True, COLORS["accent_gold"])
-            screen.blit(hatch_title, (screen_width // 2 - hatch_title.get_width() // 2, hatch_y))
+            screen.blit(hatch_title, (left_cx - hatch_title.get_width() // 2, hatch_y))
             
             current_time = time.time()
-            for i, hatch_item in enumerate(data['hatch_queue']):
+            max_rows = max(0, int((screen_height - 90 - (hatch_y + 34)) // 50))
+            for i, hatch_item in enumerate(data['hatch_queue'][:max_rows]):
                 pet_info = hatch_item['pet']
                 elapsed_time = current_time - hatch_item['hatch_start_time']
                 progress = min(1.0, elapsed_time / hatch_item['hatch_time'])
@@ -631,8 +629,8 @@ def pet_menu():
                 time_text = f"剩余: {minutes}分{seconds}秒"
                 
                 # 绘制孵化进度条
-                hatch_x = screen_width // 2 - 200
-                hatch_item_y = hatch_y + 30 + i * 50
+                hatch_x = left_cx - 200
+                hatch_item_y = hatch_y + 34 + i * 50
                 progress_width = 400
                 
                 pygame.draw.rect(screen, (80, 80, 100), (hatch_x, hatch_item_y, progress_width, 20), border_radius=10)
@@ -647,17 +645,22 @@ def pet_menu():
                 screen.blit(pet_text, (hatch_x, hatch_item_y - 25))
                 screen.blit(time_text_surf, (hatch_x + progress_width - time_text_surf.get_width(), hatch_item_y - 25))
         
-        # 创建按钮（只在分辨率变化时重建 — 每帧重建会重置 hover 动画）
-        button_y = screen_height * 0.9
-        sig = (screen_width, screen_height)
+        # 创建按钮（只在分辨率变化时重建 — 每帧重建会重置 hover 动画）。
+        # 6 个按钮排成一行放在屏幕底部，返回按钮不再另起一行掉出屏幕
+        n_buttons = 6
+        row_width = int(n_buttons * button_width + (n_buttons - 1) * button_spacing)
+        row_x = int((screen_width - row_width) // 2)
+        button_y = int(screen_height - button_height - 20)
+        sig = (screen_width, screen_height, int(button_width), int(button_height), int(button_spacing))
         if sig != menu_sig:
             menu_sig = sig
-            feed_button = Button("喂食", screen_width // 2 - 5 * button_width // 2 - 4 * button_spacing // 2, button_y, button_width, button_height, FONT_SMALL)
-            play_button = Button("玩耍", screen_width // 2 - 3 * button_width // 2 - 2 * button_spacing // 2, button_y, button_width, button_height, FONT_SMALL)
-            hatch_button = Button("孵化", screen_width // 2 - button_width // 2, button_y, button_width, button_height, FONT_SMALL)
-            warehouse_button = Button("宠物仓库", screen_width // 2 + button_width // 2 + button_spacing, button_y, button_width, button_height, FONT_SMALL)
-            evolve_button = Button("进化", screen_width // 2 + 3 * button_width // 2 + 2 * button_spacing, button_y, button_width, button_height, FONT_SMALL, normal_color=COLORS["accent_purple"])
-            back_button = Button("返回", screen_width // 2 - button_width // 2, button_y + button_height + button_spacing, button_width, button_height, FONT_SMALL, normal_color=(100, 100, 150))
+            cols = [row_x + i * (button_width + button_spacing) for i in range(n_buttons)]
+            feed_button = Button("喂食", cols[0], button_y, button_width, button_height, FONT_SMALL)
+            play_button = Button("玩耍", cols[1], button_y, button_width, button_height, FONT_SMALL)
+            hatch_button = Button("孵化", cols[2], button_y, button_width, button_height, FONT_SMALL)
+            warehouse_button = Button("宠物仓库", cols[3], button_y, button_width, button_height, FONT_SMALL)
+            evolve_button = Button("进化", cols[4], button_y, button_width, button_height, FONT_SMALL, normal_color=COLORS["accent_purple"])
+            back_button = Button("返回", cols[5], button_y, button_width, button_height, FONT_SMALL, normal_color=(100, 100, 150))
         
         # 处理鼠标
         mouse_pos = pygame.mouse.get_pos()
@@ -1012,7 +1015,7 @@ def main():
     # 确保屏幕和时钟初始化
     if screen is None:
         # 如果屏幕未初始化，创建一个默认屏幕
-        screen = pygame.display.set_mode((800, 600))
+        screen = open_window()
     if clock is None:
         clock = pygame.time.Clock()
     

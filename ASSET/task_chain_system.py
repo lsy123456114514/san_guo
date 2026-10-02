@@ -130,27 +130,42 @@ class TaskChainSystem:
         """刷新每日任务"""
         today = time.strftime("%Y-%m-%d")
         if data["task_chains"].get("last_daily_refresh") != today:
-            data["task_chains"]["daily_tasks"] = []
-            data["task_chains"]["task_progress"] = {}
-            
+            # 只清当日进度，别把每周/任务链进度一起清掉
             for task in self.daily_tasks_list:
-                data["task_chains"]["daily_tasks"].append(task["id"])
                 data["task_chains"]["task_progress"][task["id"]] = 0
-            
+            data["task_chains"]["daily_tasks"] = [t["id"] for t in self.daily_tasks_list]
+
             data["task_chains"]["last_daily_refresh"] = today
             save()
-    
+        # 跨天之外也要对账：存档里被清空/缺项时按配置补齐，
+        # 否则"只在跨天分支播种"会让列表永远空着（每周任务正是这样空的）
+        self._reconcile_tasks("daily_tasks", self.daily_tasks_list)
+
     def _refresh_weekly_tasks(self):
         """刷新每周任务"""
         current_week = time.strftime("%Y-%W")
         if data["task_chains"].get("last_weekly_refresh") != current_week:
-            data["task_chains"]["weekly_tasks"] = []
-            
             for task in self.weekly_tasks_list:
-                data["task_chains"]["weekly_tasks"].append(task["id"])
                 data["task_chains"]["task_progress"][task["id"]] = 0
-            
+            data["task_chains"]["weekly_tasks"] = [t["id"] for t in self.weekly_tasks_list]
+
             data["task_chains"]["last_weekly_refresh"] = current_week
+            save()
+        self._reconcile_tasks("weekly_tasks", self.weekly_tasks_list)
+
+    def _reconcile_tasks(self, key, config_list):
+        """配置有、存档缺的任务 ID 补回来，并给缺进度的补 0。"""
+        ids = data["task_chains"].setdefault(key, [])
+        progress = data["task_chains"].setdefault("task_progress", {})
+        changed = False
+        for task in config_list:
+            if task["id"] not in ids:
+                ids.append(task["id"])
+                changed = True
+            if task["id"] not in progress:
+                progress[task["id"]] = 0
+                changed = True
+        if changed:
             save()
     
     def _get_stat_value(self, stat_key):
@@ -367,4 +382,40 @@ class TaskChainSystem:
                     "rewards": task["rewards"],
                     "claimed": task["id"] in data["task_chains"]["claimed_rewards"]
                 })
+        return result
+
+    def get_main_tasks(self):
+        """获取主线任务（存档 data.tasks.main）。
+
+        任务界面此前调用不到这个方法（hasattr 为 False），主线页一直是空白。
+        返回结构与每日/每周一致：current/target/rewards/claimed。
+        """
+        tasks = (data.get("tasks") or {}).get("main") or []
+        completed = set((data.get("tasks") or {}).get("completed") or [])
+        result = []
+        for task in tasks:
+            if not isinstance(task, dict):
+                continue
+            rewards = task.get("reward") or task.get("rewards") or {}
+
+            def _fmt(v):
+                if isinstance(v, dict):  # {"关羽": 5} 这类嵌套奖励
+                    return "、".join(f"{k2}×{v2}" for k2, v2 in v.items())
+                if isinstance(v, int) and v > 1:
+                    return f"×{v}"
+                return ""
+
+            reward_text = "、".join(
+                f"{k}{_fmt(v)}".rstrip("×")
+                for k, v in rewards.items()
+            )
+            result.append({
+                "id": task.get("id", ""),
+                "name": task.get("name", "未命名任务"),
+                "description": reward_text and f"奖励：{reward_text}" or "",
+                "target": task.get("target", 1),
+                "current": task.get("progress", 0),
+                "rewards": rewards,
+                "claimed": task.get("id") in completed,
+            })
         return result

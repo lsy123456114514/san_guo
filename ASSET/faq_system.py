@@ -4,7 +4,7 @@
 
 import pygame
 import os
-from ASSET.game_data import data, save, get_system_font_name, draw_gradient_bg
+from ASSET.game_data import data, save, get_system_font_name, draw_gradient_bg, open_window
 from ASSET.game_main_menu import Button, COLORS
 
 # 字体变量
@@ -126,14 +126,19 @@ def draw_resource_panel(surface, x, y, width, height):
         icon_x = x + i * spacing + spacing // 2
         icon_y = y + height // 2
         
+        # 资源文字（药丸宽度按实际文字宽度取，避免文字压过面板边框）
+        text = FONT_SMALL.render(f"{icon}: {value}", True, COLORS["text_white"])
+        pill_w = max(80, text.get_width() + 24)
+        pill_h = 28
+        pill_rect = pygame.Rect(0, 0, pill_w, pill_h)
+        pill_rect.center = (icon_x, icon_y)
+        
         # 资源名称背景
-        pygame.draw.rect(surface, (40, 40, 70), (icon_x - 40, icon_y - 12, 80, 24), border_radius=12)
-        pygame.draw.rect(surface, color, (icon_x - 40, icon_y - 12, 80, 24), 2, border_radius=12)
+        pygame.draw.rect(surface, (40, 40, 70), pill_rect, border_radius=12)
+        pygame.draw.rect(surface, color, pill_rect, 2, border_radius=12)
         
         # 文字
-        text = FONT_SMALL.render(f"{icon}: {value}", True, COLORS["text_white"])
-        text_rect = text.get_rect(center=(icon_x, icon_y))
-        surface.blit(text, text_rect)
+        surface.blit(text, text.get_rect(center=(icon_x, icon_y)))
 
 def main():
     """疑难解答主函数"""
@@ -144,17 +149,8 @@ def main():
         pygame.init()
     
     # 获取屏幕大小
-    if 'ANDROID_DATA' in os.environ:
-        # Android设备使用全屏
-        info = pygame.display.Info()
-        screen_width = info.current_w
-        screen_height = info.current_h
-        screen = pygame.display.set_mode((screen_width, screen_height))
-    else:
-        # PC设备
-        screen_width = 800
-        screen_height = 600
-        screen = pygame.display.set_mode((screen_width, screen_height))
+    screen = open_window()
+    screen_width, screen_height = screen.get_size()
     
     pygame.display.set_caption("疑难解答")
     clock = pygame.time.Clock()
@@ -212,6 +208,7 @@ def main():
         # 显示FAQ列表：先算规格，规格变了才重建按钮
         specs = []
         y_offset = faq_list_area.y + 10 - scroll_y
+        content_h = 10
         for faq in FAQs:
             specs.append((
                 faq,
@@ -219,7 +216,9 @@ def main():
                 y_offset,
                 COLORS["accent_gold"] if selected_faq == faq['id'] else COLORS["accent_blue"]
             ))
-            y_offset += 220 if selected_faq == faq['id'] else 60
+            step = 220 if selected_faq == faq['id'] else 60
+            y_offset += step
+            content_h += step
 
         sig = (tuple((t, y, c) for _f, t, y, c in specs), screen_width, screen_height)
         if sig != q_sig:
@@ -230,12 +229,16 @@ def main():
                 for faq, text, y, color in specs
             ]
 
-        # 答案区域（先画，按钮随后覆盖到其上，与原绘制顺序一致）
+        # 答案区域（先画，按钮随后覆盖到其上，与原绘制顺序一致）。
+        # 问题/答案都裁剪在列表面板内，避免溢出压到返回按钮或被屏幕底裁掉
+        screen.set_clip(faq_list_area)
         for faq, _t, y, _c in specs:
             if selected_faq == faq['id']:
-                answer_area = pygame.Rect(faq_list_area.x + 20, y + 60, faq_list_area.width - 40, 200)
-                pygame.draw.rect(screen, (40, 40, 70, 200), answer_area, border_radius=5)
                 answer_lines = faq['answer'].split('\n')
+                answer_h = 20 + sum(FONT_SMALL.size(l)[1] + 5 for l in answer_lines)
+                answer_area = pygame.Rect(faq_list_area.x + 20, y + 60,
+                                          faq_list_area.width - 40, answer_h)
+                pygame.draw.rect(screen, (40, 40, 70, 200), answer_area, border_radius=5)
                 answer_y = answer_area.y + 10
                 for line in answer_lines:
                     answer_surf = FONT_SMALL.render(line, True, COLORS["text_white"])
@@ -246,11 +249,12 @@ def main():
         for _faq, question_btn in question_btns:
             question_btn.check_hover(mouse_pos)
             question_btn.draw(screen)
+        screen.set_clip(None)
         
-        # 滚动条
-        max_scroll = max(0, (len(FAQs) * 60 + (220 if selected_faq else 0)) - faq_list_area.height)
+        # 滚动条（滚动范围按实际内容高度算）
+        max_scroll = max(0, content_h + 10 - faq_list_area.height)
         if max_scroll > 0:
-            scroll_bar_height = (faq_list_area.height / (len(FAQs) * 60 + (220 if selected_faq else 0))) * faq_list_area.height
+            scroll_bar_height = (faq_list_area.height / (content_h + 10)) * faq_list_area.height
             scroll_bar_y = faq_list_area.y + (scroll_y / max_scroll) * (faq_list_area.height - scroll_bar_height)
             scroll_bar = pygame.Rect(faq_list_area.right - 15, scroll_bar_y, 10, scroll_bar_height)
             pygame.draw.rect(screen, COLORS["accent_gold"], scroll_bar, border_radius=5)
@@ -289,7 +293,7 @@ def main():
                 
                 # 检查滚动条
                 if max_scroll > 0:
-                    scroll_bar_height = (faq_list_area.height / (len(FAQs) * 60 + (220 if selected_faq else 0))) * faq_list_area.height
+                    scroll_bar_height = (faq_list_area.height / (content_h + 10)) * faq_list_area.height
                     scroll_bar = pygame.Rect(faq_list_area.right - 15, faq_list_area.y, 10, faq_list_area.height)
                     if scroll_bar.collidepoint(mouse_pos):
                         # 拖动滚动条（非阻塞：直接记录状态，主循环里继续处理）

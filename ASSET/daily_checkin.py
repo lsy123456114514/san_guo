@@ -4,7 +4,7 @@ import os
 import pygame
 import random
 from datetime import datetime
-from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font
+from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font, open_window
 from ASSET import safe_exit
 
 # 颜色主题
@@ -75,22 +75,42 @@ class CheckinCard:
         day_rect = day_text.get_rect(center=(self.rect.x + self.rect.width // 2, self.rect.y + 25))
         surface.blit(day_text, day_rect)
         
-        # 奖励
-        if self.is_today:
-            reward_text = self.font.render(f"{self.reward}", True, (30, 30, 60))  # 深色文字
+        # 奖励（先单行降字号，仍放不下就拆两行，不许缩成看不清的小字）
+        reward_str = f"{self.reward}"
+        size = self.font.get_height()
+        reward_font = self.font
+        while size > 16:
+            reward_font = get_font(size)
+            if reward_font.size(reward_str)[0] <= self.rect.width - 14:
+                break
+            size -= 1
+        color = (30, 30, 60) if self.is_today else COLORS["accent_gold"]
+        if reward_font.size(reward_str)[0] <= self.rect.width - 14:
+            reward_text = reward_font.render(reward_str, True, color)
+            reward_rect = reward_text.get_rect(center=(self.rect.x + self.rect.width // 2, self.rect.y + 60))
+            surface.blit(reward_text, reward_rect)
         else:
-            reward_text = self.font.render(f"{self.reward}", True, COLORS["accent_gold"])
-        reward_rect = reward_text.get_rect(center=(self.rect.x + self.rect.width // 2, self.rect.y + 60))
-        surface.blit(reward_text, reward_rect)
+            if " + " in reward_str:
+                parts = reward_str.split(" + ", 1)
+                line1, line2 = parts[0] + " +", parts[1]
+            else:
+                mid = len(reward_str) // 2
+                line1, line2 = reward_str[:mid], reward_str[mid:]
+            t1 = reward_font.render(line1, True, color)
+            t2 = reward_font.render(line2, True, color)
+            cx = self.rect.x + self.rect.width // 2
+            surface.blit(t1, t1.get_rect(center=(cx, self.rect.y + 47)))
+            surface.blit(t2, t2.get_rect(center=(cx, self.rect.y + 70)))
         
-        # 状态
+        # 状态（"今天"挪到卡片底部，避免和"第N天"挤在同一行）
         if self.is_checked:
             check_text = self.font.render("✓", True, COLORS["text_white"])
             check_rect = check_text.get_rect(center=(self.rect.x + self.rect.width - 20, self.rect.y + 20))
             surface.blit(check_text, check_rect)
         elif self.is_today:
             today_text = self.font.render("今天", True, (30, 30, 60))  # 深色文字
-            today_rect = today_text.get_rect(center=(self.rect.x + self.rect.width - 25, self.rect.y + 20))
+            today_rect = today_text.get_rect(center=(self.rect.x + self.rect.width // 2,
+                                                     self.rect.y + self.rect.height - 16))
             surface.blit(today_text, today_rect)
 
 class Particle:
@@ -111,7 +131,7 @@ class Particle:
         self.size = max(0.5, self.size - 0.05)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = max(0, min(255, int(255 * (self.life / self.max_life))))
         color = (*self.color[:3], alpha)
         pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
 
@@ -226,22 +246,8 @@ def main():
             pygame.mixer.init()
         
         # 分辨率适配
-        if 'ANDROID_DATA' in os.environ:
-            info = pygame.display.Info()
-            SCREEN_WIDTH = info.current_w
-            SCREEN_HEIGHT = info.current_h
-        else:
-            # 使用设置的分辨率
-            resolution = data['settings']['graphics']['resolution']
-            try:
-                width, height = map(int, resolution.split('x'))
-                SCREEN_WIDTH = width
-                SCREEN_HEIGHT = height
-            except ValueError:
-                SCREEN_WIDTH = 900
-                SCREEN_HEIGHT = 700
-        
-        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        screen = open_window()
+        SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_size()
         pygame.display.set_caption("每日签到")
         clock = pygame.time.Clock()
 

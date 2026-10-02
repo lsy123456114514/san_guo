@@ -7,6 +7,8 @@
 
 import pygame
 
+from ASSET.game_data import open_window
+
 # 颜色定义
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
@@ -99,13 +101,7 @@ class Whiteboard:
         self.original_screen = screen
         self.width, self.height = screen.get_size()
         
-        # 获取屏幕尺寸，确保窗口不超出
-        info = pygame.display.Info()
-        screen_w, screen_h = info.current_w, info.current_h
-        if self.width > screen_w - 50 or self.height > screen_h - 50:
-            self.width, self.height = get_safe_resolution(screen_w, screen_h, 800, 600)
-            self.screen = pygame.display.set_mode((self.width, self.height))
-        
+        # 分辨率已由 open_window 统一保证不超出屏幕，无需再二次收缩
         self.is_fullscreen = False
         self.original_size = (self.width, self.height)
         
@@ -508,10 +504,7 @@ def main(screen=None):
     """白板主函数，自适应窗口大小"""
     if screen is None:
         pygame.init()
-        info = pygame.display.Info()
-        screen_w, screen_h = info.current_w, info.current_h
-        width, height = get_safe_resolution(screen_w, screen_h, 800, 600)
-        screen = pygame.display.set_mode((width, height))
+        screen = open_window()
         pygame.display.set_caption("教学白板")
     
     whiteboard = Whiteboard(screen)

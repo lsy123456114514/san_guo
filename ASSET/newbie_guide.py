@@ -6,7 +6,7 @@
 import pygame
 import math
 import random
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, open_window
 from ASSET.game_main_menu import Button, init_fonts
 
 # 全局变量
@@ -143,24 +143,8 @@ def main():
     FONT_SMALL = SMALL_FONT
     FONT_BIG = BIG_FONT
     
-    # 获取屏幕真实物理像素分辨率
-    import platform
-    if platform.system() == "Windows":
-        try:
-            import ctypes
-            screen_width = ctypes.windll.user32.GetSystemMetrics(0)
-            screen_height = ctypes.windll.user32.GetSystemMetrics(1)
-        except Exception:
-            info = pygame.display.Info()
-            screen_width = info.current_w
-            screen_height = info.current_h
-    else:
-        info = pygame.display.Info()
-        screen_width = info.current_w
-        screen_height = info.current_h
-    
-    # 设置屏幕（使用物理分辨率）
-    screen = pygame.display.set_mode((screen_width, screen_height))
+    screen = open_window()
+    screen_width, screen_height = screen.get_size()
     pygame.display.set_caption("新手引导")
     clock = pygame.time.Clock()
     

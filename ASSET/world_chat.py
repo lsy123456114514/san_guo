@@ -12,7 +12,7 @@ import socket
 import json
 import threading
 from typing import List, Dict
-from ASSET.game_data import data, logger, get_font
+from ASSET.game_data import data, logger, get_font, open_window
 
 # 颜色主题
 COLORS = {
@@ -48,7 +48,7 @@ class Particle:
         self.size = max(0.5, self.size - 0.05)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = max(0, min(255, int(255 * (self.life / self.max_life))))
         temp_surface = pygame.Surface((int(self.size * 2), int(self.size * 2)), pygame.SRCALPHA)
         pygame.draw.circle(temp_surface, (*self.color, alpha), (int(self.size), int(self.size)), int(self.size))
         surface.blit(temp_surface, (int(self.x - self.size), int(self.y - self.size)))
@@ -297,7 +297,7 @@ def main(screen=None):
             pygame.init()
         
         if screen is None:
-            screen = pygame.display.set_mode((900, 650))
+            screen = open_window()
             pygame.display.set_caption("🌍 三国游戏 - 世界聊天")
         
         chat = WorldChat(screen)

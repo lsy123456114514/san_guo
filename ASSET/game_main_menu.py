@@ -22,7 +22,7 @@ import math
 import random
 import logging
 from ASSET.fun_effects import PetSprite, FloatingParticles
-from ASSET.game_data import data, save, draw_gradient_bg, ensure_defaults
+from ASSET.game_data import data, save, draw_gradient_bg, ensure_defaults, open_window
 from ASSET.secret_puzzle import (
     TriggerDetector,        # 卧龙密令·第6环 五行序列触发器
     KeySequenceDetector,    # 卧龙密令·第4环 WOLONG键盘拼字
@@ -673,17 +673,7 @@ def repair_display():
         _BG_CACHE_KEY = None
         _TITLE_CACHE.clear()
         ensure_defaults()
-        if is_android():
-            sw, sh = _get_physical_resolution()
-            screen = pygame.display.set_mode((sw, sh))
-        elif data['settings']['graphics'].get('fullscreen', False):
-            screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-        else:
-            try:
-                w, h = map(int, data['settings']['graphics']['resolution'].split('x'))
-                screen = pygame.display.set_mode((w, h))
-            except Exception:
-                screen = pygame.display.set_mode((800, 600))
+        screen = open_window()
         pygame.display.set_caption("游戏主菜单")
 
     # ── 2) 字体探针 ──
@@ -1653,19 +1643,9 @@ def setting_menu():
         的物理分辨率 get_desktop_sizes() 作为上限。
         """
         global screen
-        fullscreen = data['settings']['graphics'].get('fullscreen', False)
         try:
-            if fullscreen:
-                screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-            else:
-                w, h = map(int, data['settings']['graphics']['resolution'].split('x'))
-                try:
-                    desktop_w, desktop_h = pygame.display.get_desktop_sizes()[0]
-                except Exception:
-                    desktop_w, desktop_h = 1920, 1080
-                w = max(320, min(w, desktop_w))
-                h = max(240, min(h, desktop_h))
-                screen = pygame.display.set_mode((w, h))
+            # 统一开窗：与主菜单同分辨率（夹取到桌面内）+ 居中
+            screen = open_window()
             pygame.display.set_caption("游戏设置")
         except Exception as _e:
             logger.debug("[设置] 应用分辨率失败: %s", _e)
@@ -1955,26 +1935,9 @@ def main():
         data['settings']['graphics']['fullscreen'] = False
         save()
 
-    resolution = data['settings']['graphics']['resolution']
-    fullscreen = data['settings']['graphics']['fullscreen']
-
-    if is_android():
-        screen_width, screen_height = _get_physical_resolution()
-        screen = pygame.display.set_mode((screen_width, screen_height))
-    else:
-        if fullscreen:
-            screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-            screen_width = screen.get_width()
-            screen_height = screen.get_height()
-        else:
-            try:
-                width, height = map(int, resolution.split('x'))
-                screen = pygame.display.set_mode((width, height))
-                screen_width = width
-                screen_height = height
-            except ValueError:
-                screen_width, screen_height = _get_physical_resolution()
-                screen = pygame.display.set_mode((screen_width, screen_height))
+    # 统一开窗：分辨率与主菜单一致 + 自动居中（全屏由设置决定）
+    screen = open_window()
+    screen_width, screen_height = screen.get_size()
 
     pygame.display.set_caption("游戏主菜单")
     clock = pygame.time.Clock()
@@ -2129,8 +2092,10 @@ def main():
                 TrigramPuzzle(screen).run()
                 restore_screen()
                 return
-            if puzzle_trigger.progress > 0:
-                # 序列进行中：静默吞掉该次点击，不打开任何界面
+            if puzzle_trigger.progress > 1:
+                # 序列进行中：静默吞掉该次点击，不打开任何界面。
+                # progress==1 仅表示首键「23·钓鱼」刚按下——该键同时是真实
+                # 菜单项，必须放行，否则钓鱼系统永远打不开。
                 return
         except Exception as _e:
             logger.debug("[卧龙密令] 触发器异常: %s", _e)
@@ -2184,6 +2149,7 @@ def main():
                     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
                     login_path = os.path.join(os.path.dirname(__file__), "login_system.py")
                     env = os.environ.copy()
+                    env.pop("SAN_GUO_AUTOTEST", None)
                     env['PYTHONPATH'] = project_root
                     subprocess.Popen([sys.executable, login_path], cwd=project_root, env=env)
                 running = False
@@ -2493,6 +2459,10 @@ def main():
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                if auto_driver is not None and not auto_driver.finished:
+                    # 自动测试期间忽略 QUIT（看门狗/模块可能残留投递），
+                    # 由 driver 走完队列后统一收尾退出
+                    continue
                 save()
                 running = False
 
@@ -2685,8 +2655,8 @@ def startup_animation():
     """
     global FONT_MAIN, FONT_SMALL, FONT_BIG
 
-    screen_width, screen_height = get_screen_size()
-    screen = pygame.display.set_mode((screen_width, screen_height))
+    screen = open_window()
+    screen_width, screen_height = screen.get_size()
     clock = pygame.time.Clock()
     init_fonts()
 

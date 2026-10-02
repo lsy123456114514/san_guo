@@ -10,7 +10,7 @@ import os
 import pygame
 import random
 import math
-from ASSET.game_data import data, save, load_sound, logger, draw_gradient_bg, get_font
+from ASSET.game_data import data, save, load_sound, logger, draw_gradient_bg, get_font, open_window
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Color Theme
@@ -122,7 +122,7 @@ class FloatingText:
         self.life -= 1
     
     def draw(self, surface: pygame.Surface):
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = max(0, min(255, int(255 * (self.life / self.max_life))))
         text_surf = self.font.render(self.text, True, self.color)
         text_surf.set_alpha(alpha)
         surface.blit(text_surf, (int(self.x), int(self.y)))
@@ -449,15 +449,8 @@ def main():
             pygame.init()
         
         # 分辨率适配
-        if 'ANDROID_DATA' in os.environ:
-            info = pygame.display.Info()
-            SCREEN_WIDTH = info.current_w
-            SCREEN_HEIGHT = info.current_h
-        else:
-            SCREEN_WIDTH = 800
-            SCREEN_HEIGHT = 600
-        
-        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        screen = open_window()
+        SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_size()
         pygame.display.set_caption("🗺️ 游戏地图")
         clock = pygame.time.Clock()
 

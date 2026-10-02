@@ -7,7 +7,7 @@
 
 import pygame
 import random
-from ASSET.game_data import logger, get_font
+from ASSET.game_data import logger, get_font, open_window
 
 # 颜色主题
 COLORS = {
@@ -41,7 +41,7 @@ class Particle:
         self.size = max(0.5, self.size - 0.05)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life)) if self.max_life > 0 else 0
+        alpha = max(0, min(255, int(255 * (self.life / self.max_life)))) if self.max_life > 0 else 0
         pygame.draw.circle(surface, (*self.color[:3], alpha), (int(self.x), int(self.y)), int(self.size))
 
 class AnimatedButton:
@@ -155,7 +155,7 @@ def main(screen=None):
             pygame.init()
         
         if screen is None:
-            screen = pygame.display.set_mode((950, 700))
+            screen = open_window()
             pygame.display.set_caption("⚔️ 三国游戏 - 超级对战大厅")
         
         pvp = SuperPVP(screen)

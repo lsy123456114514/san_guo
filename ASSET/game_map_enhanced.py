@@ -6,7 +6,7 @@ import random
 import json
 import os
 import time
-from ASSET.game_data import data, save, logger, get_font
+from ASSET.game_data import data, save, logger, get_font, open_window
 from ASSET import safe_exit
 
 # 简单的Perlin噪声实现
@@ -959,15 +959,8 @@ def main():
             pygame.init()
         
         # 分辨率适配
-        if 'ANDROID_DATA' in os.environ:
-            info = pygame.display.Info()
-            SCREEN_WIDTH = info.current_w
-            SCREEN_HEIGHT = info.current_h
-        else:
-            SCREEN_WIDTH = 1200
-            SCREEN_HEIGHT = 800
-        
-        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        screen = open_window()
+        SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_size()
         pygame.display.set_caption("🗺️ 三国地图")
         clock = pygame.time.Clock()
 

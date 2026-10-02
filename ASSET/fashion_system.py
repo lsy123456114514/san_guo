@@ -1,7 +1,7 @@
 """时装系统 - 时装装备与外观切换"""
 
 import pygame
-from ASSET.game_data import data, save, FASHION_ITEMS, get_font, draw_gradient_bg
+from ASSET.game_data import data, save, FASHION_ITEMS, get_font, draw_gradient_bg, open_window
 
 # 颜色定义
 COLORS = {
@@ -200,6 +200,12 @@ def fashion_shop(screen, font_main, font_small, clock):
     current_category = 0
     scroll_offset = 0
     
+    # 列表视口：上方给标题/类别按钮，下方留一条底栏放效果与返回按钮
+    sw, sh = screen.get_width(), screen.get_height()
+    viewport = pygame.Rect(90, 170, sw - 150, (sh - 150) - 170)
+    card_step = 200
+    card_height = 180
+    
     running = True
     while running:
         for event in pygame.event.get():
@@ -223,17 +229,18 @@ def fashion_shop(screen, font_main, font_small, clock):
                         current_category = i
                         scroll_offset = 0  # 切换类别时重置滚动位置
                 
-                # 时装按钮
+                # 时装按钮（只在视口内命中，避免点到被裁掉的卡片）
                 category = categories[current_category]
                 fashion_items = list(FASHION_ITEMS[f"{category}_skins"].items())
+                max_scroll = max(0, len(fashion_items) * card_step - viewport.height)
+                scroll_offset = max(0, min(max_scroll, scroll_offset))
                 for i, (fashion_id, fashion_data) in enumerate(fashion_items):
                     btn_x = 100
-                    btn_y = 200 + i * 200 - scroll_offset
+                    btn_y = 200 + i * card_step - scroll_offset
                     btn_width = screen.get_width() - 200
-                    btn_height = 180
                     
-                    btn_rect = pygame.Rect(btn_x, btn_y, btn_width, btn_height)
-                    if btn_rect.collidepoint(mouse_pos):
+                    btn_rect = pygame.Rect(btn_x, btn_y, btn_width, card_height)
+                    if viewport.collidepoint(mouse_pos) and btn_rect.collidepoint(mouse_pos):
                         is_unlocked = fashion_id in data["fashion"]["unlocked"][f"{category}_skins"]
                         is_equipped = data["fashion"]["equipped"][f"{category}_skin"] == fashion_id
                         
@@ -253,7 +260,7 @@ def fashion_shop(screen, font_main, font_small, clock):
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 5:  # 鼠标滚轮向下
                 category = categories[current_category]
                 fashion_items = list(FASHION_ITEMS[f"{category}_skins"].items())
-                max_scroll = max(0, (len(fashion_items) * 200) - (screen.get_height() - 300))
+                max_scroll = max(0, (len(fashion_items) * card_step) - viewport.height)
                 scroll_offset = min(max_scroll, scroll_offset + 50)
         
         # 绘制背景
@@ -273,43 +280,50 @@ def fashion_shop(screen, font_main, font_small, clock):
                 cat_btn.hover_color = (255, 230, 50)
             cat_btn.draw(screen)
         
-        # 绘制时装列表
+        # 绘制时装列表（裁剪在视口内，卡片不许越出底边压到返回按钮）
         fashion_items = list(FASHION_ITEMS[f"{category}_skins"].items())
+        screen.set_clip(viewport)
         for i, (fashion_id, fashion_data) in enumerate(fashion_items):
             x = 100
-            y = 200 + i * 200 - scroll_offset
+            y = 200 + i * card_step - scroll_offset
             width = screen.get_width() - 200
-            height = 180
-            draw_fashion_preview(screen, category, fashion_id, x, y, width, height)
+            draw_fashion_preview(screen, category, fashion_id, x, y, width, card_height)
+        screen.set_clip(None)
         
         # 绘制滚动条
         total_items = len(fashion_items)
         if total_items > 0:
-            total_height = total_items * 200
-            visible_height = screen.get_height() - 300
-            if total_height > visible_height:
-                scrollbar_height = (visible_height / total_height) * visible_height
-                scrollbar_y = 200 + (scroll_offset / total_height) * visible_height
+            total_height = total_items * card_step
+            if total_height > viewport.height:
+                scrollbar_height = (viewport.height / total_height) * viewport.height
+                scrollbar_y = viewport.y + (scroll_offset / total_height) * viewport.height
                 # 滚动条背景
-                pygame.draw.rect(screen, (40, 40, 60), (screen.get_width() - 30, 200, 20, visible_height), border_radius=10)
+                pygame.draw.rect(screen, (40, 40, 60),
+                                 (viewport.right - 20, viewport.y, 20, viewport.height), border_radius=10)
                 # 滚动条
-                pygame.draw.rect(screen, COLORS["accent_gold"], (screen.get_width() - 28, scrollbar_y, 16, scrollbar_height), border_radius=8)
+                pygame.draw.rect(screen, COLORS["accent_gold"],
+                                 (viewport.right - 18, scrollbar_y, 16, scrollbar_height), border_radius=8)
         
-        # 绘制当前效果
+        # 底栏：当前效果（单行排版，超宽就降字号，保证不出屏幕）
         effects = get_fashion_effects()
         if effects:
-            effect_y = screen.get_height() - 150
-            font = get_font(20)
-            effect_title = font.render("当前时装效果:", True, COLORS["accent_gold"])
-            screen.blit(effect_title, (100, effect_y))
-            effect_y += 30
-            for effect, value in effects.items():
-                effect_text = f"{effect}: +{value}"
-                effect_surf = font.render(effect_text, True, COLORS["success"])
-                screen.blit(effect_surf, (120, effect_y))
-                effect_y += 25
+            bar_top = viewport.bottom + 12
+            effect_text = "当前时装效果: " + "  ".join(
+                f"{k}: +{v}" for k, v in effects.items())
+            size = 22
+            while size > 12:
+                font = get_font(size)
+                if font.size(effect_text)[0] <= sw - 260:
+                    break
+                size -= 2
+            font = get_font(size)
+            surf = font.render(effect_text, True, COLORS["success"])
+            screen.blit(surf, (250, bar_top + 10))
+            # 下划线与左端对齐，避免横穿文字
+            pygame.draw.line(screen, COLORS["accent_gold"], (250, bar_top + 14 + surf.get_height()),
+                             (250 + surf.get_width(), bar_top + 14 + surf.get_height()), 1)
         
-        # 绘制返回按钮
+        # 绘制返回按钮（固定左下角，位于视口之外）
         back_btn = Button("返回主菜单", 20, screen.get_height() - 60, 180, 50, font_small, normal_color=COLORS["accent_blue_dark"])
         back_btn.check_hover(pygame.mouse.get_pos())
         back_btn.draw(screen)
@@ -328,9 +342,8 @@ def main():
     pygame.init()
     
     # 设置屏幕
-    screen_width = 1024
-    screen_height = 768
-    screen = pygame.display.set_mode((screen_width, screen_height))
+    screen = open_window()
+    screen_width, screen_height = screen.get_size()
     pygame.display.set_caption("时装系统")
     clock = pygame.time.Clock()
     

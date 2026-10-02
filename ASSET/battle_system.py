@@ -5,7 +5,7 @@ import pygame
 import time
 import random
 import math
-from ASSET.game_data import data, save, load_sound, EQUIP_SKILLS, HERO_SKILLS, GUNS, HERO_BONDS, ELEMENT_SYNERGIES, ELEMENT_WEAKNESS, logger, draw_gradient_bg, get_font
+from ASSET.game_data import data, save, load_sound, EQUIP_SKILLS, HERO_SKILLS, GUNS, HERO_BONDS, ELEMENT_SYNERGIES, ELEMENT_WEAKNESS, logger, draw_gradient_bg, get_font, open_window
 from ASSET.weather_system import WeatherSystem
 from ASSET import safe_exit
 
@@ -100,7 +100,7 @@ class FloatingText:
             self.scale = max(1.0, self.scale - 0.02)
     
     def draw(self, surface):
-        alpha = int(255 * (self.life / self.max_life))
+        alpha = max(0, min(255, int(255 * (self.life / self.max_life))))
         text_surf = self.font.render(self.text, True, self.color)
         scaled_size = (int(text_surf.get_width() * self.scale), int(text_surf.get_height() * self.scale))
         scaled_surf = pygame.transform.scale(text_surf, scaled_size)
@@ -1061,18 +1061,8 @@ def main():
             pygame.init()
             pygame.mixer.init()
 
-        if 'ANDROID_DATA' in os.environ:
-            info = pygame.display.Info()
-            SCREEN_WIDTH, SCREEN_HEIGHT = info.current_w, info.current_h
-        else:
-            resolution = data['settings']['graphics']['resolution']
-            try:
-                width, height = map(int, resolution.split('x'))
-                SCREEN_WIDTH, SCREEN_HEIGHT = width, height
-            except ValueError:
-                SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
-
-        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        screen = open_window()
+        SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_size()
         pygame.display.set_caption("⚔️ 武将回合制战斗")
         clock = pygame.time.Clock()
         logger.info("[战斗] 阶段1 初始化完成 分辨率=%dx%d 耗时%.3fs",

@@ -57,39 +57,17 @@ from ASSET.anti_decompile import protect_function
 # 安卓路径适配
 if 'ANDROID_DATA' in os.environ:
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    sys.path.append(os.path.join(os.path.dirname(__file__), 'ASSET'))
-    # 安卓全屏
-    pygame.init()
-    SCREEN_WIDTH, SCREEN_HEIGHT = get_physical_resolution()
-else:
-    # 全局初始化
-    pygame.init()
-    # 获取屏幕真实物理像素分辨率
-    screen_width_full, screen_height_full = get_physical_resolution()
-    
-    # 从设置中读取分辨率
-    sys.path.append(os.path.join(os.path.dirname(__file__), 'ASSET'))
-    from ASSET.game_data import SETTINGS
-    resolution = SETTINGS['graphics']['resolution']
-    if resolution == "auto" or not resolution:
-        # 默认使用屏幕真实分辨率
-        SCREEN_WIDTH, SCREEN_HEIGHT = screen_width_full, screen_height_full
-    else:
-        try:
-            SCREEN_WIDTH, SCREEN_HEIGHT = map(int, resolution.split('x'))
-        except ValueError:
-            SCREEN_WIDTH, SCREEN_HEIGHT = screen_width_full, screen_height_full
-    
-    # 确保窗口不超出物理屏幕
-    SCREEN_WIDTH = min(SCREEN_WIDTH, screen_width_full)
-    SCREEN_HEIGHT = min(SCREEN_HEIGHT, screen_height_full)
+sys.path.append(os.path.join(os.path.dirname(__file__), 'ASSET'))
 
 # 全局初始化
+pygame.init()
+
+# 统一开窗：分辨率与主菜单一致、不超出屏幕、自动居中
+from ASSET.game_data import open_window
+
 pygame.mixer.init()
-screen = pygame.display.set_mode(
-    (SCREEN_WIDTH, SCREEN_HEIGHT),
-    pygame.FULLSCREEN if 'ANDROID_DATA' in os.environ else 0
-)
+screen = open_window(pygame.FULLSCREEN if 'ANDROID_DATA' in os.environ else 0)
+SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_size()
 pygame.display.set_caption("游戏主程序")
 clock = pygame.time.Clock()
 
@@ -156,11 +134,8 @@ from ASSET.game_main_menu import startup_animation
 
 @protect_function
 def main_game():
-    # 每次启动都显示词典系统（伪装界面），自适应窗口大小
-    info = pygame.display.Info()
-    screen_w, screen_h = info.current_w, info.current_h
-    width, height = get_safe_resolution(screen_w, screen_h, 800, 600)
-    screen = pygame.display.set_mode((width, height))
+    # 每次启动都显示词典系统（伪装界面），统一分辨率并居中
+    screen = open_window()
     pygame.display.set_caption("英语词典")
 
     # 运行词典系统
@@ -187,25 +162,8 @@ def main_game():
             data["username"] = saved_username
             ensure_defaults()
             
-            # 重新设置屏幕
-            if 'ANDROID_DATA' in os.environ:
-                # Android设备使用全屏
-                info = pygame.display.Info()
-                screen_width = info.current_w
-                screen_height = info.current_h
-                screen = pygame.display.set_mode((screen_width, screen_height))
-            else:
-                # PC设备根据设置
-                resolution = data['settings']['graphics']['resolution']
-                fullscreen = data['settings']['graphics']['fullscreen']
-                if fullscreen:
-                    screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-                else:
-                    try:
-                        width, height = map(int, resolution.split('x'))
-                        screen = pygame.display.set_mode((width, height))
-                    except ValueError:
-                        screen = pygame.display.set_mode((800, 600))
+            # 重新设置屏幕（统一分辨率 + 居中）
+            screen = open_window()
             
             # 更新全局屏幕尺寸变量
             global SCREEN_WIDTH, SCREEN_HEIGHT

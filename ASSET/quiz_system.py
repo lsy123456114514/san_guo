@@ -13,7 +13,7 @@ import random
 
 import pygame
 
-from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font
+from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font, open_window
 from ASSET import safe_exit
 
 # ---------------------------------------------------------------------------
@@ -348,17 +348,8 @@ def main():
         if not pygame.get_init():
             pygame.init()
 
-        if 'ANDROID_DATA' in os.environ:
-            info = pygame.display.Info()
-            screen_width, screen_height = info.current_w, info.current_h
-        else:
-            resolution = data['settings']['graphics']['resolution']
-            try:
-                screen_width, screen_height = map(int, resolution.split('x'))
-            except (ValueError, AttributeError):
-                screen_width, screen_height = 900, 700
-
-        screen = pygame.display.set_mode((screen_width, screen_height))
+        screen = open_window()
+        screen_width, screen_height = screen.get_size()
         pygame.display.set_caption("三国知识问答")
         clock = pygame.time.Clock()
 

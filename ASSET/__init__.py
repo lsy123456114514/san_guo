@@ -106,19 +106,8 @@ def safe_exit(
         try:
             pygame.init()
             from ASSET import game_data as _gd
-            # game_data 没有 SCREEN_WIDTH/HEIGHT 常量；分辨率在 settings 里，
-            # 默认 "auto" 表示跟随屏幕物理分辨率
-            _gfx = _gd.data['settings']['graphics']
-            _res = _gfx.get('resolution', 'auto')
-            if _res and _res != 'auto':
-                _w, _h = map(int, str(_res).split('x'))
-            else:
-                _info = pygame.display.Info()
-                _w, _h = _info.current_w, _info.current_h
-            if _gfx.get('fullscreen'):
-                pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-            else:
-                pygame.display.set_mode((_w, _h))
+            # 统一开窗：与主菜单同分辨率（夹取到桌面内）+ 居中
+            _gd.open_window()
         except Exception as _e:
             logger.error("[退出异常] pygame.init/set_mode: %s: %s", type(_e).__name__, _e)
 

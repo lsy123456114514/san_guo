@@ -297,6 +297,100 @@ SETTINGS = {
     }
 }
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 统一窗口分辨率 & 居中 —— 所有界面与主菜单保持一致，且不超出屏幕
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# 新建窗口默认居中（main.py 也会设，这里保证单独运行子模块时同样生效）
+os.environ.setdefault("SDL_VIDEO_WINDOW_POS", "center")
+os.environ.setdefault("SDL_VIDEO_CENTERED", "1")
+
+
+def _desktop_size():
+    """屏幕物理分辨率（Windows 取真实像素，不受 DPI 缩放影响），失败回退 pygame 桌面尺寸。"""
+    if platform.system() == "Windows":
+        try:
+            import ctypes
+            w = ctypes.windll.user32.GetSystemMetrics(0)
+            h = ctypes.windll.user32.GetSystemMetrics(1)
+            if w > 0 and h > 0:
+                return w, h
+        except Exception:
+            pass
+    try:
+        sizes = pygame.display.get_desktop_sizes()
+        if sizes:
+            return sizes[0]
+    except Exception:
+        pass
+    info = pygame.display.Info()
+    return info.current_w, info.current_h
+
+
+def get_window_resolution():
+    """统一窗口分辨率 = 主菜单分辨率（读存档设置），并夹取到桌面尺寸内，
+    防止窗口比屏幕大而被挤到左上角、卡出屏幕外。"""
+    w = h = None
+    if "ANDROID_DATA" in os.environ:
+        try:
+            info = pygame.display.Info()
+            w, h = info.current_w, info.current_h
+        except Exception:
+            w = h = None
+    if not w:
+        try:
+            res = data["settings"]["graphics"].get("resolution") or "auto"
+        except Exception:
+            res = "auto"
+        if res != "auto":
+            try:
+                w, h = map(int, str(res).split("x"))
+            except (ValueError, TypeError):
+                w = h = None
+    if not w:
+        w, h = _desktop_size()
+    dw, dh = _desktop_size()
+    if dw and dh and dw > 0 and dh > 0:
+        w, h = min(w, dw), min(h, dh)
+    return int(max(800, w)), int(max(600, h))
+
+
+def center_window():
+    """把当前窗口移到屏幕正中间（仅 Windows 窗口模式，失败静默不影响游戏）。"""
+    try:
+        if platform.system() != "Windows":
+            return
+        if data["settings"]["graphics"].get("fullscreen"):
+            return
+        hwnd = pygame.display.get_wm_info().get("window")
+        if not hwnd:
+            return
+        import ctypes
+        user32 = ctypes.windll.user32
+        sw = user32.GetSystemMetrics(0)
+        sh = user32.GetSystemMetrics(1)
+        surf = pygame.display.get_surface()
+        w, h = surf.get_size() if surf else (0, 0)
+        x = max(0, (sw - w) // 2)
+        y = max(0, (sh - h) // 2)
+        # SWP_NOSIZE|SWP_NOZORDER：只挪位置，不改大小层级
+        user32.SetWindowPos(int(hwnd), 0, int(x), int(y), 0, 0, 0x0001 | 0x0004)
+    except Exception:
+        pass
+
+
+def open_window(flags: int = 0) -> pygame.Surface:
+    """统一开窗：分辨率与主菜单一致 + 自动居中；设置里开全屏时开全屏。
+    各界面 main() 里一律用它代替 pygame.display.set_mode。"""
+    fullscreen = bool(data["settings"]["graphics"].get("fullscreen"))
+    if fullscreen:
+        surf = pygame.display.set_mode((0, 0), flags | pygame.FULLSCREEN)
+    else:
+        surf = pygame.display.set_mode(get_window_resolution(), flags)
+        if not (surf.get_flags() & pygame.FULLSCREEN):
+            center_window()
+    return surf
+
 def _font_has_chinese(font: pygame.font.Font, size: int = 24) -> bool:
     """Check whether *font* can render Chinese characters.
 

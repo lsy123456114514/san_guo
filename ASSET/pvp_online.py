@@ -8,7 +8,7 @@
 import pygame
 import random
 import math
-from ASSET.game_data import data, logger, get_font
+from ASSET.game_data import data, logger, get_font, open_window
 
 # 颜色主题
 COLORS = {
@@ -211,14 +211,12 @@ class InputBox:
         surface.blit(txt_surface, (self.rect.x + 10, self.rect.y + 10))
 
 def draw_title(surface, text, y_pos, screen_width, font, color=COLORS["accent_gold"]):
-    for offset in range(5, 0, -1):
-        alpha = max(0, 60 - offset * 10)
+    for offset in (3, 2, 1):
+        alpha = max(0, 40 - offset * 10)
         glow_surf = font.render(text, True, (*color[:3], alpha))
         glow_rect = glow_surf.get_rect(center=(screen_width // 2, y_pos))
-        for dx in [-offset, 0, offset]:
-            for dy in [-offset, 0, offset]:
-                if dx != 0 or dy != 0:
-                    surface.blit(glow_surf, (glow_rect.x + dx, glow_rect.y + dy))
+        for dx, dy in ((-offset, 0), (offset, 0), (0, -offset), (0, offset)):
+            surface.blit(glow_surf, (glow_rect.x + dx, glow_rect.y + dy))
     
     title = font.render(text, True, color)
     title_rect = title.get_rect(center=(screen_width // 2, y_pos))
@@ -267,7 +265,7 @@ def main(screen=None):
             pygame.init()
         
         if screen is None:
-            screen = pygame.display.set_mode((800, 600))
+            screen = open_window()
             pygame.display.set_caption("⚔️ 在线PVP对战")
         
         pvp = PVPOnline(screen)

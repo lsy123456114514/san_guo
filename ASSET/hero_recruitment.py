@@ -6,7 +6,7 @@
 import pygame
 import random
 import math
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, open_window
 from ASSET.game_main_menu import Button, init_fonts
 
 # 全局变量
@@ -239,14 +239,13 @@ def main():
     FONT_BIG = BIG_FONT
     
     # 设置屏幕
-    screen_width = 800
-    screen_height = 600
-    screen = pygame.display.set_mode((screen_width, screen_height))
+    screen = open_window()
+    screen_width, screen_height = screen.get_size()
     pygame.display.set_caption("武将招募")
     clock = pygame.time.Clock()
     
-    # 按钮设置
-    button_width = 200
+    # 按钮设置（宽度要放得下"XX招募 (NNNN金元宝)"整行文字）
+    button_width = 340
     button_height = 60
     button_spacing = 20
     start_y = screen_height * 0.4
@@ -269,7 +268,7 @@ def main():
     
     back_btn = Button("返回主菜单", 
                      (screen_width - button_width) // 2, 
-                     start_y + 4 * (button_height + button_spacing), 
+                     screen_height - button_height - 15, 
                      button_width, button_height, FONT_SMALL, 
                      normal_color=(100, 100, 150))
     

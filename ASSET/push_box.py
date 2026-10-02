@@ -2,7 +2,7 @@
 
 import os
 import pygame
-from ASSET.game_data import data, save, get_font
+from ASSET.game_data import data, save, get_font, open_window
 from ASSET import safe_exit
 
 class PushBoxGame:
@@ -278,22 +278,8 @@ def main():
         pygame.mixer.init()
         
         # 分辨率适配
-        if 'ANDROID_DATA' in os.environ:
-            info = pygame.display.Info()
-            SCREEN_WIDTH = info.current_w
-            SCREEN_HEIGHT = info.current_h
-        else:
-            # 使用设置的分辨率
-            resolution = data['settings']['graphics']['resolution']
-            try:
-                width, height = map(int, resolution.split('x'))
-                SCREEN_WIDTH = width
-                SCREEN_HEIGHT = height
-            except ValueError:
-                SCREEN_WIDTH = 800
-                SCREEN_HEIGHT = 600
-        
-        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        screen = open_window()
+        SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_size()
         pygame.display.set_caption("推箱子")
         clock = pygame.time.Clock()
         

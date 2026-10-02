@@ -5,7 +5,7 @@
 import pygame
 import os
 import time
-from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg
+from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, get_font, open_window
 from ASSET.game_main_menu import Button, COLORS
 
 # 尝试导入requests模块
@@ -74,15 +74,22 @@ def draw_resource_panel(surface, x, y, width, height):
     for i, (icon, value, color) in enumerate(resources):
         icon_x = x + i * spacing + spacing // 2
         icon_y = y + height // 2
-        
-        # 资源名称背景
-        pygame.draw.rect(surface, (40, 40, 70), (icon_x - 40, icon_y - 12, 80, 24), border_radius=12)
-        pygame.draw.rect(surface, color, (icon_x - 40, icon_y - 12, 80, 24), 2, border_radius=12)
-        
-        # 文字
-        text = FONT_SMALL.render(f"{icon}: {value}", True, COLORS["text_white"])
-        text_rect = text.get_rect(center=(icon_x, icon_y))
-        surface.blit(text, text_rect)
+
+        # 文字（药丸宽度按实际文字宽度算，装不下再降字号）
+        label = f"{icon}: {value}"
+        size = FONT_SMALL.get_height()
+        text = FONT_SMALL.render(label, True, COLORS["text_white"])
+        while text.get_width() > spacing - 12 and size > 12:
+            size -= 2
+            text = get_font(size).render(label, True, COLORS["text_white"])
+
+        # 资源名称背景（按文字实际宽度）
+        pill_w = text.get_width() + 20
+        pill_rect = pygame.Rect(icon_x - pill_w // 2, icon_y - 14, pill_w, 28)
+        pygame.draw.rect(surface, (40, 40, 70), pill_rect, border_radius=12)
+        pygame.draw.rect(surface, color, pill_rect, 2, border_radius=12)
+
+        surface.blit(text, text.get_rect(center=(icon_x, icon_y)))
 
 def show_message(screen, message, font):
     """显示消息（自动换行和滚动）"""
@@ -389,17 +396,8 @@ def main():
         pygame.init()
     
     # 获取屏幕大小
-    if 'ANDROID_DATA' in os.environ:
-        # Android设备使用全屏
-        info = pygame.display.Info()
-        screen_width = info.current_w
-        screen_height = info.current_h
-        screen = pygame.display.set_mode((screen_width, screen_height))
-    else:
-        # PC设备
-        screen_width = 800
-        screen_height = 600
-        screen = pygame.display.set_mode((screen_width, screen_height))
+    screen = open_window()
+    screen_width, screen_height = screen.get_size()
     
     pygame.display.set_caption("游戏内AI")
     clock = pygame.time.Clock()
@@ -454,7 +452,7 @@ def main():
     back_btn = Button(
         "返回主菜单",
         20,
-        screen_height - 60,
+        20,
         180,
         50,
         FONT_SMALL,
@@ -468,23 +466,23 @@ def main():
         # 标题
         draw_title(screen, "游戏内AI", screen_height * 0.1, screen_width)
         
-        # 资源面板
+        # 资源面板（下移到标题装饰线之下）
         panel_width = min(500, screen_width * 0.7)
-        draw_resource_panel(screen, (screen_width - panel_width) // 2, 
-                          screen_height * 0.18, panel_width, 50)
+        draw_resource_panel(screen, (screen_width - panel_width) // 2,
+                          screen_height * 0.2, panel_width, 50)
         
         # AI状态
         ai_enabled = data["ai"]["enabled"]
         status_text = f"AI状态: {'已开启' if ai_enabled else '已关闭'}"
         status_surf = FONT_MAIN.render(status_text, True, COLORS["accent_gold"] if ai_enabled else COLORS["accent_red"])
-        screen.blit(status_surf, (screen_width // 2 - status_surf.get_width() // 2, screen_height * 0.28))
+        screen.blit(status_surf, (screen_width // 2 - status_surf.get_width() // 2, screen_height * 0.3))
         
         # 配置按钮
         config_btn.check_hover(pygame.mouse.get_pos())
         config_btn.draw(screen)
         
         # 消息区域
-        message_area = pygame.Rect(50, screen_height * 0.35, screen_width - 100, screen_height * 0.4)
+        message_area = pygame.Rect(50, screen_height * 0.39, screen_width - 100, screen_height * 0.33)
         pygame.draw.rect(screen, (30, 30, 55, 200), message_area, border_radius=10)
         pygame.draw.rect(screen, COLORS["accent_gold"], message_area, 2, border_radius=10)
         
