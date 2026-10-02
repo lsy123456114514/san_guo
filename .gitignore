@@ -53,3 +53,8 @@ ASSET/users.json
 ASSET/login_state.json
 ASSET/saves/
 voice_data_ultimate/user_audio.json
+ASSET/save.json.*
+
+# Local build tools / misc
+upx.exe
+.guide_shown
