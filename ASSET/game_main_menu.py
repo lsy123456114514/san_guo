@@ -891,89 +891,146 @@ class DropdownMenu:
         self.is_hovered = False
         self.glow_alpha = 0
         self.scroll_index = 0  # 长列表滚动窗口起点
+        self._anim = 0.0       # 0..1 展开动画进度
+        self._tile_scale = {}  # 磁贴 code -> 当前缩放（悬停缓动）
 
     def max_visible(self, screen_height):
-        """屏幕内最多能显示的条目数"""
-        item_height = min(40, screen_height * 0.06)
-        fit = int((screen_height - self.rect.y - 20) // max(1, item_height))
-        return max(3, min(len(self.items), fit))
+        """宫格布局一次展示全部条目（保留接口供自动测试驱动使用）。"""
+        return len(self.items)
 
     def scroll(self, direction, screen_height):
-        """滚动长下拉列表（direction: -1 上 / 1 下）"""
-        limit = max(0, len(self.items) - self.max_visible(screen_height))
-        self.scroll_index = max(0, min(limit, self.scroll_index + direction))
+        """宫格布局无需滚动（保留接口）。"""
+        return
 
     def update_items(self, screen_width, screen_height):
-        """更新下拉菜单项的位置（长列表按窗口裁剪，防止溢出屏幕）"""
+        """把当前类别的条目排成右侧的大宫格磁贴，写回 self.dropdown_items。"""
         self.dropdown_items = []
-        if self.is_open:
-            item_height = min(40, screen_height * 0.06)
-            visible = self.max_visible(screen_height)
-            window = self.items[self.scroll_index:self.scroll_index + visible]
-            to_right = self.rect.x + self.rect.width * 2 < screen_width
-            base_x = self.rect.x + self.rect.width + 10 if to_right else self.rect.x - self.rect.width - 10
-            for i, (item_text, item_code) in enumerate(window):
-                item_y = self.rect.y + i * item_height
-                item_rect = pygame.Rect(base_x, item_y, self.rect.width, item_height)
-                self.dropdown_items.append((item_text, item_code, item_rect))
+        if not self.is_open or not self.items:
+            return
+        n = len(self.items)
+        left = self.rect.right + 40
+        right = screen_width - 50
+        top = max(screen_height * 0.24, 130)
+        bottom = screen_height - 56
+        avail_w = max(220, right - left)
+        avail_h = max(160, bottom - top)
+        gap = 18
+
+        best = None
+        for cols in range(2, 7):
+            rows = (n + cols - 1) // cols
+            tw = (avail_w - (cols - 1) * gap) / cols
+            th = (avail_h - (rows - 1) * gap) / rows
+            if tw < 70 or th < 54:
+                continue
+            th = min(th, tw / 1.15, 150)
+            score = tw * th
+            if best is None or score > best[0]:
+                best = (score, cols, rows, tw, th)
+        if best is None:
+            cols = 2
+            rows = (n + 1) // 2
+            tw = avail_w / 2 - gap
+            th = 90
+        else:
+            _, cols, rows, tw, th = best
+        tw, th = int(tw), int(th)
+        total_w = cols * tw + (cols - 1) * gap
+        total_h = rows * th + (rows - 1) * gap
+        start_x = int(left + max(0, (avail_w - total_w) / 2))
+        start_y = int(top + max(0, (avail_h - total_h) / 2))
+        for i, (item_text, item_code) in enumerate(self.items):
+            r, c = divmod(i, cols)
+            x = start_x + c * (tw + gap)
+            y = start_y + r * (th + gap)
+            self.dropdown_items.append(
+                (item_text, item_code, pygame.Rect(x, y, tw, th)))
 
     def draw(self, surface):
-        """绘制下拉菜单"""
+        """绘制：拉篮里的类别胶囊；展开时在右侧画宫格磁贴（带展开/悬停缓动）。"""
+        target = 1.0 if self.is_open else 0.0
+        self._anim += (target - self._anim) * 0.25
+        if abs(self._anim - target) < 0.01:
+            self._anim = target
+
         if self.is_hovered:
-            self.glow_alpha = min(80, self.glow_alpha + 4)
+            self.glow_alpha = min(90, self.glow_alpha + 5)
         else:
-            self.glow_alpha = max(0, self.glow_alpha - 4)
+            self.glow_alpha = max(0, self.glow_alpha - 5)
+
+        base = self.hover_color if self.is_hovered else self.normal_color
+        if self.is_open:
+            base = COLORS.get("accent_gold", (255, 215, 0))
 
         if self.glow_alpha > 0:
-            glow_surf = pygame.Surface((self.rect.width + 16, self.rect.height + 16), pygame.SRCALPHA)
-            pygame.draw.rect(glow_surf, (255, 215, 0, self.glow_alpha),
-                           (0, 0, self.rect.width + 16, self.rect.height + 16), border_radius=12)
-            surface.blit(glow_surf, (self.rect.x - 8, self.rect.y - 8))
+            glow = pygame.Surface((self.rect.width + 20, self.rect.height + 20),
+                                  pygame.SRCALPHA)
+            pygame.draw.rect(glow, (255, 215, 0, self.glow_alpha),
+                             glow.get_rect(), border_radius=16)
+            surface.blit(glow, (self.rect.x - 10, self.rect.y - 10))
 
-        if self.is_hovered:
-            color = self.hover_color
-        else:
-            color = self.normal_color
-
-        pygame.draw.rect(surface, color, self.rect, border_radius=8)
-        pygame.draw.rect(surface, (139, 69, 19), self.rect, 3, border_radius=8)
-        pygame.draw.rect(surface, (255, 215, 0), self.rect, 1, border_radius=8)
-
-        corner_size = 10
-        corners = [
-            (self.rect.x + 2, self.rect.y + 2),
-            (self.rect.x + self.rect.width - corner_size - 2, self.rect.y + 2),
-            (self.rect.x + 2, self.rect.y + self.rect.height - corner_size - 2),
-            (self.rect.x + self.rect.width - corner_size - 2, self.rect.y + self.rect.height - corner_size - 2)
-        ]
-        for cx, cy in corners:
-            pygame.draw.rect(surface, (255, 215, 0), (cx, cy, corner_size, corner_size), 1)
+        pygame.draw.rect(surface, (22, 28, 46), self.rect, border_radius=14)
+        pygame.draw.rect(surface, base, self.rect, 2, border_radius=14)
+        bar = pygame.Rect(self.rect.x + 5, self.rect.y + 9, 5, self.rect.height - 18)
+        pygame.draw.rect(surface, COLORS.get("accent_gold", (255, 215, 0)),
+                         bar, border_radius=3)
 
         if self.font:
-            text_surf = self.font.render(self.text, True, (255, 255, 255))
-            if text_surf:
-                text_rect = text_surf.get_rect(center=self.rect.center)
-                shadow_surf = self.font.render(self.text, True, (0, 0, 0))
-                surface.blit(shadow_surf, (text_rect.x + 2, text_rect.y + 2))
-                surface.blit(text_surf, text_rect)
+            col = (18, 18, 28) if self.is_open else (232, 238, 248)
+            ts = self.font.render(self.text, True, col)
+            if ts:
+                surface.blit(ts, ts.get_rect(midleft=(self.rect.x + 24,
+                                                      self.rect.centery)))
 
-        arrow_text = "v" if self.is_open else ">"
-        if self.font:
-            arrow_surf = self.font.render(arrow_text, True, (255, 215, 0))
-            if arrow_surf:
-                arrow_rect = arrow_surf.get_rect(right=self.rect.right - 10, centery=self.rect.centery)
-                surface.blit(arrow_surf, arrow_rect)
+        if not self.is_open or self._anim <= 0.02:
+            return
 
-        if self.is_open:
-            for item_text, item_code, item_rect in self.dropdown_items:
-                pygame.draw.rect(surface, (50, 35, 25), item_rect, border_radius=5)
-                pygame.draw.rect(surface, (139, 69, 19), item_rect, 2, border_radius=5)
-                pygame.draw.rect(surface, (255, 215, 0), item_rect, 1, border_radius=5)
-                if self.font:
-                    item_text_surf = self.font.render(item_text, True, (255, 255, 255))
-                    if item_text_surf:
-                        item_text_rect = item_text_surf.get_rect(center=item_rect.center)
-                        surface.blit(item_text_surf, item_text_rect)
+        sw, sh = surface.get_size()
+        content_left = self.rect.right + 40
+        if FONT_BIG:
+            title = FONT_BIG.render(self.text, True, (255, 215, 0))
+            if title:
+                surface.blit(title, (content_left, max(sh * 0.24, 130) - 60))
+
+        mouse_pos = pygame.mouse.get_pos()
+        for item_text, item_code, item_rect in self.dropdown_items:
+            hovered = item_rect.collidepoint(mouse_pos)
+            cur = self._tile_scale.get(item_code, 1.0)
+            cur += ((1.06 if hovered else 1.0) - cur) * 0.3
+            self._tile_scale[item_code] = cur
+            dr = item_rect.inflate(int(item_rect.width * (cur - 1)),
+                                   int(item_rect.height * (cur - 1)))
+
+            tile = pygame.Surface((dr.width, dr.height), pygame.SRCALPHA)
+            tr = tile.get_rect()
+            for yy in range(tr.height):
+                f = yy / max(1, tr.height)
+                pygame.draw.line(tile, (int(26 + 20 * f), int(36 + 24 * f),
+                                        int(62 + 32 * f), 255),
+                                 (0, yy), (tr.width, yy))
+            mask = pygame.Surface((tr.width, tr.height), pygame.SRCALPHA)
+            pygame.draw.rect(mask, (255, 255, 255, 255), tr, border_radius=16)
+            tile.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+            border_col = (255, 215, 0) if hovered else (86, 118, 178)
+            pygame.draw.rect(tile, border_col, tr, 2, border_radius=16)
+            if hovered:
+                hl = pygame.Surface((tr.width, tr.height), pygame.SRCALPHA)
+                pygame.draw.rect(hl, (255, 215, 0, 55), tr, border_radius=16)
+                tile.blit(hl, (0, 0))
+
+            f = FONT_MAIN or self.font
+            if f:
+                ts = f.render(item_text, True, (246, 249, 255))
+                if ts:
+                    tile.blit(ts, ts.get_rect(center=(tr.centerx, tr.centery - 6)))
+            if self.font:
+                hint = self.font.render("点击进入", True, (168, 188, 218))
+                if hint:
+                    tile.blit(hint, hint.get_rect(center=(tr.centerx,
+                                                          tr.centery + tr.height // 4)))
+
+            tile.set_alpha(int(255 * self._anim))
+            surface.blit(tile, (dr.x, dr.y))
 
     def check_hover(self, mouse_pos):
         """检查鼠标悬停"""
@@ -992,6 +1049,35 @@ class DropdownMenu:
                     return True, item_code
 
         return False, None
+
+
+def _draw_launcher_drawer(surface, screen_width, screen_height, menu_elements):
+    """现代启动器外壳：左侧拉篮的半透明面板与标题。"""
+    rects = []
+    for etype, el in menu_elements:
+        if etype == "dropdown":
+            rects.append(el.rect)
+        elif etype == "button":
+            rects.append(el[0].rect)
+    if not rects:
+        return
+    minx = min(r.left for r in rects)
+    maxx = max(r.right for r in rects)
+    miny = min(r.top for r in rects)
+    maxy = max(r.bottom for r in rects)
+    pad = 16
+    panel = pygame.Rect(minx - pad, miny - 52,
+                        (maxx - minx) + pad * 2, (maxy - miny) + 52 + pad)
+    panel.clamp_ip(pygame.Rect(0, 0, screen_width, screen_height))
+    surf = pygame.Surface((panel.width, panel.height), pygame.SRCALPHA)
+    pygame.draw.rect(surf, (10, 14, 26, 190), surf.get_rect(), border_radius=20)
+    pygame.draw.rect(surf, (70, 100, 160), surf.get_rect(), 2, border_radius=20)
+    surface.blit(surf, (panel.x, panel.y))
+    if FONT_MAIN:
+        title = FONT_MAIN.render("功能台", True, (255, 215, 0))
+        if title:
+            surface.blit(title, (panel.x + 24, panel.y + 12))
+
 
 clouds = []
 
@@ -1946,21 +2032,12 @@ def main():
             logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
     def build_menu():
-        """构建主菜单元素 — 统一几何参数，小分辨率下自动压缩防溢出。"""
-        bw = min(300, screen_width * 0.35)
-        bh = min(55, screen_height * 0.07)
-        bs = min(15, screen_height * 0.025)
-        n = 8  # 行数
-        # 8 行总高不能超出可用区域（顶部留 28%，底部留 20px）
-        available = screen_height * 0.80 - 20
-        total = n * bh + (n - 1) * bs
-        if total > available:
-            scale = available / total
-            bh = max(28, bh * scale)
-            bs = max(4, bs * scale)
-            total = n * bh + (n - 1) * bs
-        sy = min(screen_height * 0.28, screen_height - total - 20)
-        x = (screen_width - bw) // 2
+        """构建现代启动器：左侧拉篮（4 类别）+ 底部功能键；右侧宫格由 update_items 生成。"""
+        dw = min(230, screen_width * 0.24)
+        dx = 26
+        ch = min(58, screen_height * 0.075)
+        cs = min(14, screen_height * 0.02)
+        top = max(screen_height * 0.22, 110)
 
         elements = []
         drop_items = [
@@ -1971,7 +2048,7 @@ def main():
         ]
         for i, (label, items) in enumerate(drop_items):
             elements.append(("dropdown", DropdownMenu(
-                label, x, sy + i * (bh + bs), bw, bh, FONT_SMALL, items)))
+                label, dx, top + i * (ch + cs), dw, ch, FONT_SMALL, items)))
 
         plain_buttons = [
             ("保存进度", "4", (100, 100, 150)),
@@ -1979,8 +2056,12 @@ def main():
             ("游戏设置", "5", (100, 100, 150)),
             ("退出游戏", "9", COLORS["accent_red"]),
         ]
+        bh = min(46, screen_height * 0.06)
+        bs = min(10, screen_height * 0.016)
+        total = len(plain_buttons) * bh + (len(plain_buttons) - 1) * bs
+        by = screen_height - total - 30
         for j, (label, code, color) in enumerate(plain_buttons):
-            btn = Button(label, x, sy + (4 + j) * (bh + bs), bw, bh,
+            btn = Button(label, dx, by + j * (bh + bs), dw, bh,
                          FONT_SMALL, normal_color=color)
             elements.append(("button", (btn, code)))
         return elements
@@ -2415,6 +2496,8 @@ def main():
                 btn, code = element
                 btn.check_hover(mouse_pos)
 
+        _draw_launcher_drawer(screen, screen_width, screen_height, menu_elements)
+
         for element_type, element in menu_elements:
             if element_type == "button":
                 btn, code = element
@@ -2488,6 +2571,10 @@ def main():
                     _et, _el = menu_elements[focus_idx[0]]
                     if _et == "dropdown":
                         _el.is_open = not _el.is_open
+                        if _el.is_open:
+                            for _t2, _e2 in menu_elements:
+                                if _t2 == "dropdown" and _e2 is not _el:
+                                    _e2.is_open = False
                     else:
                         activate_code(_el[1])
 
@@ -2504,8 +2591,14 @@ def main():
                 for element_type, element in menu_elements:
                     if element_type == "dropdown":
                         clicked, code = element.check_click(mouse_pos)
-                        if clicked and code:
-                            activate_code(code)
+                        if clicked:
+                            if code:
+                                activate_code(code)
+                            elif element.is_open:
+                                # 同时只展开一个类别
+                                for _et, _el in menu_elements:
+                                    if _et == "dropdown" and _el is not element:
+                                        _el.is_open = False
                             break
                     elif element_type == "button":
                         btn, code = element
