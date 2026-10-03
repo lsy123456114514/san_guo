@@ -152,6 +152,23 @@ class LuckyWheel:
             if self.result_timer <= 0:
                 self.show_result = False
 
+    def _start_spin(self) -> None:
+        """开始一次抽奖：消耗一张券并给转盘一个初始角速度。
+
+        ``update()`` 负责让角速度逐帧衰减；速度降到阈值以下时调用
+        ``_calculate_prize`` / ``_award_prize`` 开奖。
+        """
+        if self.spinning or self.free_tickets <= 0:
+            return
+        self.free_tickets -= 1
+        data['lucky_tickets'] = self.free_tickets
+        self.won_prize = None
+        self.show_result = False
+        self.result_timer = 0
+        self.angle = self.angle % 360.0
+        self.spin_speed = random.uniform(16.0, 24.0)
+        self.spinning = True
+
     def draw(self) -> None:
         """Render the entire lucky wheel screen for the current frame.
 
@@ -357,6 +374,8 @@ class LuckyWheel:
         self.show_result = True
         self.result_timer = 180
         self.won_prize = prize
+        self.total_spins += 1
+        data['lucky_spins'] = self.total_spins
         save()
 
     # ----- main loop entry -----------------------------------------------
