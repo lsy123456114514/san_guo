@@ -416,10 +416,11 @@ def get_system_font_name() -> str | None:
     """
     # 1) 优先使用随游戏打包的字体文件（任何设备都能显示中文）
     try:
-        if hasattr(sys, '_MEIPASS'):
-            base_path = sys._MEIPASS
-        else:
-            base_path = os.path.dirname(os.path.abspath(__file__))
+        # 一律以本文件所在 ASSET 目录为基准：源码 (ASSET/)、onedir
+        # (_internal/ASSET/)、onefile (_MEIPASS/ASSET/) 三种布局都命中。
+        # 旧代码用 sys._MEIPASS 根目录找 fonts/，但 datas=('ASSET','ASSET')
+        # 打出来的是 _internal/ASSET/fonts/，冻结后必然落空退化到系统字体
+        base_path = os.path.dirname(os.path.abspath(__file__))
         font_dir = os.path.join(base_path, 'fonts')
         if os.path.isdir(font_dir):
             for f in sorted(os.listdir(font_dir)):
@@ -1818,7 +1819,10 @@ def _zh_sysfont(name: str | None = None, size: int | None = None, bold: bool = F
             font = None
     else:
         try:
-            font = _PYGAME_SYSFONT_ORIGINAL(name, size, bold, italic, wrap)
+            # 注意：pygame-ce 的 SysFont 第 5 参是 constructor（可调用对象），
+            # 不是 wrap——多传 bool 会 TypeError: 'bool' object is not callable，
+            # 被 except 吞掉后系统字体整条链静默失败
+            font = _PYGAME_SYSFONT_ORIGINAL(name, size, bold, italic)
             if font is not None and not _font_has_chinese(font, size):
                 font = None
         except Exception:
@@ -1836,7 +1840,7 @@ def _zh_sysfont(name: str | None = None, size: int | None = None, bold: bool = F
     if is_path:
         # 兜底也失败且名字是路径：SysFont(路径) 必告警，直接默认字体收场
         return _PYGAME_FONT_ORIGINAL(None, size)
-    return _PYGAME_SYSFONT_ORIGINAL(name, size, bold, italic, wrap)
+    return _PYGAME_SYSFONT_ORIGINAL(name, size, bold, italic)
 
 
 pygame.font.Font = _zh_font
