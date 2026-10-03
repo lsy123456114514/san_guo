@@ -1462,7 +1462,6 @@ MODULE_ROUTES = {
     "32": "background_story.py",    # 背景故事
     "3": "battle_system.py",        # 副本挑战
     "7": "hero_warehouse.py",       # 武将仓库
-    "8": "activity_system.py",      # 活动中心
     "12": "tech_tree.py",           # 科技树系统
     "21": "building_system.py",     # 建筑系统
     "22": "talent_system.py",       # 天赋系统
@@ -1483,7 +1482,6 @@ MODULE_ROUTES = {
     "27": "weather_system.py",      # 天气系统
     # ===== 以下为补齐的菜单项（此前菜单中可见但点击无响应）=====
     "33": "racing_mode.py",             # 竞速模式（新增玩法）
-    "34": "game_map_3d.py",             # 生存模式（3D地图默认生存模式）
     "35": "pet_system.py",              # 宠物进化
     "36": "quest_system.py",            # 每日任务
     "37": "limited_time_events.py",     # 限时活动
@@ -1995,14 +1993,12 @@ def main():
         ("3D地图", "28"),
         ("副本挑战", "3"),
         ("小游戏中心", "10"),
-        ("竞速模式", "33"),
-        ("生存模式", "34")
+        ("竞速模式", "33")
     ]
 
     game_system_items = [
         ("武将仓库", "7"),
         ("武将招募", "29"),
-        ("活动中心", "8"),
         ("科技树系统", "12"),
         ("建筑系统", "21"),
         ("天赋系统", "22"),

@@ -1818,10 +1818,12 @@ class GameMap3D:
         hit_pos = (x, y, z) 方块整数坐标
         face_normal = (nx, ny, nz) 碰撞面法线（用于放置时偏移）
         """
-        # 眼睛位置
-        ox = self.player_pos[0]
-        oy = self.player_pos[1] + 1.62
-        oz = self.player_pos[2]
+        # 眼睛位置：与渲染相机保持一致（渲染用 gluLookAt(camera, camera + look*10)）。
+        # 之前从 player_pos+1.62 出发，而第一人称相机是 player + look*0.5、眼高 1.5，
+        # 两者眼位差约 0.5 格前移 + 0.12 格高度，导致高亮框偏出准星。
+        ox = self.camera["x"]
+        oy = self.camera["y"]
+        oz = self.camera["z"]
         dx, dy, dz = self._get_look_vector()
 
         x, y, z = int(math.floor(ox)), int(math.floor(oy)), int(math.floor(oz))
@@ -2303,9 +2305,9 @@ class GameMap3D:
             pitch_rad = math.radians(self.camera["pitch"])
             
             look_distance = 10
-            look_x = self.player_pos[0] + math.cos(yaw_rad) * math.cos(pitch_rad) * look_distance
-            look_y = self.player_pos[1] + 1.5 + math.sin(pitch_rad) * look_distance
-            look_z = self.player_pos[2] + math.sin(yaw_rad) * math.cos(pitch_rad) * look_distance
+            look_x = self.camera["x"] + math.cos(yaw_rad) * math.cos(pitch_rad) * look_distance
+            look_y = self.camera["y"] + math.sin(pitch_rad) * look_distance
+            look_z = self.camera["z"] + math.sin(yaw_rad) * math.cos(pitch_rad) * look_distance
             
             gluLookAt(
                 self.camera["x"], self.camera["y"], self.camera["z"],
@@ -2420,9 +2422,9 @@ class GameMap3D:
             pitch_rad = math.radians(self.camera["pitch"])
             
             look_distance = 10
-            look_x = self.player_pos[0] + math.cos(yaw_rad) * math.cos(pitch_rad) * look_distance
-            look_y = self.player_pos[1] + 1.5 + math.sin(pitch_rad) * look_distance
-            look_z = self.player_pos[2] + math.sin(yaw_rad) * math.cos(pitch_rad) * look_distance
+            look_x = self.camera["x"] + math.cos(yaw_rad) * math.cos(pitch_rad) * look_distance
+            look_y = self.camera["y"] + math.sin(pitch_rad) * look_distance
+            look_z = self.camera["z"] + math.sin(yaw_rad) * math.cos(pitch_rad) * look_distance
             
             gluLookAt(
                 self.camera["x"], self.camera["y"], self.camera["z"],
