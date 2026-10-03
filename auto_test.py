@@ -119,8 +119,35 @@ def _git_rev() -> str:
         return "unknown"
 
 
+REPORT_KEEP = 20  # auto_test_reports/ 里最多留几份历史报告
+
+
+def _archive_report() -> None:
+    """开跑前把上一份完整报告归档到 auto_test_reports/report_时间戳.txt。
+
+    只归档带 summary 的完整报告（半截报告直接被覆盖，不占名额），
+    按时间戳排序保留最近 REPORT_KEEP 份，其余删除。
+    """
+    try:
+        if not os.path.exists(REPORT_PATH) or os.path.getsize(REPORT_PATH) == 0:
+            return
+        with open(REPORT_PATH, encoding="utf-8", errors="ignore") as f:
+            if "summary :" not in f.read():
+                return
+        arc_dir = os.path.join(ROOT, "auto_test_reports")
+        os.makedirs(arc_dir, exist_ok=True)
+        name = "report_" + time.strftime("%Y%m%d_%H%M%S") + ".txt"
+        shutil.copy2(REPORT_PATH, os.path.join(arc_dir, name))
+        old = sorted(p for p in os.listdir(arc_dir) if p.startswith("report_"))
+        for stale in old[:-REPORT_KEEP]:
+            os.remove(os.path.join(arc_dir, stale))
+    except Exception:
+        pass
+
+
 def _init_report() -> None:
-    """覆盖写入报告头。"""
+    """覆盖写入报告头；上一份完整报告先归档（留最近 20 份）。"""
+    _archive_report()
     stamp = time.strftime("%Y-%m-%d %H:%M:%S")
     args = " ".join(sys.argv[1:]) or "(无)"
     header = (

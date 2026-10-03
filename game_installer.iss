@@ -1,4 +1,4 @@
-; 游戏安装程序脚本
+﻿; 游戏安装程序脚本
 ; 使用Inno Setup制作
 
 [Setup]
@@ -8,7 +8,7 @@ AppPublisher=游戏开发团队
 AppPublisherURL=https://example.com
 AppSupportURL=https://example.com
 AppUpdatesURL=https://example.com
-DefaultDirName={pf}\三国游戏
+DefaultDirName={commonpf}\三国游戏
 DefaultGroupName=三国游戏
 OutputBaseFilename=三国游戏安装程序
 ; SetupIconFile=ASSET\icon.ico
@@ -17,25 +17,25 @@ SolidCompression=yes
 WizardStyle=modern
 
 [Files]
-Source: "dist\ThreeKingdomsGame.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "ASSET\*"; DestDir: "{app}\ASSET"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "data\*"; DestDir: "{app}\data"; Flags: ignoreversion recursesubdirs createallsubdirs
+; 游戏是 onedir 布局：exe + _internal\（ASSET/DLL 都在里面），整目录安装
+Source: "dist\三国名将传完整版\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; game_map_enhanced 从 _internal\ASSET\..\data\maps 读地图，包里没带，安装时补上
+Source: "data\*"; DestDir: "{app}\_internal\data"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\三国游戏"; Filename: "{app}\ThreeKingdomsGame.exe"
+Name: "{group}\三国游戏"; Filename: "{app}\三国名将传完整版.exe"
 Name: "{group}\卸载三国游戏"; Filename: "{uninstallexe}"
-Name: "{commondesktop}\三国游戏"; Filename: "{app}\ThreeKingdomsGame.exe"; Tasks: desktopicon
+Name: "{commondesktop}\三国游戏"; Filename: "{app}\三国名将传完整版.exe"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: checkedonce
 
 [Run]
-Filename: "{app}\ThreeKingdomsGame.exe"; Description: "{cm:LaunchProgram,三国游戏}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\三国名将传完整版.exe"; Description: "{cm:LaunchProgram,三国游戏}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
-Type: filesandordirs; Name: "{app}\ASSET"
-Type: filesandordirs; Name: "{app}\data"
-Type: files; Name: "{app}\ThreeKingdomsGame.exe"
+Type: filesandordirs; Name: "{app}\_internal"
+Type: files; Name: "{app}\三国名将传完整版.exe"
 
 [Code]
 var
@@ -80,7 +80,7 @@ begin
   if CurStep = ssInstall then
   begin
     // 检查文件是否存在
-    if not FileExists(ExpandConstant('{src}\dist\ThreeKingdomsGame.exe')) then
+    if not FileExists(ExpandConstant('{src}\dist\三国名将传完整版\三国名将传完整版.exe')) then
     begin
       ErrorCount := ErrorCount + 1;
       MsgBox('错误：找不到游戏主程序文件。', mbError, MB_OK);

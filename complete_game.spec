@@ -103,6 +103,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name='三国名将传完整版',
+    icon='ASSET/icon.ico',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

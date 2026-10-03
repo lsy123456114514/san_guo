@@ -83,6 +83,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name='自动测试',
+    icon='auto_test.ico',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
