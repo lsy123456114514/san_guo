@@ -10,7 +10,7 @@ import math
 # 添加父目录到Python路径，确保可以正确导入ASSET模块
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ASSET.game_data import data, save, get_system_font_name, draw_gradient_bg, open_window
+from ASSET.game_data import data, save, get_system_font_name, draw_gradient_bg, get_active_screen
 from ASSET.game_main_menu import Button, COLORS, draw_title, Particle
 from ASSET.pet_system import Pet
 
@@ -514,10 +514,9 @@ def main():
     if not pygame.get_init():
         pygame.init()
     
-    # 确保屏幕和时钟初始化
-    if screen is None:
-        # 如果屏幕未初始化，创建一个默认屏幕
-        screen = open_window()
+    # 确保屏幕和时钟初始化（不能用 `if screen is None`：上一轮遗留的
+    # surface 可能已被 safe_exit/重建窗口作废，必须取当前活动的 screen）
+    screen = get_active_screen()
     if clock is None:
         clock = pygame.time.Clock()
     

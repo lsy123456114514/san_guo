@@ -391,6 +391,26 @@ def open_window(flags: int = 0) -> pygame.Surface:
             center_window()
     return surf
 
+
+def get_active_screen() -> pygame.Surface:
+    """返回当前有效的显示 surface。
+
+    模块把窗口缓存在自己的全局 ``screen`` 里时不能只判 ``None``：子模块退出
+    （``safe_exit``）或再次 ``open_window`` 会重建显示、把旧 surface 作废，
+    此时旧的 ``screen`` 非空但已失效，调用 ``get_width()`` 会抛
+    ``pygame.error: Surface is not initialized``。这里重新绑定到显示子系统
+    当前暴露的 surface，没有可用窗口时再开一个。
+    """
+    try:
+        if pygame.get_init() and pygame.display.get_init():
+            surf = pygame.display.get_surface()
+            if surf is not None:
+                return surf
+    except Exception:
+        pass
+    return open_window()
+
+
 def _font_has_chinese(font: pygame.font.Font, size: int = 24) -> bool:
     """Check whether *font* can render Chinese characters.
 
