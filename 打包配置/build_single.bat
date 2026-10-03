@@ -1,5 +1,5 @@
-@echo off
-cd /d "%~dp0"
+﻿@echo off
+cd /d "%~dp0.."
 echo Cleaning old build...
 if exist build rmdir /s /q build
 if exist dist\SangoHeroes.exe del /q dist\SangoHeroes.exe

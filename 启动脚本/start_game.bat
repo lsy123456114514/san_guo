@@ -1,4 +1,5 @@
-@echo off
+﻿@echo off
+cd /d "%~dp0.."
 
 rem 三国游戏智能启动器
 rem 会自动选择最佳的运行方式

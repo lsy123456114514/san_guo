@@ -1,4 +1,5 @@
-@echo off
+﻿@echo off
+cd /d "%~dp0.."
 chcp 65001 >nul
 title 三国游戏 - 世界聊天服务器
 

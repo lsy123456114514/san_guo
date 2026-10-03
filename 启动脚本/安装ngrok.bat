@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 chcp 65001 >nul
 title 安装ngrok内网穿透工具
 
@@ -57,7 +57,7 @@ if not exist "%TEMP_DIR%\ngrok.exe" (
 echo ✅ 解压成功！
 
 :: 复制到游戏目录
-copy "%TEMP_DIR%\ngrok.exe" "%~dp0ngrok.exe"
+copy "%TEMP_DIR%\ngrok.exe" "%~dp0..\ngrok.exe"
 echo ✅ ngrok已复制到游戏目录！
 
 :: 清理临时文件

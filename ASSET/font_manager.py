@@ -10,12 +10,13 @@ from ASSET.game_data import logger
 # 字体文件路径
 FONT_DIR = os.path.join(os.path.dirname(__file__), 'fonts')
 
-# 内置字体文件名
+# 内置字体文件名（项目实际自带的是 ASSET/fonts/zihun.ttf，即字魂白鸽天行体；
+# 之前误写成不存在的 NotoSansSC-*.ttf，导致词典等界面静默回退成系统/默认字体）
 BUILTIN_FONTS = {
-    'primary': 'NotoSansSC-Regular.ttf',      # 主要中文字体
-    'bold': 'NotoSansSC-Bold.ttf',            # 粗体
-    'light': 'NotoSansSC-Light.ttf',          # 细体
-    'emoji': 'NotoColorEmoji.ttf'             # Emoji字体
+    'primary': 'zihun.ttf',                   # 主要中文字体（字魂白鸽天行体）
+    'bold': 'zihun.ttf',                      # 粗体（同款字体）
+    'light': 'zihun.ttf',                     # 细体（同款字体）
+    'emoji': 'NotoColorEmoji.ttf'             # Emoji字体（可选）
 }
 
 def ensure_fonts():

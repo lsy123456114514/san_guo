@@ -1,4 +1,5 @@
-@echo off
+﻿@echo off
+cd /d "%~dp0.."
 
 rem 直接运行Python游戏脚本
 rem 这样可以避免打包问题
