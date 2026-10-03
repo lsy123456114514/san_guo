@@ -17,7 +17,7 @@ hiddenimports = [
     'sys',
 ]
 
-# 添加ASSET下所有Python模块
+# 添加ASSET下所有Python模块（须带包前缀，裸名会报 Hidden import not found）
 asset_modules = [
     'achievement_system',
     'activity_system',
@@ -57,7 +57,7 @@ asset_modules = [
 ]
 
 for mod in asset_modules:
-    hiddenimports.append(mod)
+    hiddenimports.append('ASSET.' + mod)
 
 a = Analysis(
     ['main.py'],
