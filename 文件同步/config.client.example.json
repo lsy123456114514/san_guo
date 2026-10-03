@@ -1,0 +1,11 @@
+{
+  "client": {
+    "server_url": "http://windows-pc:8765",
+    "token": "请换成随机口令-两端必须一致",
+    "local_file": "/home/a/同步/notes.md",
+    "local_backup_dir": "/home/a/同步/旧版备份",
+    "log_file": "/home/a/同步/sync.log",
+    "timeout": 120,
+    "retries": 5
+  }
+}

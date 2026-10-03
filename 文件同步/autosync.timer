@@ -1,0 +1,10 @@
+[Unit]
+Description=定时从 Windows 拉取指定文件（开机 2 分钟后，每 15 分钟一次）
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

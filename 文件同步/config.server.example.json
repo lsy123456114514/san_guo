@@ -1,0 +1,9 @@
+{
+  "server": {
+    "bind": "0.0.0.0",
+    "port": 8765,
+    "token": "请换成随机口令-两端必须一致",
+    "share_file": "C:/Users/a/Desktop/同步/notes.md",
+    "backup_dir": "C:/Users/a/Desktop/同步/来自Linux的旧版备份"
+  }
+}

@@ -1,0 +1,8 @@
+[Unit]
+Description=从 Windows 拉取指定文件并回传旧版备份
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/file-sync/sync_client.py --config /etc/file-sync/config.client.json
