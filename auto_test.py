@@ -6,12 +6,19 @@
 
 用法（项目根目录）::
 
-    py auto_test.py                 # 全量测试
+    py auto_test.py                 # 图形界面（双击 exe 同效）：勾选模块、看日志
+    py auto_test.py --all           # 无界面全量测试（脚本 / agent 后台运行）
     py auto_test.py --list          # 只列出计划点击的菜单项，不执行
     py auto_test.py --only 23,17    # 只测指定菜单码
     py auto_test.py --rounds 3      # 连测 3 轮（查偶发问题）
     py auto_test.py --fast          # 压缩界面延时，跑得更快
     py auto_test.py --keep-save     # 不备份/恢复存档（保留测试改动）
+    py auto_test.py --gui           # 强制打开图形界面（忽略其余参数）
+
+分发规则::
+
+    无参数或带 --gui → tkinter 图形界面（子进程跑测试，GUI 转播报告文件）
+    带任何其它参数   → 无界面 CLI，直接前台运行（stdout 不可用时自动恢复）
 
 测试流程::
 
@@ -36,6 +43,7 @@ import time
 import shutil
 import logging
 import argparse
+import re
 import threading
 
 # ══════════════════════════════════════════════════════════════
@@ -681,6 +689,10 @@ def _parse_args(argv=None):
                     help="不备份/恢复存档（保留测试期间的改动）")
     ap.add_argument("--shots", action="store_true",
                     help="每个模块截图两张存入 test_shots/（排查界面布局问题）")
+    ap.add_argument("--all", action="store_true",
+                    help="全量测试全部模块（等价于不带 --only；供无界面后台运行）")
+    ap.add_argument("--gui", action="store_true",
+                    help="强制打开图形界面（会忽略其余参数）")
     return ap.parse_args(argv)
 
 
@@ -801,9 +813,396 @@ def run(opts) -> int:
     return exit_code
 
 
+# ══════════════════════════════════════════════════════════════
+# 无界面 CLI 模式：打包成 windowed exe 后 stdout/stderr 不可用，需先恢复
+# ══════════════════════════════════════════════════════════════
+
+def _ensure_stdio() -> None:
+    """确保 sys.stdout/sys.stderr 可写。
+
+    顺序：已有可用流 → 包装仍然存在的 fd 1/2（重定向到文件/管道时）→
+    AttachConsole 挂到父进程控制台 → 兜底指向 devnull（保证 print 不炸）。
+    """
+    if os.name != "nt":
+        return
+    import locale
+    enc = locale.getpreferredencoding(False) or "utf-8"
+    attached = False
+    for name, fd in (("stdout", 1), ("stderr", 2)):
+        cur = getattr(sys, name, None)
+        if cur is not None and hasattr(cur, "write"):
+            continue
+        stream = None
+        try:
+            os.fstat(fd)
+            stream = os.fdopen(fd, "w", encoding=enc, errors="replace",
+                               closefd=False)
+        except OSError:
+            pass
+        if stream is None:
+            try:
+                import ctypes
+                k32 = ctypes.windll.kernel32
+                if not attached:
+                    attached = bool(k32.AttachConsole(-1))  # -1 = 父进程控制台
+                if attached:
+                    stream = open("CONOUT$", "w", encoding=enc,
+                                  errors="replace")
+            except Exception:
+                stream = None
+        if stream is None:
+            try:
+                stream = open(os.devnull, "w", encoding="utf-8")
+            except OSError:
+                continue
+        try:
+            setattr(sys, name, stream)
+        except Exception:
+            pass
+
+
+# ══════════════════════════════════════════════════════════════
+# 图形界面模式（无参数 / --gui 启动；测试本体在子进程无界面运行）
+# ══════════════════════════════════════════════════════════════
+
+def _gui_menu_items() -> list:
+    """解析主菜单源码，返回可测模块清单 [(菜单码, 标签), ...]。
+
+    只做正则提取、不 import 游戏（避免把 pygame 拖进 GUI 进程）；
+    去重口径与驱动 bind() 一致：同一模块文件只保留首个菜单码。
+    """
+    path = os.path.join(ROOT, "ASSET", "game_main_menu.py")
+    try:
+        with open(path, encoding="utf-8") as f:
+            src = f.read()
+    except OSError:
+        return []
+    routes = {}
+    m = re.search(r"MODULE_ROUTES\s*=\s*\{(.*?)\}", src, re.S)
+    if m:
+        routes = dict(re.findall(r'"(\d+)"\s*:\s*"([^"]+)"', m.group(1)))
+    special = set()
+    m = re.search(r"SPECIAL_HANDLERS\s*=\s*\{(.*?)\}", src, re.S)
+    if m:
+        special = set(re.findall(r'"(\d+)"\s*:', m.group(1)))
+    items, seen = [], set()
+    for label, code in re.findall(r'\(\s*"([^"]+)"\s*,\s*"(\d+)"\s*\)', src):
+        mod = routes.get(code) or (f"special:{code}" if code in special else None)
+        if not mod or code in SKIP_CODES or mod in seen:
+            continue
+        seen.add(mod)
+        items.append((code, label))
+    return items
+
+
+def _run_gui() -> int:
+    """图形界面入口：勾选模块 → 子进程跑测试 → 实时转播报告文件。"""
+    _ensure_stdio()
+    try:
+        import tkinter as tk
+        from tkinter import ttk, messagebox
+    except Exception as e:
+        print(f"[auto_test] tkinter 不可用（{e}），回退无界面全量测试")
+        return run(_parse_args(["--all"]))
+
+    import subprocess
+
+    items = _gui_menu_items()
+    if not items:
+        print("[auto_test] 未能从主菜单源码解析出可测模块，回退无界面全量测试")
+        return run(_parse_args(["--all"]))
+
+    try:
+        root = tk.Tk()
+    except Exception as e:
+        print(f"[auto_test] 无法创建图形窗口（{e}），回退无界面全量测试")
+        return run(_parse_args(["--all"]))
+
+    root.title("三国群英传 · 自动测试")
+    sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
+    gw, gh = min(960, int(sw * 0.85)), min(700, int(sh * 0.85))
+    root.geometry(f"{gw}x{gh}+{(sw - gw) // 2}+{(sh - gh) // 2}")
+    root.minsize(700, 500)
+
+    EXIT_MSG = {0: "全部通过", 1: "有失败", 2: "挂起强杀",
+                3: "已有实例在运行"}
+    state = {"proc": None, "offset": 0, "pending": b"",
+             "killed": False, "t0": 0.0}
+
+    # ── 选项行 ─────────────────────────────────────────
+    opt_fr = ttk.Frame(root, padding=(10, 8))
+    opt_fr.pack(fill="x")
+    fast_v = tk.BooleanVar(value=True)
+    shots_v = tk.BooleanVar(value=False)
+    keep_v = tk.BooleanVar(value=False)
+    ttk.Checkbutton(opt_fr, text="快速模式 (--fast)",
+                    variable=fast_v).pack(side="left")
+    ttk.Checkbutton(opt_fr, text="截图 (--shots)",
+                    variable=shots_v).pack(side="left", padx=(10, 0))
+    ttk.Checkbutton(opt_fr, text="保留存档 (--keep-save)",
+                    variable=keep_v).pack(side="left", padx=(10, 0))
+    ttk.Label(opt_fr, text="轮数:").pack(side="left", padx=(16, 4))
+    rounds_v = tk.IntVar(value=1)
+    ttk.Spinbox(opt_fr, from_=1, to=20, width=4,
+                textvariable=rounds_v).pack(side="left")
+
+    # ── 模块勾选列表 ───────────────────────────────────
+    mod_fr = ttk.LabelFrame(
+        root, text=f"模块（{len(items)} 个，勾选要测的）", padding=8)
+    mod_fr.pack(fill="both", expand=False, padx=10, pady=(0, 6))
+    lst_bar = ttk.Frame(mod_fr)
+    lst_bar.pack(fill="x", pady=(0, 4))
+    lst_fr = ttk.Frame(mod_fr)
+    lst_fr.pack(fill="both", expand=True)
+    lst = tk.Listbox(lst_fr, selectmode="extended", exportselection=False,
+                     height=10, font=("Microsoft YaHei UI", 9))
+    lst_sb = ttk.Scrollbar(lst_fr, orient="vertical", command=lst.yview)
+    lst.configure(yscrollcommand=lst_sb.set)
+    lst_sb.pack(side="right", fill="y")
+    lst.pack(side="left", fill="both", expand=True)
+    for code, label in items:
+        lst.insert("end", f"{code:>3}  {label}")
+    lst.selection_set(0, "end")
+
+    def _select_all(on: bool) -> None:
+        lst.selection_clear(0, "end")
+        if on:
+            lst.selection_set(0, "end")
+
+    ttk.Button(lst_bar, text="全选", width=6,
+               command=lambda: _select_all(True)).pack(side="left")
+    ttk.Button(lst_bar, text="清空", width=6,
+               command=lambda: _select_all(False)).pack(side="left", padx=6)
+
+    # ── 日志 ──────────────────────────────────────────
+    log_fr = ttk.Frame(root, padding=(10, 0))
+    log_fr.pack(fill="both", expand=True)
+    log = tk.Text(log_fr, height=14, wrap="none", state="disabled",
+                  font=("Consolas", 9), background="#101418",
+                  foreground="#d7dde3")
+    log.tag_configure("fail", foreground="#ff6b6b")
+    log.tag_configure("ok", foreground="#7bd88f")
+    log.tag_configure("sys", foreground="#8ecae6")
+    log_sb = ttk.Scrollbar(log_fr, orient="vertical", command=log.yview)
+    log.configure(yscrollcommand=log_sb.set)
+    log_sb.pack(side="right", fill="y")
+    log.pack(side="left", fill="both", expand=True)
+
+    def _append(text: str, tag: str = None) -> None:
+        log.configure(state="normal")
+        for line in text.splitlines():
+            if not line:
+                continue
+            t = tag
+            if t is None:
+                if "[FAIL]" in line or "[CRASH]" in line or "[HANG]" in line:
+                    t = "fail"
+                elif "[OK]" in line or line.lstrip().startswith("summary"):
+                    t = "ok"
+                elif line.startswith("===="):
+                    t = "sys"
+            if t:
+                log.insert("end", line + "\n", t)
+            else:
+                log.insert("end", line + "\n")
+        log.see("end")
+        log.configure(state="disabled")
+
+    def _log_reset() -> None:
+        log.configure(state="normal")
+        log.delete("1.0", "end")
+        log.configure(state="disabled")
+
+    # ── 按钮 / 状态行 ─────────────────────────────────
+    act_fr = ttk.Frame(root, padding=(10, 6))
+    act_fr.pack(fill="x")
+    status_v = tk.StringVar(value=f"就绪 · {len(items)} 个可测模块")
+    status_lb = ttk.Label(act_fr, textvariable=status_v, foreground="#555")
+    status_lb.pack(side="right")
+
+    def _cleanup_after_kill() -> None:
+        """子进程被强杀时 finally 不会执行：GUI 负责恢复存档与状态标记。"""
+        bak = SAVE_PATH + ".autotest_bak"
+        try:
+            if os.path.exists(bak):
+                shutil.move(bak, SAVE_PATH)
+                _append("[GUI] 已恢复测试前存档\n", tag="sys")
+        except Exception:
+            pass
+        _clear_state()
+
+    def _open(path: str, what: str) -> None:
+        if not os.path.exists(path):
+            messagebox.showinfo(what, f"尚不存在：\n{path}")
+            return
+        try:
+            os.startfile(path)
+        except Exception as e:
+            messagebox.showerror(what, str(e))
+
+    def _start() -> None:
+        if state["proc"] is not None:
+            return
+        sel = [items[i][0] for i in lst.curselection()]
+        if not sel:
+            messagebox.showwarning("未选模块", "请至少勾选一个要测试的模块。")
+            return
+        args = []
+        if len(sel) == len(items):
+            args.append("--all")
+        else:
+            args += ["--only", ",".join(sel)]
+        if fast_v.get():
+            args.append("--fast")
+        if shots_v.get():
+            args.append("--shots")
+        if keep_v.get():
+            args.append("--keep-save")
+        r = int(rounds_v.get() or 1)
+        if r > 1:
+            args += ["--rounds", str(r)]
+        if getattr(sys, "frozen", False):
+            base = [sys.executable]
+        else:
+            base = [sys.executable, os.path.abspath(__file__)]
+        cmd = base + args
+        # 跳过报告文件里残留的旧内容；子进程覆盖写时 size 变小会自动归零
+        try:
+            state["offset"] = os.path.getsize(REPORT_PATH)
+        except OSError:
+            state["offset"] = 0
+        state["pending"] = b""
+        state["killed"] = False
+        state["t0"] = time.time()
+        _log_reset()
+        try:
+            proc = subprocess.Popen(
+                cmd, cwd=ROOT, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=0x08000000 if os.name == "nt" else 0)
+        except Exception as e:
+            messagebox.showerror("启动失败", str(e))
+            return
+        state["proc"] = proc
+        btn_start.configure(state="disabled")
+        btn_stop.configure(state="normal")
+        _append(f"[GUI] 启动: {' '.join(cmd)}\n", tag="sys")
+        root.after(300, _poll)
+
+    def _stop() -> None:
+        proc = state["proc"]
+        if proc is None or proc.poll() is not None:
+            return
+        state["killed"] = True
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+        status_v.set("正在停止…")
+
+    def _tail() -> None:
+        try:
+            size = os.path.getsize(REPORT_PATH)
+        except OSError:
+            size = 0
+        if size < state["offset"]:
+            # 子进程已覆盖写新报告，从头转播
+            state["offset"] = 0
+            state["pending"] = b""
+        if size > state["offset"]:
+            try:
+                with open(REPORT_PATH, "rb") as f:
+                    f.seek(state["offset"])
+                    data = f.read()
+            except OSError:
+                data = b""
+            state["offset"] = size
+            state["pending"] += data
+            cut = state["pending"].rfind(b"\n")  # 只取整行，防多字节被截断
+            if cut >= 0:
+                _append(state["pending"][:cut + 1].decode("utf-8",
+                                                          errors="replace"))
+                state["pending"] = state["pending"][cut + 1:]
+
+    def _poll() -> None:
+        proc = state["proc"]
+        if proc is None:
+            return
+        _tail()
+        rc = proc.poll()
+        if rc is None:
+            status_v.set(f"运行中… {int(time.time() - state['t0'])}s")
+            root.after(300, _poll)
+            return
+        if state["pending"]:
+            _append(state["pending"].decode("utf-8", errors="replace"))
+            state["pending"] = b""
+        state["proc"] = None
+        btn_start.configure(state="normal")
+        btn_stop.configure(state="disabled")
+        if state["killed"]:
+            state["killed"] = False
+            _cleanup_after_kill()
+            status_v.set("已手动停止")
+            _append("[GUI] 已停止测试\n", tag="sys")
+        else:
+            msg = EXIT_MSG.get(rc, f"退出码 {rc}")
+            status_v.set(f"完成 · 退出码 {rc} · {msg}")
+            _append(f"[GUI] 子进程退出，{msg}\n", tag="sys")
+        if os.environ.get("SAN_GUO_GUI_AUTOEXIT"):
+            root.after(800, root.destroy)
+
+    btn_start = ttk.Button(act_fr, text="▶ 开始测试", command=_start)
+    btn_start.pack(side="left", padx=(0, 6))
+    btn_stop = ttk.Button(act_fr, text="■ 停止", command=_stop,
+                          state="disabled")
+    btn_stop.pack(side="left", padx=(0, 6))
+    ttk.Button(act_fr, text="打开报告",
+               command=lambda: _open(REPORT_PATH, "报告")
+               ).pack(side="left", padx=(0, 6))
+    ttk.Button(act_fr, text="打开截图",
+               command=lambda: _open(SHOT_DIR, "截图目录")
+               ).pack(side="left")
+
+    def _on_close() -> None:
+        proc = state["proc"]
+        if proc is not None and proc.poll() is None:
+            if not messagebox.askyesno(
+                    "退出", "测试仍在运行，停止测试并退出？"):
+                return
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+            _cleanup_after_kill()
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", _on_close)
+    _append("[GUI] 勾选模块后点「开始测试」；测试在后台无界面运行，"
+            "日志来自报告文件。\n", tag="sys")
+
+    # 自动化冒烟钩子：SAN_GUO_GUI_AUTOSTART="码[,码]" 预选并自动开始，
+    # SAN_GUO_GUI_AUTOEXIT=1 测试结束后自动关窗（供无头环境验证 GUI 链路）
+    auto = os.environ.get("SAN_GUO_GUI_AUTOSTART")
+    if auto is not None:
+        if auto:
+            want = {c.strip() for c in auto.split(",") if c.strip()}
+            lst.selection_clear(0, "end")
+            for i, (code, _lab) in enumerate(items):
+                if code in want:
+                    lst.selection_set(i)
+        root.after(400, _start)
+    root.mainloop()
+    return 0
+
+
 def main() -> None:
-    """控制台入口。"""
-    sys.exit(run(_parse_args()))
+    """入口：无参数或带 --gui → 图形界面；带其它参数 → 无界面 CLI。"""
+    argv = sys.argv[1:]
+    if not argv or "--gui" in argv:
+        sys.exit(_run_gui())
+    _ensure_stdio()
+    sys.exit(run(_parse_args(argv)))
 
 
 if __name__ == "__main__":
