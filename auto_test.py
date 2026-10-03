@@ -55,7 +55,6 @@ REPORT_PATH = os.path.join(ROOT, "auto_test_report.txt")
 SAVE_PATH = os.path.join(ROOT, "ASSET", "save.json")
 STATE_PATH = os.path.join(ROOT, "auto_test_state.json")
 SHOT_DIR = os.path.join(ROOT, "test_shots")
-SHOT_TIMES = (0.5, 1.6, 4.0)   # --shots 时：进模块后第几秒截图（布局期 / 漫游期 / 慢启动模块）
 
 # 不自动点击的菜单码：存档对话框 / 设置 / 退出确认 / 读档（含弹窗或会结束进程）
 SKIP_CODES = {"4", "5", "9", "15"}
@@ -70,6 +69,11 @@ WATCHDOG_INTERVAL = 0.35 # ESC/QUIT 投递间隔
 SPRAY_DURATION = 1.6     # 进入模块后先“按键漫游”的时长（秒）
 SPRAY_INTERVAL = 0.20    # 漫游按键投递间隔
 HANG_TIMEOUT = 90.0      # 无任何进展多久判定为挂起
+
+# --shots 时：进模块后第几秒截图 —— 布局期 / 漫游期 / 退出前一瞬。
+# 第 3 张取在漫游结束前 0.15s（看门狗 t=2.6s 才开始投 ESC，此刻模块必然还活着）。
+# 旧值 4.0s 恒落在模块退出（≈3.0-3.5s）之后，从未拍到过（历史截图全是 a/b 两张）。
+SHOT_TIMES = (0.5, 1.6, WATCHDOG_START + SPRAY_DURATION - 0.15)
 
 STATE_OPEN = "open"
 STATE_FIND = "find"
@@ -239,19 +243,23 @@ def _take_shot_async(tag: str, delay: float) -> None:
         # 兜底：deadline+1.5s 还没翻过页（模块卡死/无帧）就直接读屏，聊胜于无
         time.sleep(delay + 1.5)
         for shot in list(_pending_shots):
-            if shot["path"] == path:
-                _pending_shots.remove(shot)
-                try:
-                    import pygame
-                    surf = pygame.display.get_surface()
-                    if surf is not None:
-                        if surf.get_flags() & pygame.OPENGL:
-                            # GL 模式非主线程读不到帧缓冲，白图没意义，留给翻页钩子
-                            continue
-                        os.makedirs(SHOT_DIR, exist_ok=True)
-                        pygame.image.save(surf, path)
-                except Exception:
-                    pass
+            if shot["path"] != path:
+                continue
+            try:
+                import pygame
+                surf = pygame.display.get_surface()
+                if surf is not None and surf.get_flags() & pygame.OPENGL:
+                    # GL 模式非主线程读不到帧缓冲：不移除，留给翻页钩子
+                    # （模块还活着，主线程下一帧翻页时会补拍；旧实现在此之前
+                    # 就 remove 了，导致 GL 慢加载模块的 a/b 截图永久丢失）
+                    continue
+                os.makedirs(SHOT_DIR, exist_ok=True)
+                if surf is not None:
+                    pygame.image.save(surf, path)
+                if shot in _pending_shots:
+                    _pending_shots.remove(shot)
+            except Exception:
+                pass
 
     threading.Thread(target=_worker, daemon=True).start()
 

@@ -1793,18 +1793,38 @@ def _zh_sysfont(name: str | None = None, size: int | None = None, bold: bool = F
     """Drop-in replacement for ``pygame.font.SysFont`` with Chinese font fallback.
 
     When *name* is ``None`` and *size* is given, uses ``get_font(size)``.
+    When *name* is a font **file path** (bundled fonts from
+    :func:`get_system_font_name`), loads it directly with ``Font(path)`` —
+    ``SysFont(路径)`` 会告警 "system font couldn't be found" 并回退默认字体再绕一圈。
     Otherwise tries the original ``SysFont`` and falls back to ``get_font``
     if the result cannot render Chinese.
     """
     global _zh_font_active
     if name is None and size is not None:
         return get_font(size)
-    try:
-        font = _PYGAME_SYSFONT_ORIGINAL(name, size, bold, italic, wrap)
-        if font is not None and _font_has_chinese(font, size):
-            return font
-    except Exception:
-        pass
+    is_path = isinstance(name, str) and os.path.isfile(name)
+    font = None
+    if is_path:
+        # 内置中文字体是文件路径：按路径直接加载（跳过 SysFont 的告警回退链）
+        try:
+            font = _PYGAME_FONT_ORIGINAL(name, int(size))
+            if bold:
+                font.set_bold(True)
+            if italic:
+                font.set_italic(True)
+            if not _font_has_chinese(font, int(size)):
+                font = None  # 路径存在但非中文字体 → 走下面 get_font 兜底
+        except Exception:
+            font = None
+    else:
+        try:
+            font = _PYGAME_SYSFONT_ORIGINAL(name, size, bold, italic, wrap)
+            if font is not None and not _font_has_chinese(font, size):
+                font = None
+        except Exception:
+            font = None
+    if font is not None:
+        return font
     if not _zh_font_active:
         _zh_font_active = True
         try:
@@ -1813,6 +1833,9 @@ def _zh_sysfont(name: str | None = None, size: int | None = None, bold: bool = F
             pass
         finally:
             _zh_font_active = False
+    if is_path:
+        # 兜底也失败且名字是路径：SysFont(路径) 必告警，直接默认字体收场
+        return _PYGAME_FONT_ORIGINAL(None, size)
     return _PYGAME_SYSFONT_ORIGINAL(name, size, bold, italic, wrap)
 
 
