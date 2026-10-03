@@ -900,6 +900,35 @@ def _ensure_stdio() -> None:
 # 图形界面模式（无参数 / --gui 启动；测试本体在子进程无界面运行）
 # ══════════════════════════════════════════════════════════════
 
+def _win_notify(title: str, msg: str) -> None:
+    """Windows 气泡通知（测试失败时提醒）。任何异常都静默吞掉。"""
+    if os.name != "nt":
+        return
+    import subprocess
+
+    def esc(s: str) -> str:
+        return s.replace("'", "''")
+
+    ps = (
+        "Add-Type -AssemblyName System.Windows.Forms;"
+        "Add-Type -AssemblyName System.Drawing;"
+        "$n=New-Object System.Windows.Forms.NotifyIcon;"
+        "$n.Icon=[System.Drawing.SystemIcons]::Information;"
+        "$n.Visible=$true;"
+        "$n.ShowBalloonTip(6000,'%s','%s','Info');"
+        "Start-Sleep 7;$n.Dispose()" % (esc(title), esc(msg))
+    )
+    try:
+        subprocess.Popen(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+             "-Command", ps],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=0x08000000 if os.name == "nt" else 0)
+    except Exception:
+        pass
+
+
 def _gui_menu_items() -> list:
     """解析主菜单源码，返回可测模块清单 [(菜单码, 标签), ...]。
 
@@ -964,6 +993,15 @@ def _run_gui() -> int:
     state = {"proc": None, "offset": 0, "pending": b"",
              "killed": False, "t0": 0.0}
 
+    CFG_PATH = os.path.join(ROOT, "auto_test_gui.json")
+    try:
+        with open(CFG_PATH, encoding="utf-8") as f:
+            cfg = json.load(f)
+        if not isinstance(cfg, dict):
+            cfg = {}
+    except Exception:
+        cfg = {}
+
     # ── 选项行 ─────────────────────────────────────────
     opt_fr = ttk.Frame(root, padding=(10, 8))
     opt_fr.pack(fill="x")
@@ -980,6 +1018,47 @@ def _run_gui() -> int:
     rounds_v = tk.IntVar(value=1)
     ttk.Spinbox(opt_fr, from_=1, to=20, width=4,
                 textvariable=rounds_v).pack(side="left")
+    if cfg:
+        fast_v.set(bool(cfg.get("fast", True)))
+        shots_v.set(bool(cfg.get("shots", False)))
+        keep_v.set(bool(cfg.get("keep", False)))
+        try:
+            rounds_v.set(max(1, min(20, int(cfg.get("rounds", 1)))))
+        except Exception:
+            pass
+
+    # ── 上次结果横幅 ─────────────────────────────────
+    res_fr = ttk.Frame(root, padding=(10, 4, 10, 0))
+    res_fr.pack(fill="x")
+    res_v = tk.StringVar(value="")
+    res_lb = tk.Label(res_fr, textvariable=res_v, anchor="w", justify="left",
+                      font=("Microsoft YaHei UI", 10, "bold"),
+                      background=root.cget("background"), foreground="#777")
+    res_lb.pack(fill="x")
+
+    def _set_result(text: str, ok=None) -> None:
+        res_v.set(text)
+        res_lb.configure(foreground="#1a7f37" if ok is True
+                         else "#c62828" if ok is False else "#777")
+
+    def _refresh_result() -> None:
+        """从报告尾部提取 summary 行，刷新顶部结果横幅（绿=全过/红=有失败）。"""
+        try:
+            with open(REPORT_PATH, "rb") as f:
+                f.seek(0, 2)
+                f.seek(max(0, f.tell() - 16384))
+                tail = f.read().decode("utf-8", errors="replace")
+        except OSError:
+            return
+        for line in reversed(tail.splitlines()):
+            if line.startswith("summary"):
+                m = re.search(r"FAIL\s*(\d+)", line)
+                _set_result("上次结果 · " + line.split(":", 1)[-1].strip(),
+                            (m.group(1) == "0") if m else None)
+                return
+        _set_result("上次结果 · 无（尚未运行）", None)
+
+    _refresh_result()
 
     # ── 模块勾选列表 ───────────────────────────────────
     mod_fr = ttk.LabelFrame(
@@ -998,6 +1077,12 @@ def _run_gui() -> int:
     for code, label in items:
         lst.insert("end", f"{code:>3}  {label}")
     lst.selection_set(0, "end")
+    if "codes" in cfg:
+        want = {str(c) for c in (cfg.get("codes") or [])}
+        lst.selection_clear(0, "end")
+        for i, (code, _lab) in enumerate(items):
+            if code in want:
+                lst.selection_set(i)
 
     def _select_all(on: bool) -> None:
         lst.selection_clear(0, "end")
@@ -1075,9 +1160,21 @@ def _run_gui() -> int:
         except Exception as e:
             messagebox.showerror(what, str(e))
 
+    def _save_cfg() -> None:
+        try:
+            data = {"fast": bool(fast_v.get()), "shots": bool(shots_v.get()),
+                    "keep": bool(keep_v.get()),
+                    "rounds": int(rounds_v.get() or 1),
+                    "codes": [items[i][0] for i in lst.curselection()]}
+            with open(CFG_PATH, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=1)
+        except Exception:
+            pass
+
     def _start() -> None:
         if state["proc"] is not None:
             return
+        _save_cfg()
         sel = [items[i][0] for i in lst.curselection()]
         if not sel:
             messagebox.showwarning("未选模块", "请至少勾选一个要测试的模块。")
@@ -1110,6 +1207,7 @@ def _run_gui() -> int:
         state["killed"] = False
         state["t0"] = time.time()
         _log_reset()
+        _set_result("本次结果 · 运行中…", None)
         try:
             proc = subprocess.Popen(
                 cmd, cwd=ROOT, stdout=subprocess.DEVNULL,
@@ -1184,6 +1282,10 @@ def _run_gui() -> int:
             msg = EXIT_MSG.get(rc, f"退出码 {rc}")
             status_v.set(f"完成 · 退出码 {rc} · {msg}")
             _append(f"[GUI] 子进程退出，{msg}\n", tag="sys")
+            _refresh_result()
+            if rc in (1, 2):
+                _win_notify("三国群英传 · 自动测试",
+                            f"测试结果：{msg}（退出码 {rc}），请查看报告")
         if os.environ.get("SAN_GUO_GUI_AUTOEXIT"):
             root.after(800, root.destroy)
 
@@ -1210,6 +1312,7 @@ def _run_gui() -> int:
             except Exception:
                 pass
             _cleanup_after_kill()
+        _save_cfg()
         root.destroy()
 
     root.protocol("WM_DELETE_WINDOW", _on_close)
@@ -1220,12 +1323,14 @@ def _run_gui() -> int:
     # SAN_GUO_GUI_AUTOEXIT=1 测试结束后自动关窗（供无头环境验证 GUI 链路）
     auto = os.environ.get("SAN_GUO_GUI_AUTOSTART")
     if auto is not None:
+        lst.selection_clear(0, "end")
         if auto:
             want = {c.strip() for c in auto.split(",") if c.strip()}
-            lst.selection_clear(0, "end")
             for i, (code, _lab) in enumerate(items):
                 if code in want:
                     lst.selection_set(i)
+        else:
+            lst.selection_set(0, "end")
         root.after(400, _start)
     root.mainloop()
     return 0
