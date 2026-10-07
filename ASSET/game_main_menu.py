@@ -60,6 +60,9 @@ clock = None
 # ── 简易音效（文件缺失或音效关闭时静默降级）──
 _SFX_CACHE = {}
 
+# ── 宫格磁贴徽标（伪系统 App 图标）渲染缓存，字体重建时由 init_fonts() 清空 ──
+_BADGE_CACHE = {}
+
 def play_sfx(name):
     """播放 sounds/ 下的音效，受设置里的音效开关控制。"""
     try:
@@ -567,6 +570,8 @@ def init_fonts():
     """统一走 game_data.get_font（内置中文字体），保证主菜单与登录页同一套字体。"""
     global FONT_MAIN, FONT_SMALL, FONT_BIG
 
+    _BADGE_CACHE.clear()  # 字体可能重建，徽标文字缓存作废
+
     if is_mobile():
         base_size, small_size, big_size = 48, 32, 72
     else:
@@ -748,10 +753,12 @@ class Button:
                  normal_color=None,
                  hover_color=None,
                  text_color=None,
-                 icon=None):
+                 icon=None,
+                 modern=False):
         self.text = text
         self.rect = pygame.Rect(x, y, width, height)
         self.font = font
+        self.modern = modern  # True=启动器圆角样式（拉篮底部功能键）
         self.normal_color = normal_color if normal_color is not None else COLORS["accent_blue"]
         self.hover_color = hover_color if hover_color is not None else COLORS["accent_blue_light"]
         self.text_color = text_color if text_color is not None else COLORS["text_white"]
@@ -786,6 +793,9 @@ class Button:
 
     def draw(self, surface):
         """绘制按钮"""
+        if self.modern:
+            self._draw_modern(surface)
+            return
         if self.is_hovered:
             self.target_scale = 1.05
             self.text_offset = -2
@@ -875,6 +885,148 @@ class Button:
             p.update()
             p.draw(surface)
         self.click_particles[:] = [p for p in self.click_particles if p.life > 0]
+
+    def _draw_modern(self, surface):
+        """启动器风格绘制：圆角渐变胶囊 + 悬停金边金光（拉篮底部功能键）。"""
+        if self.is_hovered:
+            self.target_scale = 1.03
+        elif self.is_clicked:
+            self.target_scale = 0.97
+        else:
+            self.target_scale = 1.0
+        self.scale += (self.target_scale - self.scale) * 0.15
+
+        if self.is_hovered:
+            self.glow_alpha = min(70, self.glow_alpha + 7)
+        else:
+            self.glow_alpha = max(0, self.glow_alpha - 7)
+
+        w0, h0 = self.rect.size
+        w = max(8, int(w0 * self.scale))
+        h = max(8, int(h0 * self.scale))
+        r = pygame.Rect(self.rect.x + (w0 - w) // 2, self.rect.y + (h0 - h) // 2, w, h)
+
+        if self.glow_alpha > 0:
+            glow = pygame.Surface((w + 16, h + 16), pygame.SRCALPHA)
+            pygame.draw.rect(glow, (255, 215, 0, self.glow_alpha),
+                             glow.get_rect(), border_radius=16)
+            surface.blit(glow, (r.x - 8, r.y - 8))
+
+        tile = pygame.Surface((w, h), pygame.SRCALPHA)
+        tr = tile.get_rect()
+        base = self.normal_color if not self.is_clicked else \
+            tuple(max(0, int(c * 0.7)) for c in self.normal_color)
+        tile.fill((base[0], base[1], base[2], 255))
+        shade = pygame.Surface((w, h), pygame.SRCALPHA)
+        for yy in range(h):
+            pygame.draw.line(shade, (0, 0, 0, int(70 * yy / max(1, h))),
+                             (0, yy), (w, yy))
+        tile.blit(shade, (0, 0))
+        mask = pygame.Surface((w, h), pygame.SRCALPHA)
+        pygame.draw.rect(mask, (255, 255, 255, 255), tr, border_radius=14)
+        tile.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+
+        border = (255, 215, 0) if (self.is_hovered or self.is_clicked) else (86, 118, 178)
+        pygame.draw.rect(tile, border, tr, 2, border_radius=14)
+        surface.blit(tile, (r.x, r.y))
+
+        if self.font:
+            ts = self.font.render(self.text, True, self.text_color)
+            if ts:
+                tx = r.centerx - ts.get_width() // 2
+                ty = r.centery - ts.get_height() // 2
+                shadow = self.font.render(self.text, True, (0, 0, 0))
+                surface.blit(shadow, (tx + 2, ty + 2))
+                surface.blit(ts, (tx, ty))
+
+
+# ── 磁贴徽标：code -> (短标签, 主色) —— 伪系统风格的 App 图标 ──
+TILE_BADGES = {
+    # 游戏核心
+    "1": ("PVP", (70, 130, 180)),
+    "2": ("地图", (64, 156, 130)),
+    "28": ("3D", (146, 110, 220)),
+    "3": ("副本", (214, 120, 70)),
+    "10": ("游乐", (60, 170, 190)),
+    "33": ("竞速", (220, 90, 120)),
+    # 游戏系统
+    "7": ("仓库", (90, 140, 200)),
+    "29": ("招募", (200, 150, 70)),
+    "12": ("科技", (80, 170, 140)),
+    "21": ("建造", (180, 140, 90)),
+    "22": ("天赋", (150, 110, 210)),
+    "17": ("装备", (210, 120, 90)),
+    "19": ("宠物", (230, 140, 170)),
+    "38": ("宠竞", (120, 160, 220)),
+    "30": ("时装", (214, 110, 150)),
+    "20": ("任务", (200, 170, 80)),
+    "23": ("钓鱼", (80, 180, 200)),
+    "40": ("镖运", (170, 130, 90)),
+    "24": ("炼金", (220, 160, 70)),
+    "25": ("AI", (110, 120, 220)),
+    "26": ("帮助", (120, 180, 120)),
+    # 社交与排行
+    "11": ("成就", (230, 180, 70)),
+    "13": ("排行", (150, 150, 230)),
+    "14": ("签到", (90, 190, 150)),
+    "16": ("社交", (90, 160, 220)),
+    "18": ("交易", (230, 150, 90)),
+    # 其他功能
+    "6": ("商城", (220, 110, 90)),
+    "27": ("天气", (110, 180, 220)),
+    "31": ("引导", (150, 200, 110)),
+    "32": ("故事", (180, 140, 210)),
+    "37": ("活动", (230, 130, 90)),
+    "39": ("转盘", (240, 190, 80)),
+    # 拉篮底部功能键
+    "4": ("保存", (110, 170, 130)),
+    "15": ("读档", (120, 160, 200)),
+    "5": ("设置", (150, 160, 180)),
+    "9": ("退出", (214, 84, 84)),
+}
+
+
+def render_tile_badge(label, color, size=44):
+    """渲染一个圆角方块徽标（伪系统 App 图标），结果带缓存。"""
+    key = (label, color, size)
+    surf = _BADGE_CACHE.get(key)
+    if surf is not None:
+        return surf
+
+    surf = pygame.Surface((size, size), pygame.SRCALPHA)
+    tr = surf.get_rect()
+    surf.fill((color[0], color[1], color[2], 255))
+
+    shade = pygame.Surface((size, size), pygame.SRCALPHA)
+    for yy in range(size):
+        a = int(70 * yy / max(1, size))
+        pygame.draw.line(shade, (0, 0, 0, a), (0, yy), (size, yy))
+    surf.blit(shade, (0, 0))
+
+    mask = pygame.Surface((size, size), pygame.SRCALPHA)
+    pygame.draw.rect(mask, (255, 255, 255, 255), tr, border_radius=max(4, size // 5))
+    surf.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+    pygame.draw.rect(surf, (255, 255, 255, 70), tr, 1, border_radius=max(4, size // 5))
+
+    f = FONT_MAIN or FONT_SMALL
+    if f:
+        ts = f.render(label, True, (255, 255, 255))
+        if ts:
+            max_w = size * 0.72
+            max_h = size * 0.50
+            sc = min(max_w / max(1, ts.get_width()),
+                     max_h / max(1, ts.get_height()), 1.0)
+            if sc < 1.0:
+                ts = pygame.transform.smoothscale(
+                    ts, (max(1, int(ts.get_width() * sc)),
+                         max(1, int(ts.get_height() * sc))))
+            surf.blit(ts, ts.get_rect(center=tr.center))
+
+    if len(_BADGE_CACHE) > 96:
+        _BADGE_CACHE.clear()
+    _BADGE_CACHE[key] = surf
+    return surf
+
 
 class DropdownMenu:
     """下拉菜单 — 可展开/收起的选项列表，支持左右自适应弹出方向。"""
@@ -976,7 +1128,7 @@ class DropdownMenu:
                          bar, border_radius=3)
 
         if self.font:
-            col = (18, 18, 28) if self.is_open else (232, 238, 248)
+            col = (255, 215, 0) if self.is_open else (232, 238, 248)
             ts = self.font.render(self.text, True, col)
             if ts:
                 surface.blit(ts, ts.get_rect(midleft=(self.rect.x + 24,
@@ -1015,19 +1167,36 @@ class DropdownMenu:
             pygame.draw.rect(tile, border_col, tr, 2, border_radius=16)
             if hovered:
                 hl = pygame.Surface((tr.width, tr.height), pygame.SRCALPHA)
-                pygame.draw.rect(hl, (255, 215, 0, 55), tr, border_radius=16)
+                pygame.draw.rect(hl, (255, 215, 0, 32), tr, border_radius=16)
                 tile.blit(hl, (0, 0))
 
-            f = FONT_MAIN or self.font
-            if f:
-                ts = f.render(item_text, True, (246, 249, 255))
+            badge = TILE_BADGES.get(item_code)
+            bsize = 40 if dr.height >= 100 else 32
+            bs = render_tile_badge(badge[0], badge[1], bsize) if badge else None
+            f = FONT_SMALL or FONT_MAIN or self.font
+            ts = f.render(item_text, True, (246, 249, 255)) if f else None
+
+            if dr.height >= 100:
+                gap = 10
+                h_sum = (bs.get_height() if bs else 0) + (ts.get_height() if ts else 0) + gap
+                top = tr.centery - h_sum // 2
+                if bs:
+                    tile.blit(bs, (tr.centerx - bs.get_width() // 2, top))
+                    top += bs.get_height() + gap
                 if ts:
-                    tile.blit(ts, ts.get_rect(center=(tr.centerx, tr.centery - 6)))
-            if self.font:
-                hint = self.font.render("点击进入", True, (168, 188, 218))
-                if hint:
-                    tile.blit(hint, hint.get_rect(center=(tr.centerx,
-                                                          tr.centery + tr.height // 4)))
+                    tile.blit(ts, ts.get_rect(center=(tr.centerx,
+                                                      top + ts.get_height() // 2)))
+            else:
+                x0 = tr.x + 14
+                if bs:
+                    tile.blit(bs, (x0, tr.centery - bs.get_height() // 2))
+                    x0 += bs.get_width() + 12
+                if ts:
+                    max_w = tr.right - 10 - x0
+                    if max_w > 0 and ts.get_width() > max_w:
+                        ts = pygame.transform.smoothscale(
+                            ts, (max(1, int(max_w)), max(1, ts.get_height())))
+                    tile.blit(ts, ts.get_rect(midleft=(x0, tr.centery)))
 
             tile.set_alpha(int(255 * self._anim))
             surface.blit(tile, (dr.x, dr.y))
@@ -1066,8 +1235,8 @@ def _draw_launcher_drawer(surface, screen_width, screen_height, menu_elements):
     miny = min(r.top for r in rects)
     maxy = max(r.bottom for r in rects)
     pad = 16
-    panel = pygame.Rect(minx - pad, miny - 52,
-                        (maxx - minx) + pad * 2, (maxy - miny) + 52 + pad)
+    panel = pygame.Rect(minx - pad, miny - 78,
+                        (maxx - minx) + pad * 2, (maxy - miny) + 78 + pad)
     panel.clamp_ip(pygame.Rect(0, 0, screen_width, screen_height))
     surf = pygame.Surface((panel.width, panel.height), pygame.SRCALPHA)
     pygame.draw.rect(surf, (10, 14, 26, 190), surf.get_rect(), border_radius=20)
@@ -1076,7 +1245,7 @@ def _draw_launcher_drawer(surface, screen_width, screen_height, menu_elements):
     if FONT_MAIN:
         title = FONT_MAIN.render("功能台", True, (255, 215, 0))
         if title:
-            surface.blit(title, (panel.x + 24, panel.y + 12))
+            surface.blit(title, (panel.x + 24, panel.y + 20))
 
 
 clouds = []
@@ -2051,10 +2220,10 @@ def main():
                 label, dx, top + i * (ch + cs), dw, ch, FONT_SMALL, items)))
 
         plain_buttons = [
-            ("保存进度", "4", (100, 100, 150)),
-            ("读取存档", "15", (100, 100, 150)),
-            ("游戏设置", "5", (100, 100, 150)),
-            ("退出游戏", "9", COLORS["accent_red"]),
+            ("保存进度", "4", (46, 66, 100)),
+            ("读取存档", "15", (46, 66, 100)),
+            ("游戏设置", "5", (46, 66, 100)),
+            ("退出游戏", "9", (132, 50, 50)),
         ]
         bh = min(46, screen_height * 0.06)
         bs = min(10, screen_height * 0.016)
@@ -2062,7 +2231,7 @@ def main():
         by = screen_height - total - 30
         for j, (label, code, color) in enumerate(plain_buttons):
             btn = Button(label, dx, by + j * (bh + bs), dw, bh,
-                         FONT_SMALL, normal_color=color)
+                         FONT_SMALL, normal_color=color, modern=True)
             elements.append(("button", (btn, code)))
         return elements
 
@@ -2518,17 +2687,7 @@ def main():
         for element_type, element in menu_elements:
             if element_type == "dropdown":
                 element.draw(screen)
-                if hasattr(element, 'is_open') and element.is_open:
-                    for opt_idx, (item_text, item_code, item_rect) in enumerate(element.dropdown_items):
-                        try:
-                            if item_rect.collidepoint(mouse_pos):
-                                highlight_surf = pygame.Surface((item_rect.width, item_rect.height), pygame.SRCALPHA)
-                                pygame.draw.rect(highlight_surf, (255, 215, 0, 60),
-                                               (0, 0, item_rect.width, item_rect.height),
-                                               border_radius=8)
-                                screen.blit(highlight_surf, (item_rect.x, item_rect.y))
-                        except Exception as _e:
-                            logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
+                # 磁贴悬停高亮已由 DropdownMenu.draw 内部处理（圆角一致），此处不再重复叠加
 
         pygame.display.flip()
 
