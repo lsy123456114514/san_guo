@@ -578,6 +578,7 @@ def init_fonts():
     _BADGE_CACHE.clear()  # 字体可能重建，徽标文字缓存作废
     _TILE_FACE_CACHE.clear()
     _TILE_BASE_CACHE.clear()
+    _OVERVIEW_CACHE.clear()
 
     if is_mobile():
         base_size, small_size, big_size = 48, 32, 72
@@ -761,11 +762,13 @@ class Button:
                  hover_color=None,
                  text_color=None,
                  icon=None,
-                 modern=False):
+                 modern=False,
+                 badge_code=None):
         self.text = text
         self.rect = pygame.Rect(x, y, width, height)
         self.font = font
         self.modern = modern  # True=启动器圆角样式（拉篮底部功能键）
+        self.badge_code = badge_code  # 有值时按 TILE_BADGES 显示顶部 App 徽标
         self.normal_color = normal_color if normal_color is not None else COLORS["accent_blue"]
         self.hover_color = hover_color if hover_color is not None else COLORS["accent_blue_light"]
         self.text_color = text_color if text_color is not None else COLORS["text_white"]
@@ -937,11 +940,31 @@ class Button:
         if self.font:
             ts = self.font.render(self.text, True, self.text_color)
             if ts:
-                tx = r.centerx - ts.get_width() // 2
-                ty = r.centery - ts.get_height() // 2
-                shadow = self.font.render(self.text, True, (0, 0, 0))
-                surface.blit(shadow, (tx + 2, ty + 2))
-                surface.blit(ts, (tx, ty))
+                if self.badge_code:
+                    # 高卡片：徽标在上、文字在下（伪系统 App 图标风格）
+                    badge = TILE_BADGES.get(self.badge_code)
+                    bs = None
+                    if badge:
+                        bsize = max(36, min(64, int(r.height * 0.34)))
+                        bs = render_tile_badge(badge[0], badge[1], bsize)
+                    if bs:
+                        by = r.y + int(r.height * 0.13)
+                        surface.blit(bs, (r.centerx - bs.get_width() // 2, by))
+                        ty = by + bs.get_height() + 8
+                    else:
+                        ty = r.centery - ts.get_height() // 2
+                    if ty + ts.get_height() > r.bottom - 6:
+                        ty = r.bottom - 6 - ts.get_height()
+                    tx = r.centerx - ts.get_width() // 2
+                    shadow = self.font.render(self.text, True, (0, 0, 0))
+                    surface.blit(shadow, (tx + 2, ty + 2))
+                    surface.blit(ts, (tx, ty))
+                else:
+                    tx = r.centerx - ts.get_width() // 2
+                    ty = r.centery - ts.get_height() // 2
+                    shadow = self.font.render(self.text, True, (0, 0, 0))
+                    surface.blit(shadow, (tx + 2, ty + 2))
+                    surface.blit(ts, (tx, ty))
 
 
 # ── 磁贴徽标：code -> (短标签, 主色) —— 伪系统风格的 App 图标 ──
@@ -1139,20 +1162,58 @@ def _draw_content_window(surface, x, y, w, h, alpha):
         panel.set_alpha(255)
 
 
-def _content_bounds(screen_width, screen_height):
-    """宫格内容窗口与磁贴区的统一布局边界。
+def _launcher_layout(screen_width, screen_height):
+    """三栏启动器几何：左(左上杂项 + 左下五大类) / 中(总览或磁贴) / 右(特色入口)。
 
-    必须避开顶部 header（标题 y=0.08sh、副标题 y=0.14sh、资源栏 0.18sh+50），
-    否则窗口会把它们盖住。update_items 与 draw 共用同一份计算，保证不打架。
+    所有绘制与命中测试共用这一份计算，避免各算各的导致重叠。
+    顶部 header（标题 0.08sh、副标题 0.14sh、资源栏 0.18sh+50）必须让开。
     """
-    right = screen_width - 50
-    bottom = screen_height - 56
-    header_bottom = screen_height * 0.18 + 50 + 14
+    sw, sh = float(screen_width), float(screen_height)
+    lx = 26.0
+    lw = min(240.0, sw * 0.19)
+    rw = min(284.0, sw * 0.22)
+    rx = sw - 26.0 - rw
+    mx = lx + lw + 20.0
+    mr = rx - 20.0
+    if mr - mx < 320.0:                      # 窄屏：两翼各退一点
+        need = (320.0 - (mr - mx)) / 2.0
+        lw = max(110.0, lw - need)
+        rw = max(130.0, rw - need)
+        rx = sw - 26.0 - rw
+        mx = lx + lw + 14.0
+        mr = rx - 14.0
+
+    header_bottom = sh * 0.18 + 50 + 14      # 资源栏下沿 + 间距
+    top = max(header_bottom, sh * 0.22, 120.0)
+    bottom = sh - 40.0
     title_h = FONT_BIG.get_height() if FONT_BIG else 70
-    win_y = max(header_bottom, 96)                    # 窗口上沿（资源栏之下）
-    tile_top = win_y + 14 + title_h + 14              # 大标题之下
-    tile_top = max(tile_top, screen_height * 0.24, 130)
-    return right, bottom, win_y, tile_top, title_h
+    grid_top = top + 14 + title_h + 14
+    if grid_top > bottom - 80:               # 极矮屏：压缩标题区
+        grid_top = top + 14 + 34
+
+    # 面板外扩取两侧内容间距的一半 → 相邻面板刚好贴齐、互不压盖
+    pad = int(min(mx - (lx + lw), rx - mr) / 2)
+    return {
+        'lx': int(lx), 'lw': int(lw),
+        'mx': int(mx), 'mr': int(mr),
+        'rx': int(rx), 'rw': int(rw),
+        'top': top, 'bottom': bottom,
+        'grid_top': grid_top, 'title_h': title_h,
+        'header_bottom': header_bottom,
+        'left_panel': pygame.Rect(int(lx) - 16, int(top) - 46,
+                                  int(lw) + 16 + pad,
+                                  int(bottom + 16) - (int(top) - 46)),
+        'mid_panel': pygame.Rect(int(mx) - pad, int(top),
+                                 (int(mr) + pad) - (int(mx) - pad),
+                                 int(bottom + 16) - int(top)),
+        'right_panel': pygame.Rect(int(rx) - pad, int(top),
+                                   (int(rx + rw) + 16) - (int(rx) - pad),
+                                   int(bottom + 16) - int(top)),
+    }
+
+
+# 最近打开的模块 code（0 = 最新），总览区展示用
+_RECENT_MODULES = []
 
 
 class DropdownMenu:
@@ -1199,10 +1260,13 @@ class DropdownMenu:
             self.focus_index = -1
             return
         n = len(self.items)
-        left = self.rect.right + 40
-        right, bottom, _win_y, top, _th = _content_bounds(screen_width, screen_height)
-        avail_w = max(220, right - left)
-        avail_h = max(160, bottom - top)
+        L = _launcher_layout(screen_width, screen_height)
+        left = L['mx']
+        right = L['mr']
+        top = L['grid_top']
+        bottom = L['bottom'] - 8
+        avail_w = max(200, right - left)
+        avail_h = max(140, bottom - top)
         gap = 18
 
         best = None
@@ -1278,15 +1342,14 @@ class DropdownMenu:
             return
 
         sw, sh = surface.get_size()
-        content_left = self.rect.right + 40
-        win_right, win_bottom, win_top, tile_top, title_h = _content_bounds(sw, sh)
+        L = _launcher_layout(sw, sh)
+        content_left = L['mx']
+        win = L['mid_panel']
         eased = min(1.0, self._anim)
         t_eased = min(1.0, eased * 1.6)
 
-        # 宫格内容窗口（伪系统面板），随展开淡入
-        _draw_content_window(surface, content_left - 16, win_top,
-                             (win_right - content_left) + 40,
-                             (win_bottom + 22) - win_top,
+        # 中栏内容窗口（伪系统面板），随展开淡入
+        _draw_content_window(surface, win.x, win.y, win.width, win.height,
                              int(255 * eased))
 
         if FONT_BIG:
@@ -1294,7 +1357,7 @@ class DropdownMenu:
             if title:
                 title.set_alpha(int(255 * t_eased))
                 surface.blit(title, (content_left + int((1 - t_eased) * 20),
-                                     win_top + 14))
+                                     L['top'] + 14))
 
         mouse_pos = pygame.mouse.get_pos()
         for idx, (item_text, item_code, item_rect) in enumerate(self.dropdown_items):
@@ -1341,23 +1404,10 @@ class DropdownMenu:
         return False, None
 
 
-def _draw_launcher_drawer(surface, screen_width, screen_height, menu_elements):
-    """现代启动器外壳：左侧拉篮的半透明面板与标题。"""
-    rects = []
-    for etype, el in menu_elements:
-        if etype == "dropdown":
-            rects.append(el.rect)
-        elif etype == "button":
-            rects.append(el[0].rect)
-    if not rects:
-        return
-    minx = min(r.left for r in rects)
-    maxx = max(r.right for r in rects)
-    miny = min(r.top for r in rects)
-    maxy = max(r.bottom for r in rects)
-    pad = 16
-    panel = pygame.Rect(minx - pad, miny - 78,
-                        (maxx - minx) + pad * 2, (maxy - miny) + 78 + pad)
+def _draw_launcher_drawer(surface, screen_width, screen_height, menu_elements=None):
+    """启动器左栏外壳：半透明面板 + 「功能台」标题（几何取自 _launcher_layout）。"""
+    L = _launcher_layout(screen_width, screen_height)
+    panel = L['left_panel'].copy()
     panel.clamp_ip(pygame.Rect(0, 0, screen_width, screen_height))
     key = (panel.width, panel.height)
     surf = _DRAWER_CACHE.get(key)
@@ -1372,7 +1422,226 @@ def _draw_launcher_drawer(surface, screen_width, screen_height, menu_elements):
     if FONT_MAIN:
         title = FONT_MAIN.render("功能台", True, (255, 215, 0))
         if title:
-            surface.blit(title, (panel.x + 24, panel.y + 20))
+            surface.blit(title, (panel.x + 24, panel.y + 16))
+
+
+# ── 中栏总览（未选中类别时的常用信息面板）──────────────────────────────
+_OVERVIEW_CACHE = {}
+
+
+def _build_overview(L, labels, recent, visited, total):
+    """构建总览面板（带缓存，内容/尺寸/字体变化时重建）。"""
+    panel = L['mid_panel']
+    w, h = int(panel.width), int(panel.height)
+    if w <= 0 or h <= 0:
+        return None
+    total = max(0, int(total))
+    vis = len(visited or ())
+    key = (w, h, total, tuple(sorted(str(v) for v in (visited or ())))[:64],
+           tuple(recent[:6]), len(labels))
+    surf = _OVERVIEW_CACHE.get(key)
+    if surf is not None:
+        return surf
+
+    surf = pygame.Surface((w, h), pygame.SRCALPHA)
+    pygame.draw.rect(surf, (12, 17, 30, 205), surf.get_rect(), border_radius=20)
+    pygame.draw.rect(surf, (78, 108, 168, 140), surf.get_rect(), 2, border_radius=20)
+    pygame.draw.rect(surf, (255, 215, 0, 46), pygame.Rect(16, 0, w - 32, 3))
+
+    ox = L['mx'] - panel.x          # 内容左内边距
+    oy = L['grid_top'] - panel.y    # 磁贴区起点（相对面板）
+
+    if FONT_BIG:
+        t = FONT_BIG.render("总览", True, (255, 215, 0))
+        if t:
+            surf.blit(t, (ox, 14))
+
+    gw = (L['mr'] - L['mx'])
+    gh = (L['bottom'] - 8) - L['grid_top']
+    pct = int(100 * vis / total) if total else 0
+    stats = [("模块总数", "%d" % total),
+             ("已探索", "%d/%d" % (vis, total)),
+             ("探索度", "%d%%" % pct),
+             ("最近打开", "%d" % len(recent or ()))]
+    n = len(stats)
+    sgap = 12
+    cw = (gw - (n - 1) * sgap) / n
+    chh = max(64.0, min(110.0, gh * 0.32))
+    for i, (lab, val) in enumerate(stats):
+        cx = ox + i * (cw + sgap)
+        card = _tile_base(cw, chh)
+        surf.blit(card, (cx, oy))
+        pygame.draw.rect(surf, (86, 118, 178),
+                         pygame.Rect(int(cx), int(oy), int(cw), int(chh)),
+                         1, border_radius=16)
+        if FONT_MAIN:
+            vs = FONT_MAIN.render(val, True, (255, 215, 0))
+            if vs:
+                surf.blit(vs, vs.get_rect(center=(int(cx + cw / 2),
+                                                  int(oy + chh * 0.40))))
+        if FONT_SMALL:
+            ls = FONT_SMALL.render(lab, True, (168, 188, 218))
+            if ls:
+                surf.blit(ls, ls.get_rect(center=(int(cx + cw / 2),
+                                                  int(oy + chh * 0.77))))
+
+    # 最近使用
+    ry = oy + chh + 18
+    if FONT_SMALL and ry + 30 < h - 12:
+        hd = FONT_SMALL.render("最近使用", True, (255, 215, 0))
+        if hd:
+            surf.blit(hd, (ox, ry))
+        ry += hd.get_height() + 8 if hd else 26
+        row_h = 34
+        shown = 0
+        for code in (recent or [])[:5]:
+            if ry + row_h > h - 10:
+                break
+            badge = TILE_BADGES.get(code)
+            if badge:
+                bs = render_tile_badge(badge[0], badge[1], 26)
+                surf.blit(bs, (ox, ry + (row_h - 26) // 2))
+            name = labels.get(code, code)
+            if FONT_SMALL:
+                ns = FONT_SMALL.render(name, True, (232, 238, 248))
+                if ns:
+                    surf.blit(ns, (ox + 34, ry + (row_h - ns.get_height()) // 2))
+            pygame.draw.line(surf, (56, 72, 108),
+                             (ox, ry + row_h - 1), (ox + gw, ry + row_h - 1), 1)
+            ry += row_h
+            shown += 1
+        if shown == 0 and FONT_SMALL:
+            em = FONT_SMALL.render("暂无记录 — 点击左侧类别开始", True, (140, 158, 186))
+            if em:
+                surf.blit(em, (ox, ry + 4))
+
+    if len(_OVERVIEW_CACHE) > 8:
+        _OVERVIEW_CACHE.clear()
+    _OVERVIEW_CACHE[key] = surf
+    return surf
+
+
+def _draw_overview(surface, L, alpha, labels, recent, visited, total):
+    """把总览面板按 alpha 叠到中栏（只在没有类别展开时调用）。"""
+    if alpha <= 0:
+        return
+    surf = _build_overview(L, labels, recent, visited, total)
+    if surf is None:
+        return
+    surf.set_alpha(alpha)
+    surface.blit(surf, (L['mid_panel'].x, L['mid_panel'].y))
+    surf.set_alpha(255)
+
+
+# ── 三栏启动器：五大类（32 个模块全收在其中，保证自动测试驱动可见）────
+FIVE_CATEGORIES = [
+    ("对战竞技", [
+        ("PVP联机", "1"),
+        ("3D地图", "28"),
+        ("副本挑战", "3"),
+        ("小游戏中心", "10"),
+        ("游戏地图", "2"),
+        ("竞速模式", "33"),
+    ]),
+    ("武将养成", [
+        ("武将仓库", "7"),
+        ("武将招募", "29"),
+        ("装备系统", "17"),
+        ("天赋系统", "22"),
+        ("科技树系统", "12"),
+        ("时装系统", "30"),
+        ("宠物系统", "19"),
+        ("宠物竞技场", "38"),
+    ]),
+    ("建设经营", [
+        ("建筑系统", "21"),
+        ("任务系统", "20"),
+        ("镖局押运", "40"),
+        ("炼金系统", "24"),
+        ("钓鱼系统", "23"),
+        ("游戏内AI", "25"),
+        ("疑难解答", "26"),
+    ]),
+    ("社交排行", [
+        ("成就系统", "11"),
+        ("排行榜系统", "13"),
+        ("每日签到", "14"),
+        ("社交系统", "16"),
+        ("交易系统", "18"),
+        ("游戏商城", "6"),
+    ]),
+    ("系统周边", [
+        ("天气系统", "27"),
+        ("新手引导", "31"),
+        ("背景故事", "32"),
+        ("限时活动", "37"),
+        ("幸运转盘", "39"),
+    ]),
+]
+
+# code -> 显示名（总览区「最近使用」列表用）
+MODULE_LABELS = dict((code, name)
+                     for _b, _items in FIVE_CATEGORIES for name, code in _items)
+MODULE_TOTAL = sum(len(_items) for _b, _items in FIVE_CATEGORIES)
+
+# 左上杂项（系统级操作）与右侧特色入口大卡
+MISC_BUTTONS = [
+    ("保存进度", "4", (46, 66, 100)),
+    ("读取存档", "15", (46, 66, 100)),
+    ("游戏设置", "5", (46, 66, 100)),
+    ("退出游戏", "9", (132, 50, 50)),
+]
+HERO_CARDS = [
+    ("3D地图", "28", (58, 96, 140)),
+    ("PVP联机", "1", (120, 76, 56)),
+    ("小游戏中心", "10", (54, 110, 120)),
+]
+
+
+def _build_launcher_elements(screen_width, screen_height):
+    """三栏启动器：左上杂项 + 左下五大类 + 右侧特色入口大卡。
+
+    中栏内容由 DropdownMenu.update_items（类别展开时）与
+    _draw_overview（未展开时）绘制，几何全部取自 _launcher_layout。
+    """
+    L = _launcher_layout(screen_width, screen_height)
+    elements = []
+
+    # ── 左上：杂项 ──
+    my = L['left_panel'].top + 16 + \
+        (FONT_MAIN.get_height() if FONT_MAIN else 44) + 12
+    avail = max(140, L['bottom'] - my)
+    bs = min(8, screen_height * 0.012)
+    bh = int(max(28, min(42,
+                         (avail - 16) * 0.40 / len(MISC_BUTTONS) - bs)))
+    for j, (label, code, color) in enumerate(MISC_BUTTONS):
+        btn = Button(label, L['lx'], int(my + j * (bh + bs)),
+                     L['lw'], bh, FONT_SMALL, normal_color=color, modern=True)
+        elements.append(("button", (btn, code)))
+
+    # ── 左下：五大类 ──
+    py = my + len(MISC_BUTTONS) * (bh + bs) + 16
+    ps = min(8, screen_height * 0.011)
+    ph = int(max(30, min(50, (max(80, L['bottom'] - py) - 4 * ps) / 5)))
+    for i, (label, items) in enumerate(FIVE_CATEGORIES):
+        elements.append(("dropdown", DropdownMenu(
+            label, L['lx'], int(py + i * (ph + ps)), L['lw'], ph,
+            FONT_SMALL, items)))
+
+    # ── 右侧：特色入口大卡（同 code 也在对应大类里，驱动按文件去重）──
+    avail_h = L['bottom'] - (L['top'] + 14)
+    gap_v = 10
+    usable = max(120, avail_h - 2 * gap_v)
+    hs = [max(80, int(usable * f)) for f in (0.42, 0.29, 0.29)]
+    while sum(hs) + 2 * gap_v > avail_h and min(hs) > 60:
+        hs = [h - 4 for h in hs]
+    hy = L['top'] + 14
+    for (label, code, color), h in zip(HERO_CARDS, hs):
+        btn = Button(label, L['rx'], int(hy), L['rw'], h, FONT_MAIN,
+                     normal_color=color, modern=True, badge_code=code)
+        elements.append(("button", (btn, code)))
+        hy += h + gap_v
+    return elements
 
 
 clouds = []
@@ -2328,83 +2597,8 @@ def main():
             logger.debug("[异常静默] %s: %s", type(_e).__name__, _e)
 
     def build_menu():
-        """构建现代启动器：左侧拉篮（4 类别）+ 底部功能键；右侧宫格由 update_items 生成。"""
-        dw = min(230, screen_width * 0.24)
-        dx = 26
-        ch = min(58, screen_height * 0.075)
-        cs = min(14, screen_height * 0.02)
-        top = max(screen_height * 0.22, 110)
-
-        elements = []
-        drop_items = [
-            ("游戏核心", game_core_items),
-            ("游戏系统", game_system_items),
-            ("社交与排行", social_items),
-            ("其他功能", other_items),
-        ]
-        for i, (label, items) in enumerate(drop_items):
-            elements.append(("dropdown", DropdownMenu(
-                label, dx, top + i * (ch + cs), dw, ch, FONT_SMALL, items)))
-
-        plain_buttons = [
-            ("保存进度", "4", (46, 66, 100)),
-            ("读取存档", "15", (46, 66, 100)),
-            ("游戏设置", "5", (46, 66, 100)),
-            ("退出游戏", "9", (132, 50, 50)),
-        ]
-        bh = min(46, screen_height * 0.06)
-        bs = min(10, screen_height * 0.016)
-        total = len(plain_buttons) * bh + (len(plain_buttons) - 1) * bs
-        by = screen_height - total - 30
-        for j, (label, code, color) in enumerate(plain_buttons):
-            btn = Button(label, dx, by + j * (bh + bs), dw, bh,
-                         FONT_SMALL, normal_color=color, modern=True)
-            elements.append(("button", (btn, code)))
-        return elements
-
-    game_core_items = [
-        ("PVP联机", "1"),
-        ("游戏地图", "2"),
-        ("3D地图", "28"),
-        ("副本挑战", "3"),
-        ("小游戏中心", "10"),
-        ("竞速模式", "33")
-    ]
-
-    game_system_items = [
-        ("武将仓库", "7"),
-        ("武将招募", "29"),
-        ("科技树系统", "12"),
-        ("建筑系统", "21"),
-        ("天赋系统", "22"),
-        ("装备系统", "17"),
-        ("宠物系统", "19"),
-        ("宠物竞技场", "38"),
-        ("时装系统", "30"),
-        ("任务系统", "20"),
-        ("钓鱼系统", "23"),
-        ("镖局押运", "40"),
-        ("炼金系统", "24"),
-        ("游戏内AI", "25"),
-        ("疑难解答", "26")
-    ]
-
-    social_items = [
-        ("成就系统", "11"),
-        ("排行榜系统", "13"),
-        ("每日签到", "14"),
-        ("社交系统", "16"),
-        ("交易系统", "18")
-    ]
-
-    other_items = [
-        ("游戏商城", "6"),
-        ("天气系统", "27"),
-        ("新手引导", "31"),
-        ("背景故事", "32"),
-        ("限时活动", "37"),
-        ("幸运转盘", "39")
-    ]
+        """构建三栏启动器元素（几何与类别定义在模块级 _build_launcher_elements）。"""
+        return _build_launcher_elements(screen_width, screen_height)
 
     menu_elements = build_menu()
     focus_idx = [0]  # 键盘焦点索引（list 包一层便于闭包内修改）
@@ -2468,6 +2662,19 @@ def main():
                 return
         except Exception as _e:
             logger.debug("[卧龙密令] 触发器异常: %s", _e)
+        # ── 总览：记录「最近打开 / 已探索」（4/15/5/9 是杂项键，不算模块）──
+        if code not in ("4", "15", "5", "9"):
+            try:
+                _RECENT_MODULES[:] = [c for c in _RECENT_MODULES if c != code]
+                _RECENT_MODULES.insert(0, code)
+                del _RECENT_MODULES[6:]
+                _vis = data.setdefault("visited_modules", [])
+                if code not in _vis:
+                    _vis.append(code)
+                    save()
+            except Exception as _e:
+                logger.debug("[总览] 记录失败: %s", _e)
+
         if code == "4":
             username = data.get("username", "player")
             save_name = input_save_name(screen, FONT_MAIN, FONT_SMALL)
@@ -2793,6 +3000,17 @@ def main():
                 btn.check_hover(mouse_pos)
 
         _draw_launcher_drawer(screen, screen_width, screen_height, menu_elements)
+
+        # ── 中栏总览：没有任何类别展开时，显示统计 + 最近使用 ──
+        _ov_anim = max((d._anim for t, d in menu_elements if t == "dropdown"),
+                       default=0.0)
+        _ov_open = any(t == "dropdown" and d.is_open for t, d in menu_elements)
+        if not _ov_open and _ov_anim <= 0.30:
+            _draw_overview(
+                screen, _launcher_layout(screen_width, screen_height),
+                int(255 * max(0.0, (0.30 - _ov_anim) / 0.30)),
+                MODULE_LABELS, _RECENT_MODULES,
+                data.get("visited_modules", []), MODULE_TOTAL)
 
         for element_type, element in menu_elements:
             if element_type == "button":
