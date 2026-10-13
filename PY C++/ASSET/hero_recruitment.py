@@ -158,10 +158,13 @@ def recruit_hero(recruit_type):
         "loyalty": 100
     }
     
-    # 添加到武将仓库
-    if "heroes" not in data:
-        data["heroes"] = []
-    data["heroes"].append(hero_data)
+    # 添加到武将仓库（data["heroes"] 为字典：key=武将名，value=武将数据，不能用 append）
+    if "heroes" not in data or not isinstance(data["heroes"], dict):
+        data["heroes"] = {}
+    # 重复招募同一武将时自动升星
+    hero_data["star"] = data["heroes"].get(hero["name"], {}).get("star", 0) + 1
+    hero_data["power"] = 100 * hero_data["star"]
+    data["heroes"][hero["name"]] = hero_data
     save()
     
     return hero_data, f"成功招募到{HERO_QUALITY[quality]['name']}武将：{hero['name']}"

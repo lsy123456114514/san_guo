@@ -23,7 +23,7 @@ except ImportError:
 try:
     import sys
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from renderer_bindings import renderer, TreeData, LocationData, NPCData, EnemyData, GeneralData, PetData, PlayerData, FollowerData, ProjectileData, PickupData, TechBlockData, ParticleData
+    from renderer_bindings import renderer, TreeData, LocationData, NPCData, EnemyData, GeneralData, PetData, PlayerData, FollowerData, ProjectileData, PickupData, TechBlockData, ParticleData, BlockData
     cpp_renderer_available = renderer.is_available
 except Exception as e:
     logger.info(f"无法加载C++渲染器: {e}")
@@ -1735,9 +1735,14 @@ class GameMap3D:
             self.draw_3d_scene_python()
     
     def draw_3d_scene_cpp(self):
-        """使用C++渲染器绘制3D场景"""
+        """使用C++渲染器绘制3D场景（地形/树/建筑/方块/粒子全走C++，老处理器也能流畅运行）"""
         try:
+            # 天空颜色（与 Python 版一致）
+            sky_color = self.get_sky_color()
+            glClearColor(sky_color[0], sky_color[1], sky_color[2], 1.0)
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+            
+            glDisable(GL_LIGHTING)
             
             glMatrixMode(GL_PROJECTION)
             glLoadIdentity()
@@ -1759,10 +1764,26 @@ class GameMap3D:
                 0, 1, 0
             )
             
+            # 地形：C++ 批量渲染（噪声高度 + 4色渐变草地 + 泥土底，与 Python 版效果一致）
             renderer.render_terrain(
                 self.player_pos[0], self.player_pos[1], self.player_pos[2],
-                50, 4, -1
+                100, 4, -1
             )
+            
+            # 玩家放置的方块（C++ 六面体渲染）
+            if hasattr(self, 'placed_blocks') and self.placed_blocks:
+                block_data = []
+                for block in self.placed_blocks:
+                    bx = block.get("x", 0)
+                    by = block.get("y", 0)
+                    bz = block.get("z", 0)
+                    btype = block.get("type", "泥土")
+                    color = self.block_colors.get(btype, (0.5, 0.5, 0.5))
+                    r, g, b = color[0], color[1], color[2]
+                    a = color[3] if len(color) > 3 else 1.0
+                    block_data.append(BlockData(x=bx, y=by, z=bz, r=r, g=g, b=b, a=a, type=0))
+                if block_data:
+                    renderer.render_placed_blocks(block_data)
             
             if hasattr(self, 'trees'):
                 tree_data = []
@@ -1791,10 +1812,44 @@ class GameMap3D:
                 ))
             renderer.render_followers(follower_data)
             
+            # 生物实体（动物/怪物/Herobrine，数量少，Python 兜底）
+            self.draw_entities()
+            
+            # 特效/尘埃粒子（C++ 批量）
+            self.render_particles_cpp()
+            
+            # 海浪、太阳月亮、天气（低开销效果）
+            self.draw_waves()
+            self.draw_sun_moon()
+            self.draw_weather()
+            
+            glEnable(GL_LIGHTING)
             pygame.display.flip()
         except Exception as e:
             logger.info(f"C++渲染错误: {e}")
             self.draw_3d_scene_python()
+    
+    def render_particles_cpp(self):
+        """把 Python 粒子数据批量转给 C++ 渲染器（特效/尘埃）"""
+        try:
+            data = []
+            for p in self.effect_particles:
+                alpha = p["life"] / max(p["max_life"], 0.001)
+                data.append(ParticleData(
+                    x=p["x"], y=p["y"], z=p["z"],
+                    r=p["color"][0], g=p["color"][1], b=p["color"][2],
+                    alpha=alpha, size=3.0
+                ))
+            for p in self.dust_particles:
+                alpha = (p["life"] / max(p["max_life"], 0.001)) * 0.5
+                data.append(ParticleData(
+                    x=p["x"], y=p["y"], z=p["z"],
+                    r=0.8, g=0.7, b=0.6, alpha=alpha, size=2.0
+                ))
+            if data:
+                renderer.render_particles(data)
+        except Exception as e:
+            logger.info(f"C++粒子渲染错误: {e}")
     
     def draw_3d_scene_python(self):
         """使用Python绘制3D场景"""

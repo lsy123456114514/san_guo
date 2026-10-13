@@ -85,6 +85,14 @@ RENDERER_API void render_terrain(float player_x, float player_y, float player_z,
     set_error(nullptr);
     glDisable(GL_LIGHTING);
     
+    // 4 色渐变草地（与 Python 版 draw_terrain 完全一致）
+    static const float grass_colors[4][3] = {
+        {0.25f, 0.55f, 0.25f},
+        {0.2f,  0.5f,  0.2f},
+        {0.3f,  0.6f,  0.3f},
+        {0.22f, 0.52f, 0.22f}
+    };
+    
     int range = (int)(visible_range / block_size);
     for (int dx = -range; dx <= range; dx++) {
         for (int dz = -range; dz <= range; dz++) {
@@ -94,32 +102,62 @@ RENDERER_API void render_terrain(float player_x, float player_y, float player_z,
             float dist = sqrt((float)(dx*dx + dz*dz)) * block_size;
             if (dist > visible_range) continue;
             
-            float h = height;
-            glColor3f(0.3f, 0.6f, 0.3f);
+            // 噪声高度：与 Python 版 math.sin(x*0.01)*math.cos(z*0.01)*2 一致
+            float noise = sinf(x * 0.01f) * cosf(z * 0.01f) * 2.0f;
+            float block_y = height + noise;
+            
+            // 渐变草地顶面
+            int ci = ((int)floorf(x / block_size) + (int)floorf(z / block_size)) % 4;
+            if (ci < 0) ci += 4;
+            glColor3f(grass_colors[ci][0], grass_colors[ci][1], grass_colors[ci][2]);
             glBegin(GL_QUADS);
-            glVertex3f(x, 0, z);
-            glVertex3f(x + block_size, 0, z);
-            glVertex3f(x + block_size, 0, z + block_size);
-            glVertex3f(x, 0, z + block_size);
+            glVertex3f(x, block_y, z);
+            glVertex3f(x + block_size, block_y, z);
+            glVertex3f(x + block_size, block_y, z + block_size);
+            glVertex3f(x, block_y, z + block_size);
             glEnd();
             
-            glColor3f(0.5f, 0.7f, 0.5f);
+            // 泥土底部
+            glColor3f(0.4f, 0.25f, 0.15f);
             glBegin(GL_QUADS);
-            glVertex3f(x, h, z);
-            glVertex3f(x + block_size, h, z);
-            glVertex3f(x + block_size, h, z + block_size);
-            glVertex3f(x, h, z + block_size);
-            glEnd();
-            
-            glColor3f(0.4f, 0.55f, 0.4f);
-            glBegin(GL_QUADS);
-            glVertex3f(x, 0, z);
-            glVertex3f(x + block_size, 0, z);
-            glVertex3f(x + block_size, h, z);
-            glVertex3f(x, h, z);
+            glVertex3f(x, block_y - block_size / 2.0f, z);
+            glVertex3f(x + block_size, block_y - block_size / 2.0f, z);
+            glVertex3f(x + block_size, block_y - block_size / 2.0f, z + block_size);
+            glVertex3f(x, block_y - block_size / 2.0f, z + block_size);
             glEnd();
         }
     }
+    glEnable(GL_LIGHTING);
+}
+
+RENDERER_API void render_placed_blocks(BlockData* blocks, int count) {
+    set_error(nullptr);
+    glDisable(GL_LIGHTING);
+    glEnable(GL_DEPTH_TEST);
+    for (int i = 0; i < count; i++) {
+        BlockData& b = blocks[i];
+        float x0 = b.x, y0 = b.y, z0 = b.z;
+        float x1 = b.x + 1.0f, y1 = b.y + 1.0f, z1 = b.z + 1.0f;
+        
+        if (b.a < 1.0f) {
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        } else {
+            glDisable(GL_BLEND);
+        }
+        glColor4f(b.r, b.g, b.b, b.a);
+        
+        // 六面体（顶/底/前/后/左/右）
+        glBegin(GL_QUADS);
+        glVertex3f(x0, y1, z0); glVertex3f(x1, y1, z0); glVertex3f(x1, y1, z1); glVertex3f(x0, y1, z1);
+        glVertex3f(x0, y0, z0); glVertex3f(x0, y0, z1); glVertex3f(x1, y0, z1); glVertex3f(x1, y0, z0);
+        glVertex3f(x0, y0, z1); glVertex3f(x0, y1, z1); glVertex3f(x1, y1, z1); glVertex3f(x1, y0, z1);
+        glVertex3f(x0, y0, z0); glVertex3f(x1, y0, z0); glVertex3f(x1, y1, z0); glVertex3f(x0, y1, z0);
+        glVertex3f(x0, y0, z0); glVertex3f(x0, y1, z0); glVertex3f(x0, y1, z1); glVertex3f(x0, y0, z1);
+        glVertex3f(x1, y0, z0); glVertex3f(x1, y0, z1); glVertex3f(x1, y1, z1); glVertex3f(x1, y1, z0);
+        glEnd();
+    }
+    glDisable(GL_BLEND);
     glEnable(GL_LIGHTING);
 }
 

@@ -100,6 +100,12 @@ typedef struct {
 
 typedef struct {
     float x, y, z;
+    float r, g, b, a;
+    int type;
+} BlockData;
+
+typedef struct {
+    float x, y, z;
     float r, g, b, alpha;
     float size;
 } ParticleData;
@@ -124,6 +130,7 @@ RENDERER_API void render_pets(PetData* pets, int count);
 RENDERER_API void render_player(PlayerData* player);
 RENDERER_API void render_followers(FollowerData* followers, int count);
 RENDERER_API void render_particles(ParticleData* particles, int count);
+RENDERER_API void render_placed_blocks(BlockData* blocks, int count);
 
 #ifdef __cplusplus
 }

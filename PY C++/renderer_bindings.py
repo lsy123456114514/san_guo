@@ -138,6 +138,18 @@ class FollowerData(ctypes.Structure):
         ('type', ctypes.c_int)
     ]
 
+class BlockData(ctypes.Structure):
+    _fields_ = [
+        ('x', ctypes.c_float),
+        ('y', ctypes.c_float),
+        ('z', ctypes.c_float),
+        ('r', ctypes.c_float),
+        ('g', ctypes.c_float),
+        ('b', ctypes.c_float),
+        ('a', ctypes.c_float),
+        ('type', ctypes.c_int)
+    ]
+
 class ParticleData(ctypes.Structure):
     _fields_ = [
         ('x', ctypes.c_float),
@@ -260,6 +272,11 @@ class Renderer:
             ctypes.POINTER(ParticleData), ctypes.c_int
         ]
         self.dll.render_particles.restype = None
+        
+        self.dll.render_placed_blocks.argtypes = [
+            ctypes.POINTER(BlockData), ctypes.c_int
+        ]
+        self.dll.render_placed_blocks.restype = None
     
     def get_last_error(self):
         if self.dll:
@@ -337,5 +354,10 @@ class Renderer:
         if self.dll and particles:
             arr = (ParticleData * len(particles))(*particles)
             self.dll.render_particles(arr, len(particles))
+    
+    def render_placed_blocks(self, blocks):
+        if self.dll and blocks:
+            arr = (BlockData * len(blocks))(*blocks)
+            self.dll.render_placed_blocks(arr, len(blocks))
 
 renderer = Renderer()
