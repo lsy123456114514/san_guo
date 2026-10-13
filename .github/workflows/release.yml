@@ -1,0 +1,214 @@
+name: Build & Release 6-platform packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build ${{ matrix.id }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: win64
+            os: windows-latest
+            pyarch: x64
+            msystem: MINGW64
+            mingw_pkg: mingw-w64-x86_64-gcc
+            fmt: zip
+          - id: win32
+            os: windows-latest
+            pyarch: x86
+            msystem: MINGW32
+            mingw_pkg: mingw-w64-i686-gcc
+            fmt: zip
+          - id: linux-x86_64
+            os: ubuntu-24.04
+            pyarch: x64
+            fmt: gztar
+          - id: linux-aarch64
+            os: ubuntu-24.04-arm
+            pyarch: arm64
+            fmt: gztar
+          - id: macos-intel
+            os: macos-15-intel
+            pyarch: x64
+            fmt: zip
+          - id: macos-arm64
+            os: macos-15
+            pyarch: arm64
+            fmt: zip
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          architecture: ${{ matrix.pyarch }}
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install -U pip
+          python -m pip install pygame-ce requests pyinstaller setuptools PyOpenGL
+
+      - name: Setup MSYS2
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          install: ${{ matrix.mingw_pkg }}
+          update: false
+
+      - name: Compile C++ renderer (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        working-directory: 'PY C++'
+        run: |
+          rm -f opengl_renderer.dll
+          if g++ -O2 -shared -static -DRENDERER_EXPORTS -o opengl_renderer.dll opengl_renderer.cpp -lglu32 -lopengl32; then
+            echo "LINK_MODE=static" >> "$GITHUB_ENV"
+          elif g++ -O2 -shared -DRENDERER_EXPORTS -o opengl_renderer.dll opengl_renderer.cpp -lglu32 -lopengl32; then
+            echo "LINK_MODE=dynamic" >> "$GITHUB_ENV"
+            echo "$(cygpath -w "$MINGW_PREFIX/bin")" >> "$GITHUB_PATH"
+          else
+            echo "LINK_MODE=none" >> "$GITHUB_ENV"
+            echo "::warning::C++ renderer compile failed on Windows"
+          fi
+
+      - name: Compile C++ renderer (Linux)
+        if: runner.os == 'Linux'
+        working-directory: 'PY C++'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends g++ libgl1-mesa-dev libglu1-mesa-dev
+          rm -f opengl_renderer.dll
+          if g++ -O2 -shared -fPIC "-D__declspec(x)=" -DRENDERER_EXPORTS -o opengl_renderer.dll opengl_renderer.cpp -lGL -lGLU; then
+            echo "LINK_MODE=dynamic" >> "$GITHUB_ENV"
+          else
+            echo "LINK_MODE=none" >> "$GITHUB_ENV"
+            echo "::warning::C++ renderer compile failed on Linux"
+          fi
+
+      - name: Compile C++ renderer (macOS)
+        if: runner.os == 'macOS'
+        working-directory: 'PY C++'
+        run: |
+          SDK="$(xcrun --show-sdk-path)"
+          mkdir -p _glshim/GL
+          for h in "$SDK"/System/Library/Frameworks/OpenGL.framework/Headers/*.h; do ln -sf "$h" _glshim/GL/; done
+          rm -f opengl_renderer.dll
+          if clang++ -O2 -shared -fPIC "-D__declspec(x)=" -DRENDERER_EXPORTS -I_glshim -o opengl_renderer.dll opengl_renderer.cpp -framework OpenGL; then
+            echo "LINK_MODE=dynamic" >> "$GITHUB_ENV"
+          else
+            echo "LINK_MODE=none" >> "$GITHUB_ENV"
+            echo "::warning::C++ renderer compile failed on macOS"
+          fi
+
+      - name: Verify C++ renderer loads
+        working-directory: 'PY C++'
+        run: |
+          if [ -f opengl_renderer.dll ] && python -c "import ctypes; ctypes.CDLL('./opengl_renderer.dll')" 2>/dev/null; then
+            echo "CPP_OK=1" >> "$GITHUB_ENV"
+            echo "C++ renderer: loadable"
+          else
+            echo "CPP_OK=0" >> "$GITHUB_ENV"
+            echo "::warning::C++ renderer not loadable, shipping pure-Python fallback"
+          fi
+
+      - name: PyInstaller build
+        working-directory: 'PY C++'
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then SEP=';'; else SEP=':'; fi
+          args=(--noconfirm --onedir --name SangoHeroes
+            --hidden-import renderer_bindings --hidden-import pkg_resources
+            --exclude-module tkinter --exclude-module PyQt5 --exclude-module matplotlib)
+          args+=(--add-data "ASSET${SEP}ASSET" --add-data "data${SEP}data")
+          if [ "$CPP_OK" = "1" ]; then
+            args+=(--add-data "opengl_renderer.dll${SEP}.")
+          fi
+          python -m PyInstaller "${args[@]}" main.py
+
+      - name: Smoke test (15s)
+        working-directory: 'PY C++'
+        run: |
+          cd dist/SangoHeroes
+          export SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy
+          if [ "$RUNNER_OS" = "Windows" ]; then EXE=./SangoHeroes.exe; else EXE=./SangoHeroes; fi
+          "$EXE" > smoke.log 2>&1 &
+          PID=$!
+          sleep 15
+          if kill -0 "$PID" 2>/dev/null; then
+            echo "smoke test PASS (still running after 15s)"
+            if [ "$RUNNER_OS" = "Windows" ]; then
+              MSYS_NO_PATHCONV=1 taskkill /F /IM SangoHeroes.exe >/dev/null 2>&1 || true
+            else
+              kill "$PID" 2>/dev/null || true
+            fi
+          else
+            echo "smoke test FAIL (exited early)"
+            tail -n 120 smoke.log || true
+            exit 1
+          fi
+
+      - name: Package
+        working-directory: 'PY C++'
+        run: |
+          {
+            echo "SangoHeroes ${GITHUB_REF_NAME} / ${{ matrix.id }}"
+            echo "built_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "cpp_renderer=$CPP_OK"
+            echo "link_mode=${LINK_MODE:-n/a}"
+          } > dist/SangoHeroes/BUILD_INFO.txt
+          python -c "import shutil; shutil.make_archive('SangoHeroes-${VERSION}-${{ matrix.id }}', '${{ matrix.fmt }}', 'dist', 'SangoHeroes')"
+          ls -la "SangoHeroes-${VERSION}-${{ matrix.id }}."*
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.id }}
+          path: PY C++/SangoHeroes-${{ env.VERSION }}-${{ matrix.id }}.*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pkg-*
+          merge-multiple: true
+
+      - name: List assets
+        run: ls -la
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: 三国霸业 SangoHeroes ${{ github.ref_name }}
+          files: SangoHeroes-${{ github.ref_name }}-*
+          fail_on_unmatched_files: true
+          body: |
+            六平台桌面包（PyInstaller onedir）：Windows x64 / x86、Linux x86_64 / aarch64、macOS Intel / Apple Silicon。
+
+            - 解压后运行 `SangoHeroes`（Windows 为 `SangoHeroes.exe`）
+            - 每个包内 `BUILD_INFO.txt` 记录 C++ 渲染器启用情况；未启用时自动回退纯 Python 渲染，游戏可正常游玩
+            - 存档位置：`_internal/ASSET/save.json`（请保持目录可写，勿装在只读目录）
+            - Linux 需系统提供 OpenGL（libGL / libGLU）；macOS 使用系统 OpenGL 框架
