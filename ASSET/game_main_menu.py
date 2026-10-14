@@ -1005,6 +1005,9 @@ TILE_BADGES = {
     "32": ("故事", (180, 140, 210)),
     "37": ("活动", (230, 130, 90)),
     "39": ("转盘", (240, 190, 80)),
+    "41": ("百科", (120, 170, 210)),
+    "42": ("白板", (210, 150, 110)),
+    "43": ("聊天", (110, 190, 160)),
     # 拉篮底部功能键
     "4": ("保存", (110, 170, 130)),
     "15": ("读档", (120, 160, 200)),
@@ -1191,7 +1194,7 @@ def _launcher_layout(screen_width, screen_height):
     if grid_top > bottom - 80:               # 极矮屏：压缩标题区
         grid_top = top + 14 + 34
 
-    # 面板外扩取两侧内容间距的一半 → 相邻面板刚好贴齐、互不压盖
+    # 面板外扩取两侧内容间距的一半 > 相邻面板刚好贴齐、互不压盖
     pad = int(min(mx - (lx + lw), rx - mr) / 2)
     return {
         'lx': int(lx), 'lw': int(lw),
@@ -1235,6 +1238,7 @@ class DropdownMenu:
         self._tile_scale = {}  # 磁贴 code -> 当前缩放（悬停缓动）
         self._layout_key = None  # 布局缓存键（分辨率 + 展开状态）
         self.focus_index = -1    # 键盘焦点磁贴（-1 = 未用键盘导航）
+        self.hovered_code = None  # 本帧悬停磁贴 code（长说明条用）
         self.cols = 1
         self.rows = 1
 
@@ -1264,7 +1268,8 @@ class DropdownMenu:
         left = L['mx']
         right = L['mr']
         top = L['grid_top']
-        bottom = L['bottom'] - 8
+        # 底部预留 58px：悬停磁贴时的长说明条，避免盖住最后一行磁贴
+        bottom = L['bottom'] - 8 - 58
         avail_w = max(200, right - left)
         avail_h = max(140, bottom - top)
         gap = 18
@@ -1360,8 +1365,11 @@ class DropdownMenu:
                                      L['top'] + 14))
 
         mouse_pos = pygame.mouse.get_pos()
+        self.hovered_code = None
         for idx, (item_text, item_code, item_rect) in enumerate(self.dropdown_items):
             hovered = item_rect.collidepoint(mouse_pos)
+            if hovered:
+                self.hovered_code = item_code
             cur = self._tile_scale.get(item_code, 1.0)
             cur += ((1.06 if hovered else 1.0) - cur) * 0.3
             self._tile_scale[item_code] = cur
@@ -1515,6 +1523,15 @@ def _build_overview(L, labels, recent, visited, total):
             if em:
                 surf.blit(em, (ox, ry + 4))
 
+    # 底部常驻提示：搜索入口 + 可用关键词示例
+    if FONT_SMALL and h > 140:
+        tip = FONT_SMALL.render(_fit_text(
+            FONT_SMALL,
+            "找不到？按 / 或点右上搜索，试试「枪」「子弹」「排行」",
+            w - ox - 16), True, (140, 168, 200))
+        if tip:
+            surf.blit(tip, (ox, h - tip.get_height() - 12))
+
     if len(_OVERVIEW_CACHE) > 8:
         _OVERVIEW_CACHE.clear()
     _OVERVIEW_CACHE[key] = surf
@@ -1567,6 +1584,8 @@ FIVE_CATEGORIES = [
         ("排行榜系统", "13"),
         ("每日签到", "14"),
         ("社交系统", "16"),
+        ("世界聊天", "43"),
+        ("白板涂鸦", "42"),
         ("交易系统", "18"),
         ("游戏商城", "6"),
     ]),
@@ -1574,6 +1593,7 @@ FIVE_CATEGORIES = [
         ("天气系统", "27"),
         ("新手引导", "31"),
         ("背景故事", "32"),
+        ("词典百科", "41"),
         ("限时活动", "37"),
         ("幸运转盘", "39"),
     ]),
@@ -1642,6 +1662,396 @@ def _build_launcher_elements(screen_width, screen_height):
         elements.append(("button", (btn, code)))
         hy += h + gap_v
     return elements
+
+
+# ── 功能目录：长说明 + 入口路径 + 关键词（搜索框、说明条共用）──────────────
+# desc 写「它是什么 + 怎么用 + 和谁配套」，path 写「从哪点进去」。
+CATALOG = {
+    "1": dict(name="PVP联机", cat="对战竞技", desc="双人对战：选将、比武力与技能，胜者涨排行分。约人先去「世界聊天」喊一嗓子。", path="对战竞技 > PVP联机", keys="pvp 对战 联机 双人 对打 pk 竞技 网络 房间"),
+    "28": dict(name="3D地图", cat="对战竞技", desc="立体世界：赶路、拾取、造弹药箱、占领据点，是 2D 地图的第一人称版。", path="对战竞技 > 3D地图", keys="3d 立体 第一人称 拾取 弹药箱 据点 地图"),
+    "3": dict(name="副本挑战", cat="对战竞技", desc="带兵推图打副本，按层结算奖励；每日/每周挑战任务也在这里领。", path="对战竞技 > 副本挑战", keys="副本 推图 打怪 挑战 每日挑战 每周挑战 层"),
+    "10": dict(name="小游戏中心", cat="对战竞技", desc="贪吃蛇、推箱子、打砖块、扫雷、2048、俄罗斯方块、五子棋、三国知识问答，八个小游戏合集。", path="对战竞技 > 小游戏中心", keys="小游戏 玩具 贪吃蛇 推箱子 打砖块 扫雷 2048 俄罗斯方块 五子棋 问答 休闲"),
+    "2": dict(name="游戏地图", cat="对战竞技", desc="2D 战略大地图：看城池分布、调兵遣将、攻占据点，打仗前先在这儿看地形。", path="对战竞技 > 游戏地图", keys="地图 2d 城池 调兵 攻城 据点 战略"),
+    "33": dict(name="竞速模式", cat="对战竞技", desc="跑圈竞速玩法，和推图无关，想换口味就来这。", path="对战竞技 > 竞速模式", keys="竞速 跑 赛车 飙车 速度"),
+    "7": dict(name="武将仓库", cat="武将养成", desc="手下所有武将都在这：看属性、装枪械与时装、升技能。枪在「装备枪械」按钮里，别再找了。", path="武将养成 > 武将仓库 > 选中武将 > 装备枪械", keys="武将 仓库 武将列表 属性 枪械 装枪 卸枪 技能"),
+    "29": dict(name="武将招募", cat="武将养成", desc="花金元宝抽新武将，抽到的自动进仓库；想补谁的位就来这。", path="武将养成 > 武将招募", keys="招募 抽 招新 抽卡 武将 获得 新武将"),
+    "17": dict(name="装备系统", cat="武将养成", desc="打造/强化装备给武将穿；里面还藏着「子弹商店」——枪要吃子弹，买子弹去那。", path="武将养成 > 装备系统 > 子弹商店", keys="装备 强化 打造 武器 防具 子弹 商店 买子弹"),
+    "22": dict(name="天赋系统", cat="武将养成", desc="给武将点天赋树，走输出/肉盾/辅助路线，点错了可以洗点。", path="武将养成 > 天赋系统", keys="天赋 加点 洗点 流派 属性 技能树"),
+    "12": dict(name="科技树系统", cat="武将养成", desc="全局科技加成：资源产出、部队攻击、建造速度，优先点收益最高的。", path="武将养成 > 科技树系统", keys="科技 加成 全局 研究 产兵 攻击 建造"),
+    "30": dict(name="时装系统", cat="武将养成", desc="换装改变外观与时装属性，部分时装有套装效果。", path="武将养成 > 时装系统", keys="时装 外观 衣服 套装 皮肤"),
+    "19": dict(name="宠物系统", cat="武将养成", desc="捕捉/培养宠物，宠物陪武将出战加属性；宠物食物在商城买。", path="武将养成 > 宠物系统", keys="宠物 喂养 抓宠 宠物食物 出战"),
+    "38": dict(name="宠物竞技场", cat="武将养成", desc="宠物互咬的竞技场，赢了拿培养材料，和武将 PVP 是两套。", path="武将养成 > 宠物竞技场", keys="宠物 竞技场 打架 材料 宠战"),
+    "21": dict(name="建筑系统", cat="建设经营", desc="盖房子：粮仓、兵营、作坊……建筑等级决定资源上限与产兵速度。", path="建设经营 > 建筑系统", keys="建筑 盖房 升级 粮仓 兵营 作坊 基建"),
+    "20": dict(name="任务系统", cat="建设经营", desc="主线/支线/每日任务，做完领奖励；每日任务是稳定的元宝来源。", path="建设经营 > 任务系统", keys="任务 主线 支线 每日任务 奖励 目标"),
+    "40": dict(name="镖局押运", cat="建设经营", desc="押镖跑商：选路线、派武将护送，路上可能被打劫，成功到港拿大笔金元宝。", path="建设经营 > 镖局押运", keys="镖局 押镖 跑商 护送 被劫 元宝"),
+    "24": dict(name="炼金系统", cat="建设经营", desc="把钓鱼/副本捡的材料炼成药水和高级材料，缺什么先看配方表。", path="建设经营 > 炼金系统", keys="炼金 合成 配方 药水 材料 熔炼"),
+    "23": dict(name="钓鱼系统", cat="建设经营", desc="挂机钓鱼换资源和材料，鱼饵在商城；钓上来的鱼能卖也能炼金。", path="建设经营 > 钓鱼系统", keys="钓鱼 鱼饵 鱼 挂机 材料"),
+    "25": dict(name="游戏内AI", cat="建设经营", desc="游戏内问答助手：卡关、不知道资源怎么来，直接问它。", path="建设经营 > 游戏内AI", keys="ai 问答 帮助 智能 提问 指南"),
+    "26": dict(name="疑难解答", cat="建设经营", desc="常见问题手册，和「词典百科」是一对：这问怎么操作，那查名词。", path="建设经营 > 疑难解答", keys="疑难 解答 帮助 faq 问题 手册 教程"),
+    "11": dict(name="成就系统", cat="社交排行", desc="做任务解锁成就，成就点数能换称号和奖励。", path="社交排行 > 成就系统", keys="成就 称号 点数 奖励 收集"),
+    "13": dict(name="排行榜系统", cat="社交排行", desc="战力/财富/等级榜，想知道自己排第几看这。", path="社交排行 > 排行榜系统", keys="排行 榜 单 战力 财富 等级 第几 名次"),
+    "14": dict(name="每日签到", cat="社交排行", desc="每天点一下领元宝，连签有额外奖励；签完记得去商城花。", path="社交排行 > 每日签到", keys="签到 每日 打卡 连签 元宝"),
+    "16": dict(name="社交系统", cat="社交排行", desc="加好友、私聊、组队；要约人 PVP 或交换资源先加好友。", path="社交排行 > 社交系统", keys="社交 好友 私聊 组队 好友列表 加好友"),
+    "18": dict(name="交易系统", cat="社交排行", desc="和好友/其他玩家买卖资源与装备，定价前先看行情。", path="社交排行 > 交易系统", keys="交易 买卖 出售 购买 行情 挂单"),
+    "6": dict(name="游戏商城", cat="社交排行", desc="用金元宝买枪械子弹、宠物食物、鱼饵、材料；缺子弹先来这。", path="社交排行 > 游戏商城", keys="商城 购买 买 元宝 子弹 宠物食物 鱼饵 商店"),
+    "42": dict(name="白板涂鸦", cat="社交排行", desc="和好友在同一块画板上乱画，聊天之外的另一种表达。", path="社交排行 > 白板涂鸦", keys="白板 涂鸦 画画 画板 手绘"),
+    "43": dict(name="世界聊天", cat="社交排行", desc="全服聊天频道，约战、问路、卖东西都在这喊一嗓子。", path="社交排行 > 世界聊天", keys="聊天 世界 频道 说话 喊话 喇叭 频道"),
+    "27": dict(name="天气系统", cat="系统周边", desc="晴雨雪会影响钓鱼成功率与副本难度，出门前看一眼。", path="系统周边 > 天气系统", keys="天气 晴 雨 雪 影响 环境"),
+    "31": dict(name="新手引导", cat="系统周边", desc="前 10 分钟的走一遍教程，老玩家可以跳过。", path="系统周边 > 新手引导", keys="新手 教程 引导 入门 萌新"),
+    "32": dict(name="背景故事", cat="系统周边", desc="三国架空世界观设定集，和「词典百科」配套看。", path="系统周边 > 背景故事", keys="故事 背景 设定 世界观 剧情"),
+    "37": dict(name="限时活动", cat="系统周边", desc="节日/周末限定活动，错过就没了，奖励通常比日常好。", path="系统周边 > 限时活动", keys="活动 限时 限定 节日 周末 奖励"),
+    "39": dict(name="幸运转盘", cat="系统周边", desc="花抽奖券转盘抽奖，能出子弹和稀有材料；券在任务和活动里拿。", path="系统周边 > 幸运转盘", keys="转盘 抽奖 幸运 券 材料 子弹"),
+    "41": dict(name="词典百科", cat="系统周边", desc="名词手册：武将、建筑、材料、玩法名词都能查，附带获取途径；和「疑难解答」是一对。", path="系统周边 > 词典百科", keys="词典 百科 名词 手册 解释 概念 图鉴 查询"),
+}
+
+# 藏在别的系统里的子功能（菜单没有独立入口，搜索时指路）
+SUB_CATALOG = [
+    dict(name="枪械（装备/升级/卸下）", route="7", cat="武将养成",
+         desc="枪配给武将才算数：武将仓库里选中武将 >「装备枪械」穿上 >「升级枪械」提威力；换人就「卸下枪械」。",
+         path="武将仓库 > 选中武将 > 装备枪械 / 升级枪械 / 卸下枪械",
+         keys="枪 枪械 武器 手枪 步枪 冲锋枪 配枪 升级枪 枪在哪 gun weapon"),
+    dict(name="子弹商店", route="17", cat="武将养成",
+         desc="用金元宝买普通/高级/稀有子弹，不同枪吃不同子弹；副本掉落和幸运转盘也能出子弹。",
+         path="装备系统 > 子弹商店",
+         keys="子弹 弹药 普通子弹 高级子弹 稀有子弹 买子弹 ammo bullet"),
+    dict(name="弹药箱（3D 地图制作）", route="28", cat="对战竞技",
+         desc="3D 地图里可以造弹药箱，把木头、铁锭换成弹药带在身上。",
+         path="3D地图 > 制作 > 弹药箱",
+         keys="弹药箱 制作 木头 铁锭 补给"),
+    dict(name="每日任务", route="20", cat="建设经营",
+         desc="任务系统里的每日任务标签，稳定产出元宝与材料，每天清一遍。",
+         path="任务系统 > 每日任务",
+         keys="每日任务 日常 每天 清日常"),
+    dict(name="每日/每周挑战", route="3", cat="对战竞技",
+         desc="副本挑战里按天/按周刷新的挑战任务，打满层数直接领奖。",
+         path="副本挑战 > 每日挑战 / 每周挑战",
+         keys="每日挑战 每周挑战 副本任务 层数"),
+    dict(name="好友与私聊", route="16", cat="社交排行",
+         desc="社交系统里加好友、私聊、组队；约 PVP、交易都先在这儿加人。",
+         path="社交系统 > 好友 / 私聊",
+         keys="好友 私聊 加好友 组队 约战"),
+    dict(name="宠物食物", route="6", cat="武将养成",
+         desc="商城里买宠物食物，宠物喂饱了才能出战加属性。",
+         path="游戏商城 > 宠物食物",
+         keys="宠物食物 喂食 宠物粮"),
+    dict(name="鱼饵", route="6", cat="建设经营",
+         desc="商城里买鱼饵，钓鱼系统必备；没鱼饵钓不了鱼。",
+         path="游戏商城 > 鱼饵",
+         keys="鱼饵 钓鱼饵 钓鱼 商城"),
+    dict(name="天赋洗点", route="22", cat="武将养成",
+         desc="天赋系统里可以洗点重来，换流派不用重新练号。",
+         path="天赋系统 > 洗点",
+         keys="洗点 重置 天赋 重来"),
+    dict(name="每日签到奖励", route="14", cat="社交排行",
+         desc="签到页里连签有额外奖励，断签会重置，别忘了每天点。",
+         path="每日签到 > 连签奖励",
+         keys="连签 签到奖励 补签 断签"),
+]
+
+
+def _catalog_entries():
+    """全部可搜索条目：菜单模块（按 code 直接打开）+ 子功能（跳到宿主模块）。"""
+    out = []
+    for code, e in CATALOG.items():
+        out.append(dict(e, code=code, route=code, is_sub=False))
+    for s in SUB_CATALOG:
+        out.append(dict(s, code=s["route"], route=s["route"], is_sub=True))
+    return out
+
+
+def _fit_text(font, text, max_w):
+    """按宽度截断文本，超出加省略号。"""
+    if not font or not text:
+        return text or ""
+    if font.size(text)[0] <= max_w:
+        return text
+    cut = text
+    while cut and font.size(cut + "…")[0] > max_w:
+        cut = cut[:-1]
+    return (cut + "…") if cut else "…"
+
+
+def _search_hits(query):
+    """按 名称 > 关键词 > 路径 > 说明 的顺序排序命中条目。"""
+    q = (query or "").strip().lower()
+    if not q:
+        return []
+    hits = []
+    for e in _catalog_entries():
+        if q in e["name"].lower():
+            rank = 0
+        elif q in e.get("keys", "").lower():
+            rank = 1
+        elif q in e.get("path", "").lower():
+            rank = 2
+        elif q in e.get("desc", "").lower():
+            rank = 3
+        else:
+            continue
+        hits.append((rank, e["name"], e))
+    hits.sort(key=lambda t: (t[0], t[1]))
+    return [e for _, _, e in hits]
+
+
+# 搜索框与结果的状态（text=输入，focus=是否在输入，sel=选中行，scroll=滚动）
+_SEARCH = {"text": "", "focus": False, "sel": 0, "scroll": 0}
+_SEARCH_HINT = "搜索（按 /）"
+
+
+def _search_rect(L):
+    """搜索框位置：中栏标题行右侧，避开左侧大标题与下方磁贴区。"""
+    w = int(min(330, max(180, (L['mr'] - L['mx']) * 0.44)))
+    h = 44
+    return pygame.Rect(L['mr'] - w, L['top'] + 14, w, h)
+
+
+_SEARCH_BOX_CACHE = {}
+
+
+def _draw_search_box(surface, L, state):
+    """画搜索框（中栏右上）。返回其矩形（带渲染缓存）。"""
+    r = _search_rect(L)
+    focused = bool(state["focus"])
+    key = (r.width, r.height, focused)
+    surf = _SEARCH_BOX_CACHE.get(key)
+    if surf is None:
+        surf = pygame.Surface((r.width, r.height), pygame.SRCALPHA)
+        pygame.draw.rect(surf, (20, 28, 48, 240), surf.get_rect(),
+                         border_radius=14)
+        border = (255, 215, 0) if focused else (86, 118, 178)
+        pygame.draw.rect(surf, border, surf.get_rect(), 2, border_radius=14)
+        # 放大镜图标（字体缺 ⌕ 字形，改用图形画）
+        _ic_col = (255, 215, 0) if focused else (168, 188, 218)
+        pygame.draw.circle(surf, _ic_col, (20, r.height // 2 - 2), 7, 2)
+        pygame.draw.line(surf, _ic_col, (25, r.height // 2 + 3),
+                         (30, r.height // 2 + 8), 2)
+        if len(_SEARCH_BOX_CACHE) > 4:
+            _SEARCH_BOX_CACHE.clear()
+        _SEARCH_BOX_CACHE[key] = surf
+    surface.blit(surf, (r.x, r.y))
+
+    if FONT_SMALL:
+        text = state["text"] or ""
+        if text:
+            body = FONT_SMALL.render(_fit_text(FONT_SMALL, text, r.width - 46),
+                                     True, (232, 238, 248))
+        else:
+            body = FONT_SMALL.render(_fit_text(FONT_SMALL, _SEARCH_HINT,
+                                               r.width - 46), True, (140, 158, 186))
+        if body:
+            surface.blit(body, (r.x + 36, r.centery - body.get_height() // 2))
+        if focused and (pygame.time.get_ticks() // 400) % 2 == 0:
+            caret_x = r.x + 36 + (body.get_width() if body else 0) + 2
+            pygame.draw.line(surface, (255, 215, 0),
+                             (caret_x, r.y + 10), (caret_x, r.bottom - 10), 2)
+    return r
+
+
+def _result_row_rects(L, state, n):
+    """结果行矩形列表（中栏内容区，带滚动）；行高按字体实际高度自适应。"""
+    area = pygame.Rect(L['mx'], L['grid_top'],
+                       L['mr'] - L['mx'], int(L['bottom'] - 8) - L['grid_top'])
+    name_h = FONT_MAIN.get_height() if FONT_MAIN else 44
+    desc_h = FONT_SMALL.get_height() if FONT_SMALL else 34
+    row_h = int(name_h + desc_h + 10)
+    head_h = (FONT_SMALL.get_height() if FONT_SMALL else 34) + 12
+    top = area.y + head_h
+    rows = []
+    for i in range(n):
+        y = top + i * (row_h + 8)
+        if y + row_h > area.bottom:
+            break
+        rows.append(pygame.Rect(area.x, y, area.width, row_h))
+    return rows, area
+
+
+def _draw_search_results(surface, L, state, hits):
+    """搜索结果覆盖中栏内容区（覆盖磁贴/总览）。"""
+    rows, area = _result_row_rects(L, state, len(hits))
+    max_sel = max(0, len(rows) - 1)
+    state["sel"] = max(0, min(state["sel"], max_sel))
+    if state["sel"] < state["scroll"]:
+        state["scroll"] = state["sel"]
+    if state["sel"] >= state["scroll"] + len(rows):
+        state["scroll"] = state["sel"] - len(rows) + 1
+
+    if FONT_SMALL:
+        if hits:
+            head = "共 %d 条结果 · 上下键选择 · 回车打开 · ESC 清空" % len(hits)
+        else:
+            head = "没找到「%s」——试试「枪」「子弹」「排行」" % state["text"]
+        hs = FONT_SMALL.render(head, True, (255, 215, 0) if hits else (200, 140, 140))
+        if hs:
+            surface.blit(hs, (area.x + 4, area.y + 2))
+
+    shown = hits[state["scroll"]:state["scroll"] + len(rows)]
+    for i, e in enumerate(shown):
+        idx = state["scroll"] + i
+        r = rows[i]
+        selected = (idx == state["sel"])
+        bg = (34, 48, 80, 250) if selected else (18, 25, 44, 220)
+        surf = pygame.Surface((r.width, r.height), pygame.SRCALPHA)
+        pygame.draw.rect(surf, bg, surf.get_rect(), border_radius=14)
+        pygame.draw.rect(surf, (255, 215, 0) if selected else (60, 82, 124),
+                         surf.get_rect(), 2, border_radius=14)
+        surface.blit(surf, (r.x, r.y))
+
+        badge = TILE_BADGES.get(e["route"])
+        if badge:
+            bs = render_tile_badge(badge[0], badge[1], 34)
+            surface.blit(bs, (r.x + 12, r.centery - 17))
+
+        # 右上角类别标签先画，名字按剩余宽度截断，避免互相压字
+        tag_w = 0
+        if FONT_SMALL:
+            tag = FONT_SMALL.render(("子功能 · " if e.get("is_sub") else "")
+                                    + e["cat"], True, (140, 168, 200))
+            if tag:
+                tag_w = tag.get_width()
+                surface.blit(tag, (r.right - tag_w - 12, r.y + 6))
+        if FONT_MAIN:
+            name_max = max(80, r.width - 70 - tag_w - 24)
+            name = FONT_MAIN.render(
+                _fit_text(FONT_MAIN, e["name"], name_max), True,
+                (255, 215, 0) if selected else (232, 238, 248))
+            if name:
+                surface.blit(name, (r.x + 56, r.y + 4))
+        if FONT_SMALL:
+            desc_y = r.y + 4 + (FONT_MAIN.get_height() if FONT_MAIN else 44)
+            desc = FONT_SMALL.render(
+                _fit_text(FONT_SMALL, e["desc"], r.width - 70), True,
+                (176, 196, 226))
+            if desc:
+                surface.blit(desc, (r.x + 56, desc_y))
+
+
+def _result_index_at(L, state, pos, n):
+    """点在第几条结果上（None = 没点中）。"""
+    rows, _area = _result_row_rects(L, state, n)
+    for i, r in enumerate(rows):
+        if r.collidepoint(pos):
+            return state["scroll"] + i
+    return None
+
+
+def _draw_hint_bar(surface, L, code):
+    """中栏底部说明条：悬停磁贴时显示该功能的长说明与入口路径。"""
+    entry = CATALOG.get(code)
+    if not entry:
+        return
+    bar = pygame.Rect(L['mx'], int(L['bottom']) - 58,
+                      L['mr'] - L['mx'], 50)
+    surf = pygame.Surface((bar.width, bar.height), pygame.SRCALPHA)
+    pygame.draw.rect(surf, (16, 22, 40, 230), surf.get_rect(), border_radius=12)
+    pygame.draw.rect(surf, (86, 118, 178), surf.get_rect(), 1, border_radius=12)
+    surface.blit(surf, (bar.x, bar.y))
+    if FONT_SMALL:
+        line1 = FONT_SMALL.render(
+            _fit_text(FONT_SMALL, entry["name"] + " — " + entry["desc"],
+                      bar.width - 20), True, (226, 234, 246))
+        line2 = FONT_SMALL.render(
+            _fit_text(FONT_SMALL, "入口：" + entry["path"], bar.width - 20),
+            True, (255, 215, 0))
+        if line1:
+            surface.blit(line1, (bar.x + 10, bar.y + 3))
+        if line2:
+            surface.blit(line2, (bar.x + 10, bar.y + 26))
+
+
+def _handle_search_event(event, screen_width, screen_height, activate):
+    """搜索框的事件处理；返回 True 表示该事件已被搜索消费（调用方应 continue）。"""
+    L = _launcher_layout(screen_width, screen_height)
+    box = _search_rect(L)
+    q = _SEARCH["text"].strip()
+    hits = _search_hits(q) if q else []
+
+    if event.type == pygame.TEXTINPUT and _SEARCH["focus"]:
+        _SEARCH["text"] = (_SEARCH["text"] + event.text)[:32]
+        _SEARCH["sel"] = 0
+        _SEARCH["scroll"] = 0
+        return True
+
+    if event.type == pygame.MOUSEWHEEL and hits and _SEARCH["focus"]:
+        _SEARCH["sel"] = max(0, min(len(hits) - 1,
+                                    _SEARCH["sel"] + (1 if event.y < 0 else -1)))
+        return True
+
+    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+        if box.collidepoint(event.pos):
+            _SEARCH["focus"] = True
+            try:
+                pygame.key.start_text_input()
+            except Exception:
+                pass
+            return True
+        if hits:
+            idx = _result_index_at(L, _SEARCH, event.pos, len(hits))
+            if idx is not None and 0 <= idx < len(hits):
+                e = hits[idx]
+                _SEARCH.update({"text": "", "focus": False, "sel": 0, "scroll": 0})
+                try:
+                    pygame.key.stop_text_input()
+                except Exception:
+                    pass
+                activate(e["route"])
+                return True
+        if _SEARCH["focus"]:
+            # 聚焦时点空白处：先失焦并吞掉这次点击，避免误点下面的控件
+            _SEARCH["focus"] = False
+            try:
+                pygame.key.stop_text_input()
+            except Exception:
+                pass
+            return True
+        return False
+
+    if event.type == pygame.KEYDOWN:
+        if not _SEARCH["focus"]:
+            if event.key == pygame.K_SLASH and not (
+                    event.mod & (pygame.KMOD_CTRL | pygame.KMOD_ALT)):
+                _SEARCH["focus"] = True
+                try:
+                    pygame.key.start_text_input()
+                except Exception:
+                    pass
+                return True
+            return False
+        if event.key == pygame.K_ESCAPE:
+            if _SEARCH["text"]:
+                _SEARCH["text"] = ""
+            else:
+                _SEARCH["focus"] = False
+                try:
+                    pygame.key.stop_text_input()
+                except Exception:
+                    pass
+            _SEARCH["sel"] = 0
+            _SEARCH["scroll"] = 0
+            return True
+        if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+            if hits:
+                e = hits[max(0, min(_SEARCH["sel"], len(hits) - 1))]
+                _SEARCH.update({"text": "", "focus": False, "sel": 0,
+                                "scroll": 0})
+                try:
+                    pygame.key.stop_text_input()
+                except Exception:
+                    pass
+                activate(e["route"])
+            return True
+        if event.key in (pygame.K_UP, pygame.K_DOWN):
+            if hits:
+                step = 1 if event.key == pygame.K_DOWN else -1
+                _SEARCH["sel"] = max(0, min(len(hits) - 1,
+                                            _SEARCH["sel"] + step))
+            return True
+        if event.key == pygame.K_BACKSPACE:
+            _SEARCH["text"] = _SEARCH["text"][:-1]
+            _SEARCH["sel"] = 0
+            _SEARCH["scroll"] = 0
+            return True
+        return True  # 聚焦时其余按键不外泄（字母由 TEXTINPUT 接收）
+    return False
 
 
 clouds = []
@@ -2137,11 +2547,19 @@ MODULE_ROUTES = {
     "38": "pet_arena.py",               # 宠物竞技场
     "39": "lucky_wheel.py",             # 幸运转盘
     "40": "escort_system.py",           # 镖局押运（新增玩法）
+    "42": "whiteboard.py",              # 白板涂鸦（配套：社交）
+    "43": "world_chat.py",              # 世界聊天（配套：社交）
 }
+
+def open_dictionary():
+    """词典百科入口 — 其 main() 需要 screen 参数，故走专用处理器。"""
+    from ASSET import dictionary_system
+    dictionary_system.main(screen)
 
 # 需要特殊处理逻辑的菜单项（不走 run_module 动态导入）
 SPECIAL_HANDLERS = {
     "10": mini_games_menu,   # 小游戏中心
+    "41": open_dictionary,   # 词典百科（配套：疑难解答 / 背景故事）
 }
 
 def custom_resolution_dialog(settings_lines, current_w, current_h):
@@ -3034,6 +3452,18 @@ def main():
                 element.draw(screen)
                 # 磁贴悬停高亮已由 DropdownMenu.draw 内部处理（圆角一致），此处不再重复叠加
 
+        # ── 全局搜索：有关键词时结果覆盖中栏；否则悬停磁贴显示长说明条 ──
+        _Ls = _launcher_layout(screen_width, screen_height)
+        _q = _SEARCH["text"].strip()
+        if _q:
+            _draw_search_results(screen, _Ls, _SEARCH, _search_hits(_q))
+        else:
+            for _t, _el in menu_elements:
+                if _t == "dropdown" and _el.is_open and _el.hovered_code:
+                    _draw_hint_bar(screen, _Ls, _el.hovered_code)
+                    break
+        _draw_search_box(screen, _Ls, _SEARCH)
+
         # 帧末统一 flip（见事件循环之后），此处不再提前呈现
 
         for event in pygame.event.get():
@@ -3044,6 +3474,11 @@ def main():
                     continue
                 save()
                 running = False
+
+            # ── 全局搜索：按 / 唤起，聚焦时吞掉输入与导航键 ──
+            if _handle_search_event(event, screen_width, screen_height,
+                                    activate_code):
+                continue
 
             # 滚轮：滚动展开中的长下拉列表
             if event.type == pygame.MOUSEWHEEL:
