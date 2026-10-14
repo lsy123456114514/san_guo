@@ -255,16 +255,16 @@ class MailSystem:
     def read_mail(self, mail_id):
         """读取邮件"""
         for mail in data["mail"]["inbox"]:
-            if mail["id"] == mail_id:
+            if mail.get("id") == mail_id:
                 mail["read"] = True
                 save()
                 return mail
         return None
-    
+
     def claim_attachment(self, mail_id):
         """领取附件"""
         for mail in data["mail"]["inbox"]:
-            if mail["id"] == mail_id:
+            if mail.get("id") == mail_id:
                 if mail["claimed"]:
                     return False, "附件已领取"
                 
@@ -288,7 +288,7 @@ class MailSystem:
     def delete_mail(self, mail_id):
         """删除邮件"""
         for mail in data["mail"]["inbox"]:
-            if mail["id"] == mail_id:
+            if mail.get("id") == mail_id:
                 data["mail"]["inbox"].remove(mail)
                 data["mail"]["archived"].append(mail)
                 save()
@@ -302,15 +302,15 @@ class MailSystem:
     def get_inbox(self):
         """获取收件箱"""
         return [{
-            "id": m["id"],
-            "sender": m["sender"],
-            "title": m["title"],
-            "content": m["content"],
+            "id": m.get("id", 0),
+            "sender": m.get("sender", "系统"),
+            "title": m.get("title", "（无标题）"),
+            "content": m.get("content", ""),
             "attachments": m.get("attachments", {}),
-            "type": m["type"],
-            "time": m["time"],
-            "read": m["read"],
-            "claimed": m["claimed"]
+            "type": m.get("type", "system"),
+            "time": m.get("time", 0),
+            "read": m.get("read", False),
+            "claimed": m.get("claimed", False)
         } for m in data["mail"]["inbox"]]
 
 class CheckinCalendar:
