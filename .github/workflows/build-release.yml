@@ -36,8 +36,8 @@ jobs:
           - { name: linux-arm64-onefile, os: ubuntu-24.04-arm, platform: linux-arm64, mode: onefile }
           - { name: linux-arm64-onedir, os: ubuntu-24.04-arm, platform: linux-arm64, mode: onedir }
           # macOS Intel
-          - { name: macos-x64-onefile, os: macos-13, platform: macos-x64, mode: onefile }
-          - { name: macos-x64-onedir, os: macos-13, platform: macos-x64, mode: onedir }
+          - { name: macos-x64-onefile, os: macos-15-intel, platform: macos-x64, mode: onefile }
+          - { name: macos-x64-onedir, os: macos-15-intel, platform: macos-x64, mode: onedir }
           # macOS Apple Silicon
           - { name: macos-arm64-onefile, os: macos-14, platform: macos-arm64, mode: onefile }
           - { name: macos-arm64-onedir, os: macos-14, platform: macos-arm64, mode: onedir }
@@ -47,11 +47,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python (x86)
+        if: matrix.python-arch == 'x86'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          architecture: ${{ matrix.python-arch || 'x64' }}
+          architecture: x86
+
+      - name: Set up Python
+        if: matrix.python-arch != 'x86'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Install build dependencies
         shell: bash
@@ -120,8 +127,8 @@ jobs:
         with:
           name: ${{ matrix.name }}
           path: |
-            ${{ matrix.platform }}-*.zip
-            ${{ matrix.platform }}-*.tar.gz
+            san_guo-${{ matrix.platform }}-*.zip
+            san_guo-${{ matrix.platform }}-*.tar.gz
           if-no-files-found: error
           retention-days: 30
 
@@ -133,8 +140,8 @@ jobs:
 
       - name: Pack source
         run: |
-          tar -czf san_guo-source.tar.gz --exclude=.git --exclude=.github .
-          zip -r san_guo-source.zip . -x ".git/*" ".github/*"
+          git archive --format=tar.gz -o san_guo-source.tar.gz HEAD
+          git archive --format=zip -o san_guo-source.zip HEAD
 
       - name: Upload source
         uses: actions/upload-artifact@v4
