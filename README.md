@@ -60,6 +60,24 @@ py auto_test.py --only 44 --fast  # 只测某个菜单码
 .\build.ps1 -TestOnly    # 只跑测试
 ```
 
+### 多平台安装包（GitHub Actions）
+
+推送 `v*` 标签或在 Actions 页手动触发 `Build Release`，自动构建 **18 个桌面安装包 + 源码包**：
+
+| 平台 | Runner | 产物 |
+|------|--------|------|
+| Windows x64 | windows-latest | onefile / onedir `.zip` |
+| Windows x86 (32位) | windows-latest | onefile / onedir `.zip` |
+| Windows ARM64 | windows-11-arm（实验） | onefile / onedir `.zip` |
+| Linux x64 (新 glibc) | ubuntu-latest | onefile / onedir `.tar.gz` |
+| Linux x64 (旧 glibc, 兼容 Ubuntu 22.04 及更早) | ubuntu-22.04 | onefile / onedir `.tar.gz` |
+| **Linux ARM64 (aarch64 开发板/服务器)** | **ubuntu-24.04-arm** | **onefile / onedir `.tar.gz`** |
+| macOS Intel | macos-13 | onefile / onedir `.tar.gz` |
+| macOS Apple Silicon | macos-14 / macos-15 | onefile / onedir `.tar.gz` |
+| 源码包 | ubuntu-latest | `.tar.gz` / `.zip` |
+
+Linux ARM64 包可直接在 Ubuntu/Debian ARM64 板子上运行（如树莓派 4/5、RK3588 等），无需本地编译。
+
 安卓构建见 `.github/workflows/build-apk.yml` 与 `文档/APK构建教程.md`。
 
 ## 可选：本地 AI 军师
