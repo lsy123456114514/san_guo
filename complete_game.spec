@@ -21,6 +21,8 @@ hiddenimports = [
 asset_modules = [
     'achievement_system',
     'activity_system',
+    'ai_local_llm',
+    'ai_system',
     'alchemy_system',
     'background_story',
     'battle_system',

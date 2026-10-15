@@ -184,6 +184,17 @@ def main_game():
             # 显示游戏主程序
             pygame.display.set_caption("游戏主程序")
             
+            # 本地AI军师（可选启用，自启小模型并推送军师来信）
+            try:
+                from ASSET.ai_local_llm import ai_startup_gate
+                ai_startup_gate(screen)
+            except Exception as _ai_e:
+                try:
+                    from ASSET.game_data import logger as _logger
+                    _logger.error("[AI本地] 启动钩子异常: %s", _ai_e)
+                except Exception:
+                    pass
+            
             # 运行主菜单
             menu_main()
             
@@ -209,6 +220,17 @@ def main_game():
                 
                 # 显示游戏主程序
                 pygame.display.set_caption("游戏主程序")
+                
+                # 本地AI军师（可选启用，自启小模型并推送军师来信）
+                try:
+                    from ASSET.ai_local_llm import ai_startup_gate
+                    ai_startup_gate(screen)
+                except Exception as _ai_e:
+                    try:
+                        from ASSET.game_data import logger as _logger
+                        _logger.error("[AI本地] 启动钩子异常: %s", _ai_e)
+                    except Exception:
+                        pass
                 
                 # 运行主菜单
                 menu_main()

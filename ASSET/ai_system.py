@@ -4,9 +4,25 @@
 
 import pygame
 import os
+import json
 import time
+import urllib.request
 from ASSET.game_data import data, save, get_system_font_name, logger, draw_gradient_bg, get_font, open_window
 from ASSET.game_main_menu import Button, COLORS
+
+# 三国主题系统提示（OLLAMA 与本地 llama.cpp 共用）
+SAN_GUO_SYSTEM_PROMPT = """
+你是一个专注于三国历史的AI助手，精通三国时期的人物、事件、地理和文化。你的回答应该基于《三国演义》和正史《三国志》的内容，对玩家的问题提供准确、详细的解答。当玩家询问三国相关问题时，你要以专业的历史知识回答，同时保持友好易懂的语气。
+
+你需要了解的核心内容包括：
+- 三国主要人物：刘备、关羽、张飞、诸葛亮、曹操、孙权、周瑜、司马懿等
+- 重要事件：桃园结义、三顾茅庐、赤壁之战、空城计、六出祁山等
+- 地理知识：荆州、益州、徐州、赤壁、华容道等
+- 兵器与战术：青龙偃月刀、丈八蛇矛、木牛流马、八阵图等
+- 文化典故：草船借箭、舌战群儒、煮酒论英雄等
+
+请以三国专家的身份回答问题，避免回答与三国无关的内容。
+"""
 
 # 尝试导入requests模块
 try:
@@ -271,18 +287,7 @@ def call_ollama(prompt, model, url):
     if not requests_available:
         return "错误: 缺少requests模块，请安装requests库"
     # 三国主题预设 - 即使是本地模型也能使用
-    system_prompt = """
-你是一个专注于三国历史的AI助手，精通三国时期的人物、事件、地理和文化。你的回答应该基于《三国演义》和正史《三国志》的内容，对玩家的问题提供准确、详细的解答。当玩家询问三国相关问题时，你要以专业的历史知识回答，同时保持友好易懂的语气。
-
-你需要了解的核心内容包括：
-- 三国主要人物：刘备、关羽、张飞、诸葛亮、曹操、孙权、周瑜、司马懿等
-- 重要事件：桃园结义、三顾茅庐、赤壁之战、空城计、六出祁山等
-- 地理知识：荆州、益州、徐州、赤壁、华容道等
-- 兵器与战术：青龙偃月刀、丈八蛇矛、木牛流马、八阵图等
-- 文化典故：草船借箭、舌战群儒、煮酒论英雄等
-
-请以三国专家的身份回答问题，避免回答与三国无关的内容。
-    """
+    system_prompt = SAN_GUO_SYSTEM_PROMPT
     
     # 构建完整提示
     full_prompt = f"{system_prompt}\n\n玩家问题: {prompt}"
@@ -387,6 +392,49 @@ def call_ollama(prompt, model, url):
         )
         return f"错误: {str(e)}\n请检查: 1. OLLAMA服务是否运行 2. 模型是否已下载 3. URL是否正确"
 
+def call_llamacpp(prompt, url):
+    """调用本地 llama-server（OpenAI 兼容接口，标准库实现，不依赖requests）"""
+    if not url:
+        url = "http://127.0.0.1:8080"
+    url = url.rstrip('/')
+    payload = {
+        "model": "local",
+        "messages": [
+            {"role": "system", "content": SAN_GUO_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        "max_tokens": 200,
+        "temperature": 0.8,
+        "stream": False,
+    }
+    try:
+        t0 = time.perf_counter()
+        req = urllib.request.Request(
+            url + "/v1/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            j = json.loads(resp.read().decode("utf-8"))
+        txt = j["choices"][0]["message"]["content"].strip()
+        logger.info("[AI] llama.cpp 生成完成 耗时%.2fs len=%d", time.perf_counter() - t0, len(txt))
+        return txt
+    except Exception as e:
+        logger.error("[AI] llama.cpp 请求失败: %s", e, exc_info=True)
+        return f"错误: 本地模型服务未响应\n{e}\n可在本界面点“本地小模型”按钮重新启动"
+
+def call_ai(prompt):
+    """优先本地小模型（tiny-ai/llama.cpp），不可用时回退 OLLAMA"""
+    try:
+        from ASSET import ai_local_llm
+        if ai_local_llm.is_running():
+            txt = ai_local_llm.chat(prompt, system=SAN_GUO_SYSTEM_PROMPT, max_tokens=200)
+            return txt or "错误: 本地模型无响应"
+    except Exception as e:
+        logger.warning("[AI] 本地小模型探测失败: %s", e)
+    return call_ollama(prompt, data.get("ai", {}).get("model", ""), data.get("ai", {}).get("url", ""))
+
 def main():
     """游戏内AI主函数"""
     global screen, clock, FONT_MAIN, FONT_SMALL, FONT_BIG
@@ -449,6 +497,20 @@ def main():
         FONT_SMALL,
         normal_color=COLORS["accent_green"]
     )
+    local_btn = Button(
+        "本地小模型",
+        screen_width - 400,
+        20,
+        180,
+        50,
+        FONT_SMALL,
+        normal_color=COLORS["accent_green"]
+    )
+    try:
+        from ASSET import ai_local_llm
+        local_ok = ai_local_llm.is_running()
+    except Exception:
+        local_ok = False
     back_btn = Button(
         "返回主菜单",
         20,
@@ -473,13 +535,20 @@ def main():
         
         # AI状态
         ai_enabled = data["ai"]["enabled"]
-        status_text = f"AI状态: {'已开启' if ai_enabled else '已关闭'}"
-        status_surf = FONT_MAIN.render(status_text, True, COLORS["accent_gold"] if ai_enabled else COLORS["accent_red"])
+        if local_ok:
+            status_text = "AI状态: 本地小模型运行中"
+            status_color = COLORS["accent_green"]
+        else:
+            status_text = f"AI状态: {'已开启' if ai_enabled else '已关闭'}"
+            status_color = COLORS["accent_gold"] if ai_enabled else COLORS["accent_red"]
+        status_surf = FONT_MAIN.render(status_text, True, status_color)
         screen.blit(status_surf, (screen_width // 2 - status_surf.get_width() // 2, screen_height * 0.3))
         
         # 配置按钮
         config_btn.check_hover(pygame.mouse.get_pos())
         config_btn.draw(screen)
+        local_btn.check_hover(pygame.mouse.get_pos())
+        local_btn.draw(screen)
         
         # 消息区域
         message_area = pygame.Rect(50, screen_height * 0.39, screen_width - 100, screen_height * 0.33)
@@ -522,17 +591,17 @@ def main():
             
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_RETURN:
-                    if user_input and ai_enabled:
+                    if user_input and (ai_enabled or local_ok):
                         # 添加用户消息
                         messages.append(f"你: {user_input}")
                         
-                        # 调用OLLAMA
-                        response = call_ollama(user_input, data["ai"]["model"], data["ai"]["url"])
+                        # 调用AI（本地优先，回退OLLAMA）
+                        response = call_ai(user_input)
                         messages.append(f"AI: {response}")
                         
                         user_input = ""
-                    elif user_input and not ai_enabled:
-                        messages.append("提示: 请先开启AI并配置模型")
+                    elif user_input and not (ai_enabled or local_ok):
+                        messages.append("提示: 请先开启AI并配置模型，或点“本地小模型”启动")
                         user_input = ""
                 elif event.key == pygame.K_BACKSPACE:
                     user_input = user_input[:-1]
@@ -777,19 +846,45 @@ def main():
                             save()
                             show_message(screen, "配置已保存！", FONT_MAIN)
                 
+                # 本地小模型开关
+                if local_btn.check_click(mouse_pos):
+                    try:
+                        from ASSET import ai_local_llm
+                        lc = ai_local_llm.cfg()
+                        if ai_local_llm.is_running():
+                            ai_local_llm.stop_server()
+                            lc["enabled"] = False
+                            save()
+                            local_ok = False
+                            messages.append("本地小模型已关闭")
+                        else:
+                            show_message(screen, "正在启动本地小模型（首次约1-2秒）...", FONT_MAIN)
+                            ok = ai_local_llm.start_server()
+                            lc["enabled"] = bool(ok)
+                            lc["decided"] = True
+                            save()
+                            if ok:
+                                local_ok = True
+                                _exe, _model = ai_local_llm.find_install()
+                                messages.append("本地小模型已启动: " + (os.path.basename(_model) if _model else ""))
+                            else:
+                                messages.append("启动失败: 未找到 tiny-ai 或进程异常，详见 game.log")
+                    except Exception as e:
+                        messages.append("本地模型开关异常: %s" % e)
+
                 # 发送按钮
                 if send_btn.check_click(mouse_pos):
-                    if user_input and ai_enabled:
+                    if user_input and (ai_enabled or local_ok):
                         # 添加用户消息
                         messages.append(f"你: {user_input}")
                         
-                        # 调用OLLAMA
-                        response = call_ollama(user_input, data["ai"]["model"], data["ai"]["url"])
+                        # 调用AI（本地优先，回退OLLAMA）
+                        response = call_ai(user_input)
                         messages.append(f"AI: {response}")
                         
                         user_input = ""
-                    elif user_input and not ai_enabled:
-                        messages.append("提示: 请先开启AI并配置模型")
+                    elif user_input and not (ai_enabled or local_ok):
+                        messages.append("提示: 请先开启AI并配置模型，或点“本地小模型”启动")
                         user_input = ""
                 
                 # 返回按钮
