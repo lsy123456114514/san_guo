@@ -444,6 +444,106 @@ def call_ai(prompt):
         logger.warning("[AI] 本地小模型探测失败: %s", e)
     return call_ollama(prompt, data.get("ai", {}).get("model", ""), data.get("ai", {}).get("url", ""))
 
+
+_Q_PUNCT = "？?。!！，,、；;：:“\"'‘’（）()<>《》~～.-—_ "
+
+
+def _norm_text(s):
+    """去掉标点/空白，只留内容字符（用于问答库匹配）。"""
+    return "".join(ch for ch in (s or "") if ch not in _Q_PUNCT)
+
+
+def _game_state_line():
+    """压缩成一行的当前游戏状态，让模型回答更贴合存档。"""
+    try:
+        r = data.get("resources", {})
+        return ("当前游戏状态: 金元宝=%s 水=%s 食物=%s 玩家=%s"
+                % (r.get("金元宝", 0), r.get("水", 0), r.get("食物", 0),
+                   data.get("username", "主公")))
+    except Exception:
+        return ""
+
+
+def offline_answer(prompt):
+    """离线问答库：没配置/连不上模型时，按游戏内置资料（FAQ+功能目录）回答。
+
+    FAQ 优先（答案完整）；其次按名称/关键词命中功能目录，给出简介和入口路径。
+    """
+    try:
+        from ASSET.faq_system import FAQs
+    except Exception:
+        FAQs = []
+    try:
+        from ASSET.game_main_menu import CATALOG, SUB_CATALOG
+    except Exception:
+        CATALOG, SUB_CATALOG = {}, []
+    q = _norm_text(prompt)
+    if not q:
+        return None
+    qset = set(q)
+    best, best_score = None, 0
+
+    for faq in FAQs:
+        core = _norm_text(faq.get("question", ""))
+        cset = set(core)
+        if not cset:
+            continue
+        inter = len(cset & qset)
+        if core in q or q in core:
+            score = 100 + min(len(core), len(q))
+        elif inter >= 3 and inter / len(cset) >= 0.5:
+            score = 40 + inter
+        else:
+            continue
+        if score > best_score:
+            best_score, best = score, ("faq", faq)
+
+    for e in list(CATALOG.values()) + list(SUB_CATALOG):
+        score = 0
+        name = e.get("name", "")
+        if name and (name in prompt or (len(q) >= 2 and q in name)):
+            score += 60
+        for kw in e.get("keys", "").split():
+            if kw and kw in prompt:
+                score += 12
+        if score > best_score:
+            best_score, best = score, ("cat", e)
+
+    if not best or best_score < 12:
+        return None
+    kind, e = best
+    if kind == "faq":
+        return "【问答库】\n" + e.get("answer", "")
+    return "【问答库·%s】\n%s\n入口：%s" % (
+        e.get("name", ""), e.get("desc", ""), e.get("path", ""))
+
+
+def ask(prompt):
+    """统一提问入口：本地小模型 → OLLAMA → 离线问答库（永远有答案可回）。"""
+    state = _game_state_line()
+    model_prompt = "%s\n问题: %s" % (state, prompt) if state else prompt
+    err = ""
+    try:
+        from ASSET import ai_local_llm
+        if ai_local_llm.is_running():
+            txt = ai_local_llm.chat(model_prompt, system=SAN_GUO_SYSTEM_PROMPT, max_tokens=200)
+            if txt:
+                return txt
+            err = "本地模型无响应"
+    except Exception as e:
+        logger.warning("[AI] 本地小模型探测失败: %s", e)
+    if data.get("ai", {}).get("enabled"):
+        txt = call_ollama(prompt, data.get("ai", {}).get("model", ""), data.get("ai", {}).get("url", ""))
+        if txt and not str(txt).startswith("错误"):
+            return txt
+        err = txt or err
+    off = offline_answer(prompt)
+    if off:
+        return off
+    if err:
+        return str(err)
+    return "问答库没查到，且未配置AI模型。可点「本地小模型」一键启用，或去「配置AI」接入OLLAMA。"
+
 def main():
     """游戏内AI主函数"""
     global screen, clock, FONT_MAIN, FONT_SMALL, FONT_BIG
@@ -536,6 +636,41 @@ def main():
         FONT_SMALL,
         normal_color=COLORS["accent_blue_dark"]
     )
+    # 快捷提问（点了直接填入并发送；小字号避免小屏溢出）
+    try:
+        QUICK_FONT = pygame.font.SysFont(font_name, 20) if font_name else pygame.font.Font(None, 20)
+    except Exception:
+        QUICK_FONT = pygame.font.Font(None, 20)
+    quick_prompts = [
+        "如何获得金元宝？",
+        "如何获得稀有武将？",
+        "钓鱼系统如何玩？",
+        "新手先做什么？",
+    ]
+    quick_btns = []
+    qx = 50
+    q_max_x = screen_width - 60
+    for qp in quick_prompts:
+        qw = QUICK_FONT.size(qp)[0] + 20
+        if qx + qw > q_max_x:
+            break
+        qb = Button(qp, qx, screen_height - 128, qw, 28, QUICK_FONT,
+                    normal_color=(55, 55, 95))
+        quick_btns.append((qp, qb))
+        qx += qw + 8
+    # 消息历史（保留更长对话）
+    max_messages = 200
+
+    def _send(text):
+        nonlocal user_input
+        text = (text or "").strip()
+        if not text:
+            return
+        messages.append("你: " + text)
+        messages.append("AI: " + ask(text))
+        if len(messages) > max_messages:
+            del messages[:-max_messages]
+        user_input = ""
     
     while running:
         # 渐变背景
@@ -571,12 +706,42 @@ def main():
         pygame.draw.rect(screen, (30, 30, 55, 200), message_area, border_radius=10)
         pygame.draw.rect(screen, COLORS["accent_gold"], message_area, 2, border_radius=10)
         
-        # 显示消息
+        # 显示消息（自动换行，只画放得下的最后若干行）
+        def _wrap(text, font, max_w):
+            out = []
+            for raw in text.split("\n"):
+                if not raw:
+                    out.append("")
+                    continue
+                cur = ""
+                for ch in raw:
+                    if font.size(cur + ch)[0] > max_w and cur:
+                        out.append(cur)
+                        cur = ch
+                    else:
+                        cur += ch
+                if cur:
+                    out.append(cur)
+            return out or [""]
+
+        all_lines = []
+        for msg in messages[-30:]:
+            is_user = msg.startswith("你:")
+            color = COLORS["accent_gold"] if is_user else COLORS["text_white"]
+            for ln in _wrap(msg, FONT_SMALL, message_area.width - 24):
+                all_lines.append((ln, color))
+        line_h = FONT_SMALL.get_height() + 4
+        max_lines = max(1, (message_area.height - 16) // line_h)
         y_offset = message_area.y + 10
-        for msg in messages[-10:]:  # 只显示最近10条消息
-            msg_surf = FONT_SMALL.render(msg, True, COLORS["text_white"])
-            screen.blit(msg_surf, (message_area.x + 10, y_offset))
-            y_offset += msg_surf.get_height() + 5
+        for ln, color in all_lines[-max_lines:]:
+            msg_surf = FONT_SMALL.render(ln, True, color)
+            screen.blit(msg_surf, (message_area.x + 12, y_offset))
+            y_offset += line_h
+        
+        # 快捷提问按钮
+        for _qp, qb in quick_btns:
+            qb.check_hover(pygame.mouse.get_pos())
+            qb.draw(screen)
         
         # 输入区域
         input_rect = pygame.Rect(50, screen_height - 80, screen_width - 200, 40)
@@ -588,8 +753,11 @@ def main():
         except Exception:
             pass
         
-        # 输入文字
-        input_surf = FONT_SMALL.render(user_input, True, COLORS["text_white"])
+        # 输入文字（空时显示占位提示）
+        if user_input:
+            input_surf = FONT_SMALL.render(user_input, True, COLORS["text_white"])
+        else:
+            input_surf = FONT_SMALL.render("输入问题，回车发送（没配模型也能问）", True, (130, 130, 160))
         screen.blit(input_surf, (input_rect.x + 10, input_rect.y + 5))
         
         # 发送按钮
@@ -599,6 +767,10 @@ def main():
         # 返回按钮
         back_btn.check_hover(pygame.mouse.get_pos())
         back_btn.draw(screen)
+        
+        # 开发者署名
+        dev_surf = FONT_SMALL.render("开发者：幸泽宇", True, (120, 120, 150))
+        screen.blit(dev_surf, (20, screen_height - 34))
         
         # 事件处理
         for event in pygame.event.get():
@@ -612,18 +784,7 @@ def main():
             
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_RETURN:
-                    if user_input and (ai_enabled or local_ok):
-                        # 添加用户消息
-                        messages.append(f"你: {user_input}")
-                        
-                        # 调用AI（本地优先，回退OLLAMA）
-                        response = call_ai(user_input)
-                        messages.append(f"AI: {response}")
-                        
-                        user_input = ""
-                    elif user_input and not (ai_enabled or local_ok):
-                        messages.append("提示: 请先开启AI并配置模型，或点“本地小模型”启动")
-                        user_input = ""
+                    _send(user_input)
                 elif event.key == pygame.K_BACKSPACE:
                     user_input = user_input[:-1]
                 else:
@@ -631,6 +792,12 @@ def main():
             
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mouse_pos = pygame.mouse.get_pos()
+                
+                # 快捷提问
+                for _qp, qb in quick_btns:
+                    if qb.check_click(mouse_pos):
+                        _send(_qp)
+                        break
                 
                 # 配置按钮
                 if config_btn.check_click(mouse_pos):
@@ -895,18 +1062,7 @@ def main():
 
                 # 发送按钮
                 if send_btn.check_click(mouse_pos):
-                    if user_input and (ai_enabled or local_ok):
-                        # 添加用户消息
-                        messages.append(f"你: {user_input}")
-                        
-                        # 调用AI（本地优先，回退OLLAMA）
-                        response = call_ai(user_input)
-                        messages.append(f"AI: {response}")
-                        
-                        user_input = ""
-                    elif user_input and not (ai_enabled or local_ok):
-                        messages.append("提示: 请先开启AI并配置模型，或点“本地小模型”启动")
-                        user_input = ""
+                    _send(user_input)
                 
                 # 返回按钮
                 if back_btn.check_click(mouse_pos):
