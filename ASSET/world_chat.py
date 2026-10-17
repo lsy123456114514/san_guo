@@ -84,6 +84,12 @@ class InputBox:
         if event.type == pygame.MOUSEBUTTONDOWN:
             self.active = self.rect.collidepoint(event.pos)
             self.color = COLORS["accent_gold"] if self.active else COLORS["accent_blue"]
+            if self.active:
+                try:
+                    from ASSET.ime_helper import apply_text_input
+                    apply_text_input()
+                except Exception:
+                    pass
         if event.type == pygame.KEYDOWN and self.active:
             if event.key == pygame.K_RETURN:
                 return self.text
@@ -103,6 +109,13 @@ class InputBox:
     def draw(self, surface):
         pygame.draw.rect(surface, COLORS["bg_input"], self.rect, border_radius=12)
         pygame.draw.rect(surface, self.color, self.rect, 2, border_radius=12)
+        
+        if self.active:
+            try:
+                from ASSET.ime_helper import focus_rect
+                focus_rect(self.rect)
+            except Exception:
+                pass
         
         display_text = self.text
         if self.active and self.cursor_visible:

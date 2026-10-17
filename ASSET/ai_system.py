@@ -208,6 +208,11 @@ def input_text(screen, font, prompt):
     active = True
     confirm_btn = None
     clock = pygame.time.Clock()
+    try:
+        from ASSET.ime_helper import apply_text_input, focus_rect
+        apply_text_input()
+    except Exception:
+        apply_text_input = None
     
     while active:
         for event in pygame.event.get():
@@ -253,6 +258,10 @@ def input_text(screen, font, prompt):
         input_rect = pygame.Rect(screen.get_width() // 2 - 200, y_offset + 20, 400, 40)
         pygame.draw.rect(screen, (40, 40, 70), input_rect, border_radius=10)
         pygame.draw.rect(screen, COLORS["accent_gold"], input_rect, 2, border_radius=10)
+        try:
+            focus_rect(input_rect)
+        except Exception:
+            pass
         
         # 输入文字
         input_surf = font.render(input_text, True, COLORS["text_white"])
@@ -450,6 +459,13 @@ def main():
     pygame.display.set_caption("游戏内AI")
     clock = pygame.time.Clock()
     
+    # 启用文本输入（中文输入法）
+    try:
+        from ASSET.ime_helper import apply_text_input
+        apply_text_input()
+    except Exception:
+        pass
+    
     # 初始化字体
     font_name = get_system_font_name()
     try:
@@ -566,6 +582,11 @@ def main():
         input_rect = pygame.Rect(50, screen_height - 80, screen_width - 200, 40)
         pygame.draw.rect(screen, (40, 40, 70), input_rect, border_radius=10)
         pygame.draw.rect(screen, COLORS["accent_gold"], input_rect, 2, border_radius=10)
+        try:
+            from ASSET.ime_helper import focus_rect
+            focus_rect(input_rect)
+        except Exception:
+            pass
         
         # 输入文字
         input_surf = FONT_SMALL.render(user_input, True, COLORS["text_white"])

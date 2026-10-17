@@ -510,9 +510,9 @@ def main():
         
         # 启用 Unicode 输入支持，确保中文输入法正常工作
         try:
-            pygame.key.set_text_input_enabled(True)
-        except AttributeError:
-            # 旧版本Pygame不支持此方法，忽略
+            from ASSET.ime_helper import apply_text_input
+            apply_text_input()
+        except Exception:
             pass
         
         # 分辨率适配
@@ -568,11 +568,28 @@ def main():
                     if self.active:
                         if event.key == pygame.K_BACKSPACE:
                             self.text = self.text[:-1]
+                        else:
+                            # 文本输入被关（中文输入法设置为关）时，
+                            # 用 KEYDOWN.unicode 兜底输入 ASCII，避免打不了字
+                            try:
+                                from ASSET.ime_helper import is_active
+                            except Exception:
+                                is_active = None
+                            if is_active is not None and not is_active() \
+                                    and event.unicode and event.unicode.isprintable():
+                                self.text += event.unicode
                 if event.type == pygame.TEXTINPUT:
                     if self.active:
                         self.text += event.text
             
             def draw(self, screen):
+                # 把输入法选字框定位到输入框
+                if self.active:
+                    try:
+                        from ASSET.ime_helper import focus_rect
+                        focus_rect(self.rect)
+                    except Exception:
+                        pass
                 # 圆角输入框
                 pygame.draw.rect(screen, COLOR_INPUT, self.rect, border_radius=6)
                 pygame.draw.rect(screen, self.color, self.rect, 2, border_radius=6)

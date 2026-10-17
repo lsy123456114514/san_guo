@@ -2578,6 +2578,143 @@ SPECIAL_HANDLERS = {
     "41": open_dictionary,   # 词典百科（配套：疑难解答 / 背景故事）
 }
 
+def _custom_resolution_dialog_pygame(settings_lines, current_w, current_h):
+    """tkinter 不可用（打包版未内置）时的自定义分辨率对话框（纯 pygame）。
+
+    输入宽/高（纯数字），回车或「确定」返回 ``(w, h)``，Esc 或「取消」返回 None。
+    """
+    surf = pygame.display.get_surface() or pygame.display.set_mode((current_w, current_h))
+    w, h = surf.get_width(), surf.get_height()
+    panel = pygame.Rect(w // 4, h // 2 - 115, w // 2, 235)
+    font = FONT_SMALL
+    if not font:
+        try:
+            font = pygame.font.SysFont("microsoftyahei", 26)
+        except Exception:
+            font = pygame.font.Font(None, 26)
+    box_w = pygame.Rect(panel.x + 140, panel.y + 70, 160, 40)
+    box_h = pygame.Rect(panel.x + 140, panel.y + 122, 160, 40)
+    ok_rect = pygame.Rect(panel.x + panel.width - 210, panel.bottom - 50, 90, 34)
+    cancel_rect = pygame.Rect(panel.x + panel.width - 110, panel.bottom - 50, 90, 34)
+    values = {0: str(int(current_w)), 1: str(int(current_h))}
+    focus = 0
+    err = ""
+    clock = pygame.time.Clock()
+
+    def _try_confirm():
+        try:
+            cw = int(values[0])
+            ch = int(values[1])
+        except ValueError:
+            return "宽和高必须是数字"
+        if cw < 320 or ch < 240:
+            return "最小 320x240"
+        try:
+            dw, dh = pygame.display.get_desktop_sizes()[0]
+        except Exception:
+            dw, dh = 1920, 1080
+        return (min(max(cw, 320), dw), min(max(ch, 240), dh))
+
+    try:
+        from ASSET.ime_helper import apply_text_input, focus_rect
+    except Exception:
+        def apply_text_input():
+            pass
+
+        def focus_rect(rect):
+            pass
+    apply_text_input()
+    focus_rect(box_w)
+
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return None
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if box_w.collidepoint(event.pos):
+                    focus = 0
+                    focus_rect(box_w)
+                    continue
+                if box_h.collidepoint(event.pos):
+                    focus = 1
+                    focus_rect(box_h)
+                    continue
+                if ok_rect.collidepoint(event.pos):
+                    r = _try_confirm()
+                    if isinstance(r, tuple):
+                        return r
+                    err = r
+                    continue
+                if cancel_rect.collidepoint(event.pos):
+                    return None
+                if not panel.collidepoint(event.pos):
+                    return None
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return None
+                if event.key == pygame.K_TAB:
+                    focus = 1 - focus
+                    focus_rect(box_h if focus else box_w)
+                    continue
+                if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    r = _try_confirm()
+                    if isinstance(r, tuple):
+                        return r
+                    err = r
+                    continue
+                if event.key == pygame.K_UP:
+                    focus = 0
+                    focus_rect(box_w)
+                    continue
+                if event.key == pygame.K_DOWN:
+                    focus = 1
+                    focus_rect(box_h)
+                    continue
+                if event.key == pygame.K_BACKSPACE:
+                    values[focus] = values[focus][:-1]
+                    err = ""
+                elif event.unicode and event.unicode.isdigit() and len(values[focus]) < 5:
+                    values[focus] += event.unicode
+                    err = ""
+
+        overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 140))
+        surf.blit(overlay, (0, 0))
+        pygame.draw.rect(surf, (40, 40, 70), panel, border_radius=10)
+        pygame.draw.rect(surf, (139, 69, 19), panel, 2, border_radius=10)
+        pygame.draw.rect(surf, (255, 215, 0), panel, 1, border_radius=10)
+
+        title = font.render("自定义分辨率", True, (255, 215, 0))
+        surf.blit(title, title.get_rect(centerx=panel.centerx, y=panel.y + 14))
+        hint = font.render("输入宽和高（最小 320x240），回车确定，Esc 取消", True, (176, 176, 200))
+        surf.blit(hint, hint.get_rect(centerx=panel.centerx, y=panel.y + 44))
+
+        for idx, (rect, label, key) in enumerate(
+                ((box_w, "宽：", 0), (box_h, "高：", 1))):
+            pygame.draw.rect(surf, (55, 55, 90), rect, border_radius=6)
+            pygame.draw.rect(surf, (255, 215, 0) if focus == key else (139, 69, 19),
+                             rect, 2, border_radius=6)
+            lab = font.render(label, True, (255, 255, 255))
+            surf.blit(lab, (rect.x - 60, rect.y + (rect.height - lab.get_height()) // 2))
+            val = values[key] + ("|" if focus == key else "")
+            txt = font.render(val, True, (255, 255, 255))
+            surf.blit(txt, (rect.x + 10, rect.y + (rect.height - txt.get_height()) // 2))
+
+        for rect, label, col in ((ok_rect, "确定", (60, 160, 90)),
+                                 (cancel_rect, "取消", (150, 60, 60))):
+            pygame.draw.rect(surf, col, rect, border_radius=6)
+            pygame.draw.rect(surf, (255, 255, 255), rect, 1, border_radius=6)
+            t = font.render(label, True, (255, 255, 255))
+            surf.blit(t, t.get_rect(center=rect.center))
+
+        if err:
+            msg = font.render(err, True, (255, 120, 120))
+            surf.blit(msg, msg.get_rect(centerx=panel.centerx, y=panel.bottom - 66))
+
+        pygame.display.flip()
+        clock.tick(60)
+
+
 def custom_resolution_dialog(settings_lines, current_w, current_h):
     """打开一个仿设置界面的 tkinter 窗口，让玩家拖动窗口边缘调整分辨率。
 
@@ -2596,8 +2733,8 @@ def custom_resolution_dialog(settings_lines, current_w, current_h):
     try:
         import tkinter as tk
     except Exception as _e:
-        logger.info("[设置] tkinter 不可用，无法使用自定义分辨率：%s", _e)
-        return None
+        logger.info("[设置] tkinter 不可用，改用内置分辨率输入框：%s", _e)
+        return _custom_resolution_dialog_pygame(settings_lines, current_w, current_h)
 
     # 隐藏 pygame 窗口，营造“界面被替换”的视觉效果
     try:
@@ -2622,9 +2759,9 @@ def custom_resolution_dialog(settings_lines, current_w, current_h):
     try:
         root = tk.Tk()
     except Exception as _e:
-        logger.info("[设置] 创建 tkinter 窗口失败：%s", _e)
+        logger.info("[设置] 创建 tkinter 窗口失败，改用内置分辨率输入框：%s", _e)
         _restore_window()
-        return None
+        return _custom_resolution_dialog_pygame(settings_lines, current_w, current_h)
 
     root.title("游戏设置")
     root.configure(bg="#141428")
@@ -2736,11 +2873,16 @@ def setting_menu():
             data['settings']['graphics']['fullscreen'] = False
             save()
 
+        if 'input' not in data['settings']:
+            data['settings']['input'] = {}
+            save()
+
         return [
             f"分辨率：{data['settings']['graphics']['resolution']}",
             f"全屏模式：{'开' if data['settings']['graphics']['fullscreen'] else '关'}",
             f"地图最大元素：{data['settings']['map']['max_locations']}",
-            f"音效：{'开' if data['settings']['sound']['enable'] else '关'}"
+            f"音效：{'开' if data['settings']['sound']['enable'] else '关'}",
+            f"中文输入法：{'开' if data['settings']['input'].get('ime', True) else '关'}"
         ]
 
     running = True
@@ -2810,8 +2952,8 @@ def setting_menu():
                 for i, btn in enumerate(setting_buttons):
                     if btn.rect.collidepoint(event.pos):
                         if i == 0:
-                            resolutions = ["600x500", "800x600", "1024x768", "1280x720",
-                                           "1366x768", "1920x1080", "自定义"]
+                            resolutions = ["自定义", "600x500", "800x600", "1024x768",
+                                           "1280x720", "1366x768", "1920x1080"]
                             current = data['settings']['graphics']['resolution']
                             try:
                                 idx = resolutions.index(current)
@@ -2856,14 +2998,18 @@ def setting_menu():
                             data['settings']['sound']['enable'] = not data['settings']['sound']['enable']
                             save()
                         elif i == 4:
-                            apply_display()
-                            save()
-                            show_message("设置已应用")
+                            from ASSET.ime_helper import ime_enabled, set_ime
+                            set_ime(not ime_enabled())
+                            show_message("中文输入法已" + ("开启" if ime_enabled() else "关闭"))
                         elif i == 5:
                             apply_display()
                             save()
-                            running = False
+                            show_message("设置已应用")
                         elif i == 6:
+                            apply_display()
+                            save()
+                            running = False
+                        elif i == 7:
                             running = False
 
         clock.tick(MENU_FPS)
@@ -2879,8 +3025,10 @@ def input_save_name(screen, font_title, font_input):
     active = True
     clock = pygame.time.Clock()
     try:
-        pygame.key.set_text_input_enabled(True)
-    except AttributeError:
+        from ASSET.ime_helper import apply_text_input, focus_rect
+        apply_text_input()
+        focus_rect(input_box)
+    except Exception:
         pass
 
     while active:

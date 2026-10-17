@@ -415,6 +415,11 @@ class Whiteboard:
             self.running = False
         elif name == 'text':
             self.inputting_text = True
+            try:
+                from ASSET.ime_helper import apply_text_input
+                apply_text_input()
+            except Exception:
+                pass
             mouse_pos = pygame.mouse.get_pos()
             if self.is_on_canvas(mouse_pos):
                 self.input_pos = self.to_canvas_pos(mouse_pos)

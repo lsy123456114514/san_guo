@@ -54,6 +54,14 @@ def hide_file(filepath):
 sys.path.append(os.path.join(os.path.dirname(__file__), 'ASSET'))
 from ASSET.anti_decompile import protect_function
 
+# 打包后（frozen）：把工作目录固定到 exe 所在文件夹，
+# 修复从开始菜单/快捷方式启动时相对路径（game.log 等）解析错乱
+if getattr(sys, 'frozen', False):
+    try:
+        os.chdir(os.path.dirname(os.executable))
+    except Exception:
+        pass
+
 # 安卓路径适配
 if 'ANDROID_DATA' in os.environ:
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -137,6 +145,13 @@ def main_game():
     # 每次启动都显示词典系统（伪装界面），统一分辨率并居中
     screen = open_window()
     pygame.display.set_caption("英语词典")
+
+    # 按设置启用文本输入（中文输入法选字框出现的前提）
+    try:
+        from ASSET.ime_helper import apply_text_input
+        apply_text_input()
+    except Exception:
+        pass
 
     # 运行词典系统
     result = dictionary_main(screen)
