@@ -769,7 +769,7 @@ def main():
         back_btn.draw(screen)
         
         # 开发者署名
-        dev_surf = FONT_SMALL.render("开发者：幸泽宇", True, (120, 120, 150))
+        dev_surf = FONT_SMALL.render("by lsy123456114514", True, (120, 120, 150))
         screen.blit(dev_surf, (20, screen_height - 34))
         
         # 事件处理
