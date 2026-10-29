@@ -561,6 +561,7 @@ class LotterySky:
         self.impact_wave = 0.0
         self.card_t = 0.0
         self._glow_cache = None      # (半径, 辉光面) 缓存
+        self._beam_cache_key = None  # (尺寸, 高度, 角度) → 旋转后光柱面
         self._grad_cache = None      # (量化色键, 渐变面) 缓存
         self._hud_cache = None       # (阶段文本, 署名面) 缓存
         self.phase_changed = ""  # 触发一次性事件（震屏/闪光）的幕名
@@ -728,11 +729,17 @@ class LotterySky:
         if in_sky and len(self.cloud_tex) and random.random() < dt * 1.6:
             tex = random.choice(self.cloud_tex)
             sc = random.uniform(0.55, 1.35)
+            # 云实例自带已缩放贴图：绘制时不必逐帧 smoothscale（上升期
+            # 均帧大头）；缩放在生成时算一次，之后只做 alpha blit
+            base = pygame.transform.smoothscale(
+                tex, (max(2, int(tex.get_width() * sc)),
+                      max(2, int(tex.get_height() * sc))))
             self.clouds.append([tex,
                                 random.uniform(-tex.get_width() * 0.3, W - 60),
                                 random.uniform(-180, -60),
                                 sc,
-                                random.uniform(260, 520) * (0.5 + a * 1.6)])
+                                random.uniform(260, 520) * (0.5 + a * 1.6),
+                                base])
         alive = []
         for c in self.clouds:
             c[2] += c[4] * dt                       # 向下（我们向上升）
@@ -909,17 +916,14 @@ class LotterySky:
         fade = 1.0 - ease_in_out(norm(8.6, 10.6, self.t))  # 进太空前散尽
         if fade <= 0.02:
             return
-        for tex, x, y, sc, _sp in self.clouds:
-            tw, th = int(tex.get_width() * sc), int(tex.get_height() * sc)
-            if tw <= 1 or th <= 1:
-                continue
-            img = pygame.transform.smoothscale(tex, (tw, th))
+        for c in self.clouds:
+            img = c[5]   # 生成时已缩放好的贴图（省掉逐帧 smoothscale）
             # 高度越高云越稀薄发灰
             a = int(235 * fade * (1 - dusk * 0.75))
             if a <= 3:
                 continue
             img.set_alpha(a)
-            self.world.blit(img, (int(x), int(y)))
+            self.world.blit(img, (int(c[1]), int(c[2])))
 
     def _draw_earth(self):
         t = self.t
@@ -1051,13 +1055,21 @@ class LotterySky:
         seg_len = dist * bp
         ux, uy = dx / dist, dy / dist
         ex, ey = sx + ux * seg_len, sy + uy * seg_len
+        # 旋转 + 缩放后的光柱按 (量化尺寸, 量化角度) 缓存：俯冲期逐帧重建
+        # smoothscale+rotate 是均帧大头；角度/尺寸变化缓慢，量化后大量命中
         tex = self.beam_tex
         bw = int(tex.get_width() * (0.8 + self._dive() * 1.6))
         bh = max(32, int(seg_len + 40))
-        beam = pygame.transform.smoothscale(tex, (max(8, bw), bh))
-        # 贴图默认朝下(+y)，要转到目标方向 (ux,uy)
         ang = math.degrees(math.atan2(ux, uy))
-        beam = pygame.transform.rotate(beam, ang)
+        bkey = (max(8, bw), bh, int(ang))
+        if getattr(self, "_beam_cache_key", None) == bkey:
+            beam = self._beam_cache.copy()             # copy：下面 set_alpha 不污染缓存
+        else:
+            beam = pygame.transform.smoothscale(tex, (max(8, bw), bh))
+            beam = pygame.transform.rotate(beam, ang)   # 贴图默认朝下，转到 (ux,uy)
+            if bh < 2048:                               # 过大的不缓存（少见）
+                self._beam_cache_key, self._beam_cache = bkey, beam
+            beam = beam.copy()
         beam.set_alpha(int(235 * min(1.0, bp * 1.4)))
         # rotate 后的定位：旋转中心要落在 (sx,sy)→(ex,ey) 中点
         midx, midy = (sx + ex) / 2, (sy + ey) / 2
