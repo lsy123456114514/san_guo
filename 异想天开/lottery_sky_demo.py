@@ -548,7 +548,16 @@ class LotterySky:
                                          density=0.42 + 0.06 * (i % 3)) for i in range(7)]
         except Exception:
             self.cloud_tex = []
-        self.clouds = []      # 实例: [贴图, x, y, 缩放, 速度]
+        self.clouds = []      # 实例: [贴图, x, y, 缩放, 速度, 预缩放面]
+
+        # 上升幕的“海拔感”素材（全部程序生成，构建一次反复用）
+        self.ground_surf = self._make_ground()   # 远去的大地/城市剪影
+        self.birds = []        # 实例: [x, y, vx, 尺寸, 扑翼相位]
+        self._sun_cache = None    # 太阳辉光面缓存
+        self._sun_arm = None      # (半长, 眩光横条面) 缓存
+        self._sun_arm_v = None    # (半长, 旋转后的竖条面) 缓存
+        self._sea_cache = None    # (尺寸, 云海带面) 缓存
+        self._ground_cache = None # (尺寸, 缓存缩放后的地面面)
 
         self.beam_tex = make_beam()
 
@@ -614,6 +623,134 @@ class LotterySky:
                 if (ox - r) ** 2 + (oy - r) ** 2 < (r - rr - 6) ** 2:
                     pygame.draw.circle(surf, (70, 140, 85, 255), (ox, oy), rr)
         return surf
+
+    def _make_ground(self):
+        """上升幕开场的程序大地：草地 + 远山 + 城市天际线 + 河流。
+
+        构建一次（1280x260 的 RGBA 面），随海拔下移/缩放/淡出，省逐帧重算。
+        """
+        gh = 260
+        s = pygame.Surface((W, gh), pygame.SRCALPHA)
+        rng = random.Random(2024)
+        # 草地纵向渐变（上浅下深）
+        for y in range(gh):
+            k = y / (gh - 1)
+            pygame.draw.line(s, lerp_col((104, 168, 96), (66, 118, 70), k),
+                             (0, y), (W, y))
+        # 远山剪影（一条起伏轮廓线之下的暗色带）
+        ridge = [(0, gh)]
+        x = 0
+        while x <= W:
+            ridge.append((x, 96 + int(22 * math.sin(x * 0.011)
+                                      + rng.uniform(-9, 9))))
+            x += 26
+        ridge.append((W, gh))
+        pygame.draw.polygon(s, (78, 108, 88), ridge)
+        # 城市天际线（中偏右的楼群，剪影 + 亮窗）
+        base_y = 140
+        bx = int(W * 0.52)
+        for i in range(14):
+            bw = rng.randint(26, 58)
+            bh = rng.randint(30, 118)
+            x0 = bx + rng.randint(-230, 260)
+            pygame.draw.rect(s, (62, 78, 96), (x0, base_y - bh, bw, bh))
+            for wy in range(base_y - bh + 6, base_y - 4, 11):
+                for wx in range(x0 + 4, x0 + bw - 4, 9):
+                    if rng.random() < 0.45:
+                        pygame.draw.rect(s, (255, 224, 150), (wx, wy, 3, 4))
+        # 河流（蜿蜒亮带）
+        riv = [(0, 200)]
+        for x in range(0, W + 20, 20):
+            riv.append((x, 200 + int(15 * math.sin(x * 0.017))))
+        riv += [(W, gh), (0, gh)]
+        pygame.draw.polygon(s, (108, 168, 212), riv)
+        return s
+
+    def _draw_ground(self):
+        """大地随海拔下坠远去：位置下移、缓慢缩小、带大气雾感淡出。"""
+        if self.t < 2.4:
+            return
+        a = ease_in_out(norm(2.9, 8.2, self.t))     # 上升进度
+        if a >= 1.0:
+            return
+        gy = int(lerp(H * 0.70, H * 2.4, ease_in(a)))   # 加速坠出画面
+        sc = lerp(1.0, 1.28, a)                          # 越近越大→透视感
+        gw, gh = int(W * sc), int(260 * sc)
+        key = (gw, gh)
+        if self._ground_cache is None or self._ground_cache[0] != key:
+            g2 = pygame.transform.smoothscale(self.ground_surf, (gw, gh))
+            self._ground_cache = (key, g2)
+        g2 = self._ground_cache[1]
+        # 大气雾感：越远越泛蓝白（alpha 上升 = 被雾吃掉）
+        g2.set_alpha(int(255 * (1 - a * 0.92)))
+        self.world.blit(g2, (int(W * 0.5 - gw * 0.5), gy))
+
+    def _draw_sun(self, dusk):
+        """白昼太阳 + 眩光（随天色变暗淡出）"""
+        sa = 1.0 - dusk
+        if sa <= 0.03:
+            return
+        sx, sy = int(W * 0.19), int(H * 0.20)
+        r = int(lerp(46, 22, dusk))
+        # 辉光（多层圆，按半径缓存）
+        if self._sun_cache is None or self._sun_cache[0] != r:
+            gs = pygame.Surface((r * 6, r * 6), pygame.SRCALPHA)
+            for rr, al in ((r * 2.6, 26), (r * 1.7, 54), (r * 1.15, 130)):
+                pygame.draw.circle(gs, (255, 246, 214, al), (r * 3, r * 3), int(rr))
+            self._sun_cache = (r, gs)
+        gs = self._sun_cache[1]
+        gs.set_alpha(int(255 * sa))
+        self.world.blit(gs, (sx - r * 3, sy - r * 3))
+        pygame.draw.circle(self.world, (255, 252, 236), (sx, sy), r)
+        # 眩光十字（预烘径向渐变条，缓存；避免逐帧 set_at 的慢循环）
+        arm = r * 4
+        if self._sun_arm is None or self._sun_arm[0] != arm:
+            bar = pygame.Surface((arm * 2, 5), pygame.SRCALPHA)
+            for x in range(arm * 2):
+                f = 1 - abs(x - arm) / arm
+                f *= f
+                a2 = int(190 * f)
+                pygame.draw.line(bar, (255, 248, 220, a2), (x, 0), (x, 4))
+            self._sun_arm = (arm, bar)
+        bar = self._sun_arm[1]
+        bar.set_alpha(int(255 * sa))
+        self.world.blit(bar, (sx - arm, sy - 2))
+        if self._sun_arm_v is None or self._sun_arm_v[0] != arm:
+            base = self._sun_arm[1]                # 未设 alpha 的原始横条
+            self._sun_arm_v = (arm, pygame.transform.rotate(base, 90))
+        bar2 = self._sun_arm_v[1]
+        bar2.set_alpha(int(255 * sa))
+        self.world.blit(bar2, (sx - bar2.get_width() // 2,
+                               sy - bar2.get_height() // 2))
+
+    def _draw_birds(self, dusk):
+        """飞鸟掠过（上升早段，扑翼 + 向下掠出画面，强化“我们在升空”）"""
+        if not self.birds:
+            return
+        col = lerp_col((48, 56, 72), (120, 132, 150), dusk * 0.7)
+        for b in self.birds:
+            bx, by, bs, ph = int(b[0]), int(b[1]), b[2], b[3]
+            if not (-40 <= bx <= W + 40 and -40 <= by <= H + 40):
+                continue
+            wing = bs * (0.35 + 0.65 * abs(math.sin(ph)))   # 扑翼
+            pygame.draw.lines(self.world, col, False,
+                              [(bx - bs, by - wing * 0.7), (bx, by),
+                               (bx + bs, by - wing * 0.7)], max(1, int(bs * 0.28)))
+
+    def _draw_cloudsea(self, dusk):
+        """高空俯瞰的云海带：上升中后期铺在画面下缘，慢慢被甩到身后。"""
+        a = ease_in_out(norm(5.4, 10.2, self.t))
+        if a <= 0.01 or not self.cloud_tex:
+            return
+        gy = int(lerp(H * 0.78, H * 1.35, a))     # 缓慢下沉出画
+        gw = int(W * 1.25)
+        if self._sea_cache is None or self._sea_cache[0] != gw:
+            tex = self.cloud_tex[0]
+            band = pygame.transform.smoothscale(tex, (gw, int(H * 0.30)))
+            self._sea_cache = (gw, band)
+        band = self._sea_cache[1]
+        band.set_alpha(int(210 * (1 - a) * (1 - dusk * 0.55)))
+        self.world.blit(band, (int(W * 0.5 - gw * 0.5), gy))
 
     # ── 连续时间线上的派生量 ──────────────────────────────
     def _mask_alpha(self):
@@ -722,6 +859,24 @@ class LotterySky:
 
         # 云层：上升期自上而下掠过（镜头在上升），越到后期越快、越淡
         self._update_clouds(dt)
+        self._update_birds(dt)
+
+    def _update_birds(self, dt):
+        """上升早段的飞鸟：随机掠过，向下（我们升空的相对运动）扑翼飞走"""
+        if 3.0 <= self.t <= 7.2 and random.random() < dt * 1.1 and len(self.birds) < 9:
+            bs = random.uniform(5, 11)
+            self.birds.append([random.uniform(-40, W + 40),
+                               random.uniform(-30, H * 0.5),
+                               bs,
+                               random.uniform(0, math.tau)])   # 相位
+        alive = []
+        for b in self.birds:
+            b[1] += (170 + 260 * self._alt()) * dt     # 向下掠（我们升空）
+            b[0] += random.uniform(-14, 14) * dt * 6   # 轻微左右摆
+            b[3] += dt * random.uniform(9, 15)         # 扑翼频率
+            if b[1] < H + 60:
+                alive.append(b)
+        self.birds = alive
 
     def _update_clouds(self, dt):
         a = self._alt()
@@ -823,8 +978,19 @@ class LotterySky:
         # 星空（带视差上移 —— 镜头在上升）
         self._draw_stars()
 
+        # ── 上升幕（sky）的海拔感细节：太阳/大地远去/飞鸟/云海 ──
+        if 2.4 <= self.t < 10.6:
+            self._draw_sun(dusk)      # 白昼太阳 + 眩光（在云后、天空前）
+        self._draw_ground()           # 开场大地：下坠远去 + 大气雾感淡出
+        if self.t >= 10.4 - 1.0:      # 云海铺在下缘（上升中后期）
+            self._draw_cloudsea(dusk)
+
         # 云（遮罩后到进太空前）
         self._draw_clouds(dusk)
+
+        # 飞鸟（上升早段，向下掠出，强化升空感）
+        if 2.9 <= self.t < 7.4:
+            self._draw_birds(dusk)
 
         # 地球（真实贴图 3D 球体 / 回退）
         self._draw_earth()
