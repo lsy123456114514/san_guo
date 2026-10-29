@@ -24,6 +24,7 @@
 import math
 import os
 import random
+import time
 
 import pygame
 
@@ -205,7 +206,11 @@ class Earth3D:
         self.cloud = cloud_tex
         self.spin = 0.0            # 自转角（弧度）
         self.tilt = 0.38           # 地轴倾角（弧度，约 22°）
-        self._cache_key = None
+        # 后台渲染：主线程只拿最新结果，绝不等 numpy（避免几百 ms 巨帧卡顿）
+        self._latest_key = None    # 主线程写：请求的 (size, spin)
+        self._latest_surf = None
+        self._latest_sun = (-0.55, -0.35, 0.76)
+        self._cache_key = None     # 渲染线程内部缓存
         self._cache_surf = None
         # 预生成经纬度网格（与贴图尺寸一致）
         h, w = day_tex.shape[:2]
@@ -213,6 +218,21 @@ class Earth3D:
         lon = np.linspace(-math.pi, math.pi, w, endpoint=False, dtype=np.float32)[None, :]
         self.lat_grid = np.broadcast_to(lat, (h, w))
         self.lon_grid = np.broadcast_to(lon, (h, w))
+        # 同步预热一帧：让 _latest_surf 立刻有内容，主线程不会看到空球
+        try:
+            self.render(256, self._latest_sun)
+        except Exception:
+            pass
+
+    def kick(self, size, sun_dir=(-0.55, -0.35, 0.76)):
+        """主线程调用：请求一帧渲染（不等待）。渲染由后台线程空闲时完成。
+
+        返回当前最新可用的 surface（可能落后一帧/低分辨率，但绝不卡）。
+        """
+        key = (size, round(self.spin, 2))
+        self._latest_key = key       # 单个原子引用写，后台线程看到就重渲染
+        self._latest_sun = sun_dir
+        return self._latest_surf
 
     def _sample(self, tex, u, v):
         """双线性采样；u,v 为 0..1 归一坐标（已是 ndarray float32）
@@ -241,7 +261,10 @@ class Earth3D:
         return top + (bot - top) * fy
 
     def render(self, size, sun_dir=(-0.55, -0.35, 0.76)):
-        """渲染球体到 (size,size) 的 RGBA surface。size = 球直径像素。"""
+        """渲染球体到 (size,size) 的 RGBA surface。size = 球直径像素。
+
+        仅由后台渲染线程调用；主线程请用 kick()。
+        """
         # spin 量化到 0.01 rad：自转很慢，相邻帧可复用缓存（性能关键）
         key = (size, round(self.spin, 2))
         if key == self._cache_key and self._cache_surf is not None:
@@ -313,6 +336,7 @@ class Earth3D:
         surf = pygame.image.frombytes(out.tobytes(), (size, size), "RGBA")
         self._cache_key = key
         self._cache_surf = surf
+        self._latest_surf = surf    # 发布给主线程（原子引用写，永不阻塞）
         return surf
 
 
@@ -543,6 +567,32 @@ class LotterySky:
 
         self.prize_name = pick_prize()
         self.prize_meta = next(p for p in PRIZE_POOL if p[0] == self.prize_name)
+
+        # 后台渲染线程：地球 numpy 渲染单次要几十~两百多 ms，若在主线程做
+        # 会产生巨帧卡顿。放到后台线程后，主线程只取最新贴图，绝不等待。
+        import threading
+        self._earth_stop = threading.Event()
+        self._earth_thread = threading.Thread(target=self._earth_render_loop,
+                                              daemon=True, name="earth-render")
+        self._earth_thread.start()
+
+    def _earth_render_loop(self):
+        """后台地球渲染循环：主线程通过 earth.kick() 提交 (size, spin) 需求。"""
+        while not self._earth_stop.is_set():
+            key = getattr(self.earth, "_latest_key", None)
+            if key is None:
+                time.sleep(0.004)
+                continue
+            size, _spin_q = key
+            # 需求没变时跳过（渲染结果已缓存在 _latest_surf）
+            if getattr(self.earth, "_cache_key", None) != key:
+                try:
+                    self.earth.render(size, self.earth._latest_sun)
+                except Exception:
+                    pass   # 渲染出错也不拖垮主线程（会回退到旧贴图）
+                time.sleep(0.001)   # 刚画完一帧，稍让出 GIL
+            else:
+                time.sleep(0.003)   # 无新需求，空转等下一次 kick
 
     def _make_fallback_earth(self):
         """连 numpy 都没有时的平面回退球（保底可运行）"""
@@ -886,16 +936,20 @@ class LotterySky:
             # ~300ms，配合 0.032 rad/s 自转 + 0.01 量化 → 均摊 <10ms/帧
             px = max(64, min(disp, 768))
             px = max(64, int(px // 24) * 24)
-            img = self.earth.render(px)
+            # 提交渲染需求（不阻塞）；拿到的可能是上一帧/低分辨率贴图，但绝不卡
+            img = self.earth.kick(px)
+            if img is None:   # 线程还没出第一帧（启动瞬间），先留空
+                return
+            src_w = img.get_width()   # 后台贴图尺寸可能略滞后于最新需求
             piece, dest = img, (int(cx - r), int(cy - r))
-            if disp > px:
+            if disp > src_w:
                 # 俯冲期显示尺寸可达数千像素：只放大屏幕上可见的那块源图，
                 # 避免整张巨图 smoothscale + 整张 blit（性能关键）
-                k = disp / px
+                k = disp / src_w
                 sx = int((0 - (cx - r)) / k)
                 sy = int((0 - (cy - r)) / k)
                 src = pygame.Rect(sx, sy, int(W / k) + 2, int(H / k) + 2)
-                src = src.clip(pygame.Rect(0, 0, px, px))
+                src = src.clip(pygame.Rect(0, 0, src_w, src_w))
                 if src.w > 2 and src.h > 2:
                     piece = pygame.transform.smoothscale(
                         img.subsurface(src), (int(src.w * k), int(src.h * k)))
