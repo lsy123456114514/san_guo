@@ -392,25 +392,76 @@ def make_cloud(w=560, h=220, seed=1, density=0.52):
     return surf
 
 
-def make_stars(n=300):
-    """视差星空：三层深度、闪烁、星座阶段的 7 颗亮星"""
+def _glow_sprite(color, size=48):
+    """预渲染一个径向柔光星点（比逐帧画圆更真实也更快）。
+
+    真实星点是中心亮、向外快速衰减的柔光斑，不是实心圆。用 numpy 生成
+    高斯衰减的 alpha，叠一层极亮的核心。
+    """
+    s = pygame.Surface((size, size), pygame.SRCALPHA)
+    if HAS_NP:
+        lin = np.linspace(-1.0, 1.0, size, dtype=np.float32)
+        X, Y = np.meshgrid(lin, lin)
+        R = np.sqrt(X * X + Y * Y)
+        # 柔光晕：高斯衰减 + 中心核心
+        halo = np.exp(-3.2 * R * R) * 0.85
+        core = np.exp(-24.0 * R * R)
+        a = np.clip(halo + core, 0.0, 1.0)
+        arr = np.zeros((size, size, 4), dtype=np.uint8)
+        r0, g0, b0 = color
+        arr[..., 0] = r0
+        arr[..., 1] = g0
+        arr[..., 2] = b0
+        arr[..., 3] = (a * 255).astype(np.uint8)
+        return pygame.image.frombytes(arr.tobytes(), (size, size), "RGBA")
+    else:   # 无 numpy：多层同心圆近似
+        c = size // 2
+        for rr in range(c, 0, -1):
+            f = rr / c
+            al = int(255 * (1 - f) ** 2.2)
+            pygame.draw.circle(s, (*color, al), (c, c), rr)
+        return s
+
+
+# 星点色温库（真实恒星按温度呈蓝白→白→黄→橙红）
+_STAR_TEMPS = [(180, 205, 255), (255, 255, 255), (255, 250, 236),
+               (255, 240, 205), (255, 220, 175)]
+
+
+def make_stars(n=170):
+    """写实星空：亮度按幂律分布（大量暗星 + 少数亮星）、色温各异、柔光。
+
+    - 半径 r 决定星点大小（渲染时缩放辉光精灵）
+    - lum 亮度 0..1（决定 set_alpha，暗星多、亮星少，符合真实分布）
+    - temp 色温索引 → 冷暖色
+    - 数量控制在 ~170：柔光精灵逐帧 alpha-blit 较贵，太多拖累帧率；
+      少量高对比亮星的观感反而更接近真实夜空
+    """
     stars = []
     for _ in range(n):
-        depth = random.uniform(0.3, 1.0)
+        depth = random.uniform(0.35, 1.0)
+        # 亮度幂律：多数偏暗，少数很亮（比均匀分布真实）
+        u = random.random()
+        lum = (u ** 2.6) * 0.85 + 0.12
         stars.append({
             "x": random.uniform(0, W), "y": random.uniform(0, H),
-            "r": max(1, int(random.choice([1, 1, 1, 2, 2, 3]) * depth)),
+            "r": 5 + int(lum * 11 * depth),       # 辉光精灵缩放尺寸
+            "lum": lum,
+            "temp": random.choices(range(5), weights=[18, 34, 28, 15, 5])[0],
             "tw": random.uniform(0, math.tau),
-            "ts": random.uniform(1.5, 4.0),
+            "ts": random.uniform(0.8, 2.6),       # 闪烁更慢更自然
             "depth": depth,
             "big": False,
-            "hx": 0.0, "hy": 0.0,
-            "px": 0.0, "py": 0.0,   # 汇聚起点（星座幕补间）
+            "px": 0.0, "py": 0.0,
         })
-    for s in random.sample(stars, 7):
+    # 7 颗亮星（星座幕主角）：挑最亮的，色温偏蓝白（主序星感）
+    stars.sort(key=lambda s: -s["lum"])
+    for s in stars[:7]:
         s["big"] = True
-        s["r"] = 5
+        s["r"] = 34
+        s["lum"] = 1.0
         s["depth"] = 1.0
+        s["temp"] = random.choice([0, 1, 1, 2])
     return stars
 
 
@@ -422,7 +473,13 @@ def make_beam(w=300, h=760):
         ys = np.linspace(0.0, 1.0, h, dtype=np.float32)[::-1].copy()
         gx = np.exp(-3.0 * xs * xs)                      # 横向高斯
         core = np.exp(-14.0 * xs * xs)                   # 白热核心
+        # 边缘归零窗：高斯在 x=±1 仍留 ~5% alpha，硬切成直角边很假；
+        # 乘一个在边缘平滑归零的窗，让光柱两侧完全融进背景
+        edge = np.clip(1.0 - (xs * xs - 0.55) / 0.45, 0.0, 1.0) ** 1.5
+        gx = gx * edge
+        core = core * edge
         gy = np.clip(0.30 + ys * 0.95, 0, 1)             # 纵向渐隐
+        gy = gy * np.clip(1.0 - (1.0 - ys) ** 6, 0.0, 1.0)   # 顶端也归零
         a = np.clip(gx[None, :] * gy[:, None], 0, 1)
         r = np.clip(1.0 * a + core[None, :] * gy[:, None], 0, 1)
         g = np.clip(0.86 * a + core[None, :] * gy[:, None], 0, 1)
@@ -538,6 +595,9 @@ class LotterySky:
 
         self.stars = make_stars()
         self._star_home = [(s["x"], s["y"]) for s in self.stars if s["big"]]
+        # 星点柔光精灵缓存（每种色温一份，渲染时按 r 缩放 + set_alpha）
+        self._star_sprite = [_glow_sprite(_STAR_TEMPS[i]) for i in range(5)]
+        self._star_spr_cache = {}   # (色温, 尺寸桶) → 缩放后星点面
         # 亮星当前所在位置（补间用），初始 = 随机散落位
         for s in random.sample([x for x in self.stars if x["big"]], 7):
             s["px"], s["py"] = s["x"], s["y"]
@@ -557,6 +617,8 @@ class LotterySky:
         self._sun_arm = None      # (半长, 眩光横条面) 缓存
         self._sun_arm_v = None    # (半长, 旋转后的竖条面) 缓存
         self._sea_cache = None    # (尺寸, 云海带面) 缓存
+        self._dc_cache = None     # (i,w,h, 俯冲大云面) 缓存
+        self._fog_surf = None     # 俯冲穿云雾气面（复用，避免每帧新建全屏 SRCALPHA）
         self._ground_cache = None # (尺寸, 缓存缩放后的地面面)
 
         self.beam_tex = make_beam()
@@ -773,22 +835,45 @@ class LotterySky:
         return ease_in(norm(19.6, 23.6, self.t))
 
     def _earth_view(self):
-        """地球在屏幕上的 (cx, cy, 半径)：随上升缓慢入画，俯冲时放大扑面"""
-        a = self._alt()
+        """地球在屏幕上的 (cx, cy, 半径)。
+
+        运镜叙事（配合 _pitch 的仰→平→俯）：
+        - 上升穿云期（t<10.4）镜头朝上，地球在脚下 → 完全不入画（不再突然冒出）
+        - 进太空（10.4→12.8）镜头回平再下压，地球从下方地平线缓缓浮现
+        - 俯冲（beam 后）镜头下拽跟随光柱，地球放大扑面
+        """
+        appear = ease_in_out(norm(10.4, 12.8, self.t))   # 太空期浮现进度
         d = self._dive()
-        # 上升期：从右下方缓慢滑入（缓动，无突跳）
-        cx = lerp(W * 0.78, W * 0.50, ease_in_out(norm(4.5, 10.4, self.t)))
-        cy = lerp(H * 1.55, H * 1.02, a)
-        r = lerp(H * 0.62, H * 0.72, a)
-        # 太空停留期微小漂浮
+        cx = W * 0.5
+        # 太空期：地球是画面下方一颗偏远的球（顶部在星座之下），
+        # 让“星星连成一线”发生在它上方的星空里，符合叙事
+        cy = lerp(H * 1.35, H * 1.04, appear)
+        r = lerp(H * 0.50, H * 0.62, appear)
+        # 太空停留期微小漂浮（在轨感）
         drift = math.sin(self.global_t * 0.5) * 4 * (1 - d)
         cy += drift
-        # 俯冲期：快速放大扑面而来
+        # 俯冲期：镜头下拽，地球放大扑面而来
         if d > 0:
             r = r * (1 + d * 5.5)
-            cy = lerp(cy, H * 0.46, d)
+            cy = lerp(cy, H * 0.5, d)
             cx = lerp(cx, W * 0.5, d)
         return cx, cy, r
+
+    def _earth_reveal(self):
+        """地球显现度：进太空后从云雾/地平线下浮现（0=不可见 1=完全可见）"""
+        return ease_in_out(norm(10.2, 12.6, self.t))
+
+    def _pitch(self):
+        """镜头俯仰（-1 俯视 … 0 平视 … +1 仰视）。
+
+        驱动“朝上看→升空穿云→回平→下拽俯冲”的连续运镜。
+        """
+        if self.t < 8.6:
+            return 1.0                                   # 仰视天空（穿云前）
+        if self.t < 10.4:
+            return lerp(1.0, 0.0, ease_in_out(norm(8.6, 10.4, self.t)))  # 仰→平
+        # 太空平视 → 俯冲时逐渐下压俯视
+        return lerp(0.0, -1.0, self._dive())
 
     def _dipper_center(self):
         """北斗七星阵列中心（屏幕坐标）"""
@@ -975,8 +1060,14 @@ class LotterySky:
         bot = lerp_col((198, 228, 252), (10, 15, 38), dusk)
         self._grad(top, bot)
 
+        # 俯冲穿云覆盖度：云雾已挡满全屏时，被盖住的星空/地球/光柱不必再画
+        # （每帧省掉数百次全屏 alpha-blit，性能关键）
+        dcp = self._dive_cloud_p()
+        covered = dcp >= 0.5
+
         # 星空（带视差上移 —— 镜头在上升）
-        self._draw_stars()
+        if not covered:
+            self._draw_stars()
 
         # ── 上升幕（sky）的海拔感细节：太阳/大地远去/飞鸟/云海 ──
         if 2.4 <= self.t < 10.6:
@@ -993,15 +1084,19 @@ class LotterySky:
             self._draw_birds(dusk)
 
         # 地球（真实贴图 3D 球体 / 回退）
-        self._draw_earth()
+        if not covered:
+            self._draw_earth()
 
         # 北斗 + 连线 + 充能
-        if self.t >= ACTS["constellation"] - 0.5:
+        if self.t >= ACTS["constellation"] - 0.5 and not covered:
             self._draw_constellation()
 
         # 光柱（北斗 → 地球）+ 俯冲速度线
-        if self.t >= ACTS["beam"] - 0.001:
+        if self.t >= ACTS["beam"] - 0.001 and not covered:
             self._draw_beam()
+
+        # 俯冲末段：扎进地面云层，云雾上涌挡满全屏（→ 白光 → 抽卡）
+        self._draw_dive_clouds()
 
         # 遮罩（0→2.9s：深色游戏背景逐渐变浅到全白 → 揭开）
         self._draw_mask()
@@ -1042,24 +1137,35 @@ class LotterySky:
             else:
                 x = st["x"]
                 y = st["y"] + par * st["depth"]
-            if not (-8 <= x <= W + 8 and -8 <= y <= H + 8):
+            if not (-40 <= x <= W + 40 and -40 <= y <= H + 40):
                 continue
-            tw = 0.55 + 0.45 * math.sin(self.global_t * st["ts"] + st["tw"])
-            col = (255, 255, 255) if not st["big"] else (255, 246, 205)
-            sz = max(1, int(st["r"] * tw))
-            # 俯冲时星星拉出速度线
+            # 写实闪烁：亮星几乎不闪，暗星闪得更明显（真实大气抖动）
+            tw_amt = 0.5 if st["big"] else 0.42
+            tw = (1 - tw_amt) + tw_amt * (0.5 + 0.5 * math.sin(
+                self.global_t * st["ts"] + st["tw"]))
+            sz = max(3, int(st["r"] * (0.85 + 0.15 * tw)))
+            # 俯冲时星星拉出速度线（径向拖影，营造扑面感）
             if dive > 0.03:
                 dx, dy = x - W / 2, y - H / 2
-                ln = dive * 46 * st["depth"]
-                if (dx * dx + dy * dy) > 1:
-                    ux, uy = dx / math.hypot(dx, dy), dy / math.hypot(dx, dy)
-                    pygame.draw.line(self.world, col,
+                dist = math.hypot(dx, dy)
+                if dist > 1:
+                    ln = dive * 60 * st["depth"]
+                    ux, uy = dx / dist, dy / dist
+                    pygame.draw.line(self.world, _STAR_TEMPS[st["temp"]],
                                      (int(x), int(y)),
                                      (int(x + ux * ln), int(y + uy * ln)),
                                      1 if not st["big"] else 2)
-            pygame.draw.circle(self.world, col, (int(x), int(y)), sz)
-            if st["big"]:
-                pygame.draw.circle(self.world, col, (int(x), int(y)), sz + 5, 1)
+            # 缩放 + 亮度：写实柔光星点（按 (色温,尺寸) 分桶缓存，避免每帧 smoothscale）
+            bsize = max(4, (sz // 4) * 4)
+            ck = (st["temp"], bsize)
+            spr = self._star_spr_cache.get(ck)
+            if spr is None:
+                spr = pygame.transform.smoothscale(
+                    self._star_sprite[st["temp"]], (bsize, bsize))
+                if len(self._star_spr_cache) < 120:
+                    self._star_spr_cache[ck] = spr
+            spr.set_alpha(int(255 * st["lum"] * tw * sa))
+            self.world.blit(spr, (int(x - bsize / 2), int(y - bsize / 2)))
 
     def _big_star_positions(self):
         """7 颗亮星当前位置：随机散落 → 汇聚成北斗（缓动补间）"""
@@ -1091,14 +1197,67 @@ class LotterySky:
             img.set_alpha(a)
             self.world.blit(img, (int(c[1]), int(c[2])))
 
+    def _dive_cloud_p(self):
+        """俯冲穿云遮罩进度：贴近地面云层时云雾上涌充满全屏（→ 白光 → 抽卡）"""
+        return ease_in_out(norm(22.4, 23.9, self.t))
+
+    def _draw_dive_clouds(self):
+        """俯冲末段：镜头扑向地面云层，云雾上涌挡满全屏，白光后切抽卡。
+
+        用大尺寸云贴图上涌 + 白蓝雾气渐浓，营造“扎进云里、视线被挡”的转场。
+        """
+        p = self._dive_cloud_p()
+        if p <= 0.01:
+            return
+        # 白蓝雾气颜色/浓度
+        fr, fg, fb = lerp_col((222, 236, 250), (255, 255, 255), p)
+        fa = int(255 * p)
+        # 雾已近乎不透明（>248）：后面的云完全看不见，直接纯色填充收尾，
+        # 省掉云的全屏 alpha-blit + 雾的全屏混合（抽卡幕稳态就落在这，性能关键）
+        if fa >= 248:
+            self.world.fill((fr, fg, fb))
+            return
+        # 大片云团自下而上扑面涌来（越晚越大越满）
+        if self.cloud_tex:
+            if self._dc_cache is None:
+                self._dc_cache = {}
+            MAXW = int(W * 1.15)   # 云宽上限：贴着屏幕即可，避免数千像素巨图 blit
+            for i, tex in enumerate(self.cloud_tex[:3]):
+                sc = lerp(1.6, 5.2, p) * (0.9 + 0.12 * i)
+                # 尺寸封顶到屏幕宽：越界只是多余像素，观感不变但省巨量填充
+                cw = min(MAXW, max(2, int(tex.get_width() * sc)))
+                ch = max(2, int(tex.get_height() * cw / max(1, tex.get_width())))
+                # 尺寸量化到 8 档 px：让缓存在尺度缓慢变化时大量命中，
+                # 避免每帧 smoothscale（性能关键）
+                cq = (cw // 8) * 8
+                if cq < 2:
+                    cq = 2
+                chq = max(2, int(ch * cq / max(1, cw)))
+                img = self._dc_cache.get(i)
+                if img is None or img.get_width() != cq:
+                    img = pygame.transform.smoothscale(tex, (cq, chq))
+                    if len(self._dc_cache) < 6:
+                        self._dc_cache[i] = img
+                img.set_alpha(int(240 * p))
+                y = int(lerp(H * 1.15, -chq * 0.35, p))   # 上涌扑面
+                x = int(W * 0.5 - cq * 0.5 + math.sin(self.global_t * 0.7 + i) * 40)
+                self.world.blit(img, (x, y))
+        # 白蓝雾气逐渐罩满全屏（保证转场时视线被完全挡住）
+        if self._fog_surf is None:
+            self._fog_surf = pygame.Surface((W, H), pygame.SRCALPHA)
+        fog = self._fog_surf
+        pygame.draw.rect(fog, (fr, fg, fb, fa), (0, 0, W, H))
+        self.world.blit(fog, (0, 0))
+        fog.fill((0, 0, 0, 0))   # 用完清空，下一帧重画（复用这块面）
+
     def _draw_earth(self):
         t = self.t
-        if t < 3.6:   # 遮罩期地球还看不见（其实就在下方，随上升入画）
+        reveal = self._earth_reveal()
+        if reveal <= 0.01:   # 上升穿云期镜头朝上，地球在脚下不可见（不再突然冒出）
             return
         cx, cy, r = self._earth_view()
         if r < 8:
             return
-        reveal = ease_in_out(norm(3.6, 7.5, t))  # 从云雾/晨光中逐渐显现
         disp = int(r * 2)
         if self.earth is not None:
             # 渲染分辨率上限保帧率；再量化到 24px 档，让 spin 缓存在
@@ -1124,6 +1283,17 @@ class LotterySky:
                     piece = pygame.transform.smoothscale(
                         img.subsurface(src), (int(src.w * k), int(src.h * k)))
                     dest = (int(cx - r + src.x * k), int(cy - r + src.y * k))
+                    # 仅当可见块完全落在球体不透明内部（四角都在圆内、离边缘
+                    # 有余量）才转成无 alpha 表面：blit 快数倍。否则（球的
+                    # 地平线/边缘还在画面里）保留 alpha，避免出现硬直角边。
+                    ccx = ccy = src_w * 0.5
+                    rad = src_w * 0.5
+                    corners = ((src.x, src.y), (src.x + src.w, src.y),
+                               (src.x, src.y + src.h), (src.x + src.w, src.y + src.h))
+                    if k > 1.4 and all(
+                            (qx - ccx) ** 2 + (qy - ccy) ** 2 < (rad - 6) ** 2
+                            for qx, qy in corners):
+                        piece = piece.convert()
                 else:
                     piece = None
             # 大气辉光（球体外圈柔光；球大到溢出屏幕时环已在视野外，跳过）
@@ -1147,13 +1317,29 @@ class LotterySky:
 
         # 光柱落点冲击波（球太大时环已出视野，跳过；限制表面尺寸）
         if self.impact_wave > 0.01 and r * 1.3 < math.hypot(W, H):
-            rr = min(900, int((1 - self.impact_wave) * r * 1.1) + 26)
+            iw = self.impact_wave
+            rr = min(900, int((1 - iw) * r * 1.1) + 26)
             wv = pygame.Surface((rr * 2, rr * 2), pygame.SRCALPHA)
-            pygame.draw.circle(wv, (255, 240, 180, int(170 * self.impact_wave)),
+            # 落点是海面：先一圈蓝白水花涟漪（由内向外扩散的水环）
+            for k in range(3):
+                fr = int(rr * (0.35 + 0.3 * k) * (1.2 - iw * 0.5))
+                if fr > 0:
+                    pygame.draw.circle(wv, (150, 210, 255, int(90 * iw)),
+                                       (rr, rr), fr, max(2, int(r * 0.03)))
+            # 冲击亮环
+            pygame.draw.circle(wv, (255, 240, 180, int(170 * iw)),
                                (rr, rr), rr, max(2, int(r * 0.05)))
-            pygame.draw.circle(wv, (255, 255, 255, int(120 * self.impact_wave)),
+            pygame.draw.circle(wv, (255, 255, 255, int(120 * iw)),
                                (rr, rr), max(1, rr - 10), 3)
             self.world.blit(wv, (int(cx) - rr, int(cy) - rr))
+            # 水冠（海面被击中激起的水柱，向上喷后回落）
+            crown_h = int((1 - iw) * r * 0.5)
+            if crown_h > 6:
+                cw2 = int(r * 0.28)
+                crown = pygame.Surface((cw2 * 2, crown_h + 8), pygame.SRCALPHA)
+                pygame.draw.circle(crown, (200, 235, 255, int(150 * iw)),
+                                   (cw2, crown_h + 4), cw2)
+                self.world.blit(crown, (int(cx) - cw2, int(cy) - crown_h - 4))
 
     def _get_glow(self, r_int):
         """大气辉光按半径缓存（太空停留期半径恒定，不逐帧重建大表面）"""
