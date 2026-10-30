@@ -145,7 +145,12 @@ class Button:
         surface.blit(text_surface, text_rect)
     
     def check_click(self, event, mouse_pos):
-        if event.type == pygame.MOUSEBUTTONDOWN and self.hovered:
+        # 用事件自带坐标判定（比依赖上一帧 hover 标记更可靠，
+        # 鼠标快速移动/无窗口焦点时也不会漏判）；合成事件可能缺 button，
+        # 缺省按左键处理
+        if (event.type == pygame.MOUSEBUTTONDOWN
+                and getattr(event, 'button', 1) == 1
+                and self.rect.collidepoint(event.pos)):
             return True
         return False
 
@@ -194,6 +199,15 @@ class ChatClient:
             except socket.timeout:
                 if self.connected:
                     self._send({'type': 'ping', 'player_id': self.player_id})
+            except (ConnectionResetError, OSError) as e:
+                # UDP 发往无人监听的端口会收到 ICMP 端口不可达，
+                # 在 Windows 上表现为 WinError 10054——这是常态不是故障，
+                # 静默处理（每秒最多提示一次，避免刷日志）
+                now = time.time()
+                if now - getattr(self, '_last_reset_log', 0) > 1.0:
+                    self._last_reset_log = now
+                    logger.debug("[世界聊天] 服务器暂不可达（%s），继续等待",
+                                 type(e).__name__)
             except Exception as e:
                 if self.running:
                     logger.info(f"接收错误: {e}")
@@ -235,6 +249,13 @@ class ChatClient:
                             msg.get('text', ''),
                             msg.get('player_name', ''),
                             'self' if is_self else 'other',
+                            msg.get('timestamp', 0)
+                        ))
+                    elif msg.get('type') == 'system':
+                        self.messages.append(ChatMessage(
+                            msg.get('text', ''),
+                            '系统',
+                            'system',
                             msg.get('timestamp', 0)
                         ))
                     elif msg.get('type') == 'system':
@@ -303,6 +324,235 @@ class WorldChat:
     def init_fonts(self):
         def init_font(size):
             return get_font(size)
+
+        self.font_title = init_font(40)
+        self.font_msg = init_font(22)
+        self.font_ui = init_font(20)
+        self.font_small = init_font(16)
+
+    def init_ui(self):
+        """连接页 + 聊天页的全部控件"""
+        w, h = self.width, self.height
+        # ── 聊天页 ──
+        self.input_box = InputBox(30, h - 90, w - 200, 54, self.font_msg)
+        self.send_btn = Button("发送", w - 150, h - 90, 120, 54,
+                               self.font_ui, COLORS["accent_green"])
+        # ── 连接页 ──
+        self.name_box = InputBox(w // 2 - 170, h // 2 - 20, 340, 52, self.font_msg)
+        self.name_box.text = data.get('player_name', '主公')
+        self.addr_box = InputBox(w // 2 - 170, h // 2 + 60, 340, 52, self.font_msg)
+        self.addr_box.text = "127.0.0.1:9999"
+        self.connect_btn = Button("连接服务器", w // 2 - 115, h // 2 + 145, 230, 56,
+                                  self.font_ui, COLORS["accent_green"])
+        self.back_btn = Button("返回", 30, 30, 96, 44,
+                               self.font_ui, COLORS["accent_red"])
+        self.connect_error = ""
+
+    def init_particles(self):
+        self.new_message_effects: List[Particle] = []
+
+    # ── 新消息回调（ChatClient 收到消息后触发）──
+    def _on_new_message(self):
+        # 底部冒金色粒子庆祝 + 自动滚到最新
+        for _ in range(14):
+            self.new_message_effects.append(Particle(
+                random.uniform(self.width * 0.15, self.width * 0.85),
+                self.height - random.uniform(80, 200),
+                random.choice([COLORS["player_self"], COLORS["accent_gold"],
+                               COLORS["player_other"]]),
+                2.2, random.uniform(2, 5), random.randint(24, 48)))
+        self.chat_scroll = 0
+
+    # ── 工具：中文按像素宽度折行 ──
+    def _wrap(self, text: str, font, max_w: int):
+        lines, cur = [], ""
+        for ch in text:
+            if cur and font.size(cur + ch)[0] > max_w:
+                lines.append(cur)
+                cur = ch
+            else:
+                cur += ch
+        if cur:
+            lines.append(cur)
+        return lines or [""]
+
+    def _parse_addr(self, text: str):
+        text = (text or "").strip()
+        if ":" in text:
+            host, _, port = text.rpartition(":")
+            try:
+                return host or "127.0.0.1", int(port)
+            except ValueError:
+                return None
+        return (text or "127.0.0.1", 9999) if text else None
+
+    # ── 事件 ──
+    def handle_event(self, event):
+        if event.type == pygame.QUIT:
+            return False
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            return False
+        if self.state == "connect":
+            self.name_box.handle_event(event)
+            self.addr_box.handle_event(event)
+            if self.back_btn.check_click(event, pygame.mouse.get_pos()):
+                return False
+            if self.connect_btn.check_click(event, pygame.mouse.get_pos()):
+                addr = self._parse_addr(self.addr_box.text)
+                name = (self.name_box.text or "主公").strip()[:16]
+                if not addr:
+                    self.connect_error = "服务器地址格式应为 IP:端口"
+                elif self.client.connect(addr[0], addr[1], name):
+                    self.state = "chatting"
+                    self.client.messages.append(
+                        ChatMessage(f"欢迎，{name}！已连接 {addr[0]}:{addr[1]}",
+                                    "系统", "system"))
+                else:
+                    self.connect_error = "连接失败，请检查地址与网络"
+            return True
+        # 聊天页
+        if event.type == pygame.MOUSEWHEEL:
+            max_scroll = max(0, self._total_lines() - self._visible_lines())
+            self.chat_scroll = max(0, min(max_scroll,
+                                          self.chat_scroll - event.y * 3))
+            return True
+        if self.back_btn.check_click(event, pygame.mouse.get_pos()):
+            return False
+        if self.send_btn.check_click(event, pygame.mouse.get_pos()):
+            self._send_current()
+            return True
+        sent = self.input_box.handle_event(event)
+        if sent:   # 输入框里按了回车
+            self._send_current()
+        return True
+
+    def _send_current(self):
+        text = self.input_box.text.strip()
+        if not text:
+            return
+        if not self.client.send_chat(text):
+            self.client.messages.append(
+                ChatMessage("未连接服务器，消息没有发出去", "系统", "system"))
+        self.input_box.text = ""
+        self.chat_scroll = 0
+
+    def _total_lines(self):
+        """消息折行后的总行数（滚动上限用）"""
+        max_w = self.width - 90
+        return sum(len(self._wrap(m.text, self.font_msg, max_w))
+                   for m in self.client.messages)
+
+    def _visible_lines(self):
+        return max(1, (self.height - 230) // 30)
+
+    # ── 主循环 ──
+    def run(self):
+        clock = pygame.time.Clock()
+        running = True
+        while running:
+            clock.tick(60)
+            for ev in pygame.event.get():
+                if self.handle_event(ev) is False:
+                    running = False
+            self.input_box.update()
+            for p in self.new_message_effects:
+                p.update()
+            self.new_message_effects = [p for p in self.new_message_effects
+                                        if p.life > 0]
+            self.draw()
+        self.client.disconnect()
+
+    # ── 绘制 ──
+    def draw(self):
+        mouse = pygame.mouse.get_pos()
+        if self.state == "connect":
+            self._draw_connect(mouse)
+        else:
+            self._draw_chat(mouse)
+        # 新消息粒子（最上层）
+        for p in self.new_message_effects:
+            p.draw(self.screen)
+        pygame.display.flip()
+
+    def _draw_bg(self):
+        """深色底 + 顶部金色氛围光（静态渐变，逐行画一次即可）"""
+        self.screen.fill(COLORS["bg_dark"])
+        glow = pygame.Surface((self.width, 220), pygame.SRCALPHA)
+        for y in range(220):
+            a = int(46 * (1 - y / 220))
+            pygame.draw.line(glow, (255, 191, 0, a), (0, y), (self.width, y))
+        self.screen.blit(glow, (0, 0))
+
+    def _draw_connect(self, mouse):
+        self._draw_bg()
+        self.back_btn.draw(self.screen, mouse)
+        cx = self.width // 2
+        t = self.font_title.render("🌍 世界聊天", True, COLORS["accent_gold"])
+        self.screen.blit(t, t.get_rect(center=(cx, self.height // 2 - 150)))
+
+        lb = self.font_ui.render("你的名字", True, COLORS["text_gray"])
+        self.screen.blit(lb, (self.name_box.rect.x, self.name_box.rect.y - 30))
+        self.name_box.draw(self.screen)
+        la = self.font_ui.render("服务器地址 (IP:端口)", True, COLORS["text_gray"])
+        self.screen.blit(la, (self.addr_box.rect.x, self.addr_box.rect.y - 30))
+        self.addr_box.draw(self.screen)
+        self.connect_btn.draw(self.screen, mouse)
+        if self.connect_error:
+            err = self.font_small.render(self.connect_error, True,
+                                         COLORS["accent_red"])
+            self.screen.blit(err, err.get_rect(
+                center=(cx, self.height // 2 + 230)))
+        tip = self.font_small.render(
+            "需要配套聊天服务器；没有服务器也能进入界面查看", True, COLORS["text_gray"])
+        self.screen.blit(tip, tip.get_rect(center=(cx, self.height - 60)))
+
+    def _draw_chat(self, mouse):
+        self._draw_bg()
+        # 顶栏
+        pygame.draw.rect(self.screen, COLORS["bg_panel"],
+                         (0, 0, self.width, 76))
+        pygame.draw.line(self.screen, COLORS["accent_gold"],
+                         (0, 76), (self.width, 76), 2)
+        title = self.font_title.render("🌍 世界聊天", True, COLORS["accent_gold"])
+        self.screen.blit(title, (150, 12))
+        online = self.font_small.render(
+            f"在线 {max(1, len(self.client.players))} 人  ·  消息 {len(self.client.messages)}",
+            True, COLORS["text_gray"])
+        self.screen.blit(online, online.get_rect(
+            center=(self.width - 160, 38)))
+        self.back_btn.draw(self.screen, mouse)
+
+        # 消息区（底部对齐 + 滚轮上翻）
+        max_w = self.width - 90
+        line_h = 30
+        vis = self._visible_lines()
+        lines = []                       # (颜色, 文本行)
+        for m in self.client.messages[-80:]:
+            col = m.get_color()
+            name = m.sender if m.type != "system" else ""
+            body = self._wrap(m.text, self.font_msg, max_w - 10)
+            for i, ln in enumerate(body):
+                prefix = f"{name}：" if (i == 0 and name) else ""
+                lines.append((col, prefix + ln))
+        total = len(lines)
+        max_scroll = max(0, total - vis)
+        self.chat_scroll = min(self.chat_scroll, max_scroll)
+        show = lines[max(0, total - vis - self.chat_scroll):
+                     max(0, total - self.chat_scroll)]
+        # 半透明消息底板
+        panel = pygame.Surface((self.width - 40, vis * line_h + 20),
+                               pygame.SRCALPHA)
+        panel.fill((*COLORS["bg_panel"], 120))
+        self.screen.blit(panel, (20, 96))
+        # 消息贴着底板底部往上排（少消息时也靠下，像真实聊天室）
+        y = 106 + max(0, vis - len(show)) * line_h
+        for col, ln in show:
+            self.screen.blit(self.font_msg.render(ln, True, col), (36, y))
+            y += line_h
+
+        # 输入行
+        self.input_box.draw(self.screen)
+        self.send_btn.draw(self.screen, mouse)
 
 def main(screen=None):
     try:

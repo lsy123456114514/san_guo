@@ -433,7 +433,25 @@ def get_system_font_name() -> str | None:
     3. ``None`` if nothing suitable is found (UI will show "boxes" for CJK).
 
     Returns a file path or a system font name, or ``None``.
+
+    结果按进程缓存：本函数要扫描字体目录并逐个加载 TTF 试渲染汉字，
+    代价高；历史上多个模块直接调它（个别还放在绘制路径里），每帧都
+    全目录扫描导致卡顿。缓存后各处调用都变成 O(1)，日志也只打一次。
     """
+    global _SYS_FONT_NAME_CACHE
+    if _SYS_FONT_NAME_CACHE is not _UNSET_SENTINEL:
+        return _SYS_FONT_NAME_CACHE
+    result = _get_system_font_name_uncached()
+    _SYS_FONT_NAME_CACHE = result
+    return result
+
+
+_UNSET_SENTINEL = object()
+_SYS_FONT_NAME_CACHE = _UNSET_SENTINEL
+
+
+def _get_system_font_name_uncached() -> str | None:
+    """真正执行字体探测（只被 get_system_font_name 调一次）"""
     # 1) 优先使用随游戏打包的字体文件（任何设备都能显示中文）
     try:
         # 一律以本文件所在 ASSET 目录为基准：源码 (ASSET/)、onedir
