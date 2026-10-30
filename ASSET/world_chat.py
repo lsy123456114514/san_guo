@@ -5,6 +5,10 @@
 精美PyGame界面，支持全球聊天
 """
 
+import os
+import sys
+import subprocess
+import tempfile
 import pygame
 import random
 import time
@@ -342,8 +346,10 @@ class WorldChat:
         self.name_box.text = data.get('player_name', '主公')
         self.addr_box = InputBox(w // 2 - 170, h // 2 + 60, 340, 52, self.font_msg)
         self.addr_box.text = "127.0.0.1:9999"
-        self.connect_btn = Button("连接服务器", w // 2 - 115, h // 2 + 145, 230, 56,
+        self.connect_btn = Button("连接服务器", w // 2 - 240, h // 2 + 145, 220, 56,
                                   self.font_ui, COLORS["accent_green"])
+        self.host_btn = Button("一键起服并连接", w // 2 + 20, h // 2 + 145, 220, 56,
+                               self.font_ui, COLORS["accent_blue"])
         self.back_btn = Button("返回", 30, 30, 96, 44,
                                self.font_ui, COLORS["accent_red"])
         self.connect_error = ""
@@ -386,6 +392,70 @@ class WorldChat:
                 return None
         return (text or "127.0.0.1", 9999) if text else None
 
+    # ── 一键起服：拉起本地 chat_server.py 并连接 ──
+    def _localhost(self, host: str) -> bool:
+        return host in ("127.0.0.1", "localhost", "0.0.0.0", "::1")
+
+    def _spawn_server(self, port: int):
+        """后台拉起本地聊天服务器，返回 Popen；打包版/脚本缺失返回 None。
+
+        输出重定向到临时目录日志，Windows 下 CREATE_NO_WINDOW 不弹黑框。
+        进程句柄记录在 self._server_proc，退出时统一回收，不留孤儿。
+        """
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "chat_server.py")
+        if not os.path.isfile(script):
+            return None
+        if getattr(sys, "frozen", False):
+            return None          # 打包环境没有独立 Python，起不了脚本
+        try:
+            kwargs = {}
+            if os.name == "nt":
+                kwargs["creationflags"] = 0x08000000     # CREATE_NO_WINDOW
+            log = open(os.path.join(tempfile.gettempdir(),
+                                    "san_guo_chat_server.log"), "ab")
+            return subprocess.Popen([sys.executable, script, str(port)],
+                                    stdout=log, stderr=subprocess.STDOUT,
+                                    **kwargs)
+        except Exception as e:
+            logger.info("一键起服失败: %s", e)
+            return None
+
+    def _stop_local_server(self):
+        """回收自己拉起的服务器进程（外部已存在的服务器不受影响）"""
+        proc = getattr(self, "_server_proc", None)
+        if proc is not None:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+            self._server_proc = None
+
+    def _start_local_and_connect(self):
+        addr = self._parse_addr(self.addr_box.text)
+        if not addr:
+            self.connect_error = "服务器地址格式应为 IP:端口"
+            return
+        host, port = addr
+        name = (self.name_box.text or "主公").strip()[:16]
+        # 目标是本机且还没起过服务器 → 先起服（端口被占也没关系，
+        # 新进程绑定失败会自行退出，已有服务器照常服务）
+        if self._localhost(host) and getattr(self, "_server_proc", None) is None:
+            proc = self._spawn_server(port)
+            if proc is None:
+                self.connect_error = ("一键起服需要 Python 环境；"
+                                      "打包版请手动运行 ASSET/chat_server.py")
+                return
+            self._server_proc = proc
+            time.sleep(0.8)          # 给服务器一点绑定端口的时间
+        if self.client.connect(host, port, name):
+            self.state = "chatting"
+            self.client.messages.append(
+                ChatMessage(f"欢迎，{name}！已连接 {host}:{port}",
+                            "系统", "system"))
+        else:
+            self.connect_error = "连接失败，请检查地址与网络"
+
     # ── 事件 ──
     def handle_event(self, event):
         if event.type == pygame.QUIT:
@@ -409,6 +479,10 @@ class WorldChat:
                                     "系统", "system"))
                 else:
                     self.connect_error = "连接失败，请检查地址与网络"
+                return True
+            if self.host_btn.check_click(event, pygame.mouse.get_pos()):
+                self._start_local_and_connect()
+                return True
             return True
         # 聊天页
         if event.type == pygame.MOUSEWHEEL:
@@ -449,18 +523,22 @@ class WorldChat:
     def run(self):
         clock = pygame.time.Clock()
         running = True
-        while running:
-            clock.tick(60)
-            for ev in pygame.event.get():
-                if self.handle_event(ev) is False:
-                    running = False
-            self.input_box.update()
-            for p in self.new_message_effects:
-                p.update()
-            self.new_message_effects = [p for p in self.new_message_effects
-                                        if p.life > 0]
-            self.draw()
-        self.client.disconnect()
+        try:
+            while running:
+                clock.tick(60)
+                for ev in pygame.event.get():
+                    if self.handle_event(ev) is False:
+                        running = False
+                self.input_box.update()
+                for p in self.new_message_effects:
+                    p.update()
+                self.new_message_effects = [p for p in self.new_message_effects
+                                            if p.life > 0]
+                self.draw()
+            self.client.disconnect()
+        finally:
+            # 无论正常退出还是异常退出，都回收自己拉起的服务器进程
+            self._stop_local_server()
 
     # ── 绘制 ──
     def draw(self):
@@ -497,6 +575,7 @@ class WorldChat:
         self.screen.blit(la, (self.addr_box.rect.x, self.addr_box.rect.y - 30))
         self.addr_box.draw(self.screen)
         self.connect_btn.draw(self.screen, mouse)
+        self.host_btn.draw(self.screen, mouse)
         if self.connect_error:
             err = self.font_small.render(self.connect_error, True,
                                          COLORS["accent_red"])
