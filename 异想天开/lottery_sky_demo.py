@@ -52,6 +52,11 @@ ACTS = {
 ACT_ORDER = ["mask", "sky", "space", "constellation", "beam", "prize"]
 TOTAL_END = 27.0        # 时间线走完（之后停在奖品页）
 
+# 地球自转基准角：让光柱落点（≈t19 的圆盘中心）稳定命中一片沙漠大陆
+# （spin≈15° 处贴图为 rgb(0.85,0.71,0.56) 的暖沙色，明显是陆地而非海洋）。
+# 自转写成时间的确定函数 spin = _SPIN0 + t*0.032，故 _SPIN0 = 目标角 - 19*0.032。
+_SPIN0 = math.radians(15.0) - 19.0 * 0.032
+
 # (名称, 稀有度, 稀有度颜色, 图标种类)
 PRIZE_POOL = [
     ("金元宝 x100",    "普通", (170, 170, 170), "ingot"),
@@ -687,45 +692,106 @@ class LotterySky:
         return surf
 
     def _make_ground(self):
-        """上升幕开场的程序大地：草地 + 远山 + 城市天际线 + 河流。
+        """上升幕开场的程序大地（预烘焙，构建一次反复用）。
 
-        构建一次（1280x260 的 RGBA 面），随海拔下移/缩放/淡出，省逐帧重算。
+        写实取向：分层景深（远山→远景楼→中景楼→前景地表）、每栋楼有
+        受光面/背光面/侧面的伪 3D 明暗、密集窗格、楼顶天线、地面雾霭与
+        高光。全部一次性烘进 1280x300 的 RGBA 面，随海拔只做整体缩放/淡出。
         """
-        gh = 260
+        gh = 300
         s = pygame.Surface((W, gh), pygame.SRCALPHA)
         rng = random.Random(2024)
-        # 草地纵向渐变（上浅下深）
-        for y in range(gh):
-            k = y / (gh - 1)
-            pygame.draw.line(s, lerp_col((104, 168, 96), (66, 118, 70), k),
-                             (0, y), (W, y))
-        # 远山剪影（一条起伏轮廓线之下的暗色带）
+
+        # ── 远山（最远、最淡，带大气雾）──
         ridge = [(0, gh)]
         x = 0
         while x <= W:
-            ridge.append((x, 96 + int(22 * math.sin(x * 0.011)
-                                      + rng.uniform(-9, 9))))
-            x += 26
+            ridge.append((x, 120 + int(20 * math.sin(x * 0.008)
+                                      + 9 * math.sin(x * 0.021) + rng.uniform(-6, 6))))
+            x += 22
         ridge.append((W, gh))
-        pygame.draw.polygon(s, (78, 108, 88), ridge)
-        # 城市天际线（中偏右的楼群，剪影 + 亮窗）
-        base_y = 140
-        bx = int(W * 0.52)
-        for i in range(14):
-            bw = rng.randint(26, 58)
-            bh = rng.randint(30, 118)
-            x0 = bx + rng.randint(-230, 260)
-            pygame.draw.rect(s, (62, 78, 96), (x0, base_y - bh, bw, bh))
-            for wy in range(base_y - bh + 6, base_y - 4, 11):
-                for wx in range(x0 + 4, x0 + bw - 4, 9):
-                    if rng.random() < 0.45:
-                        pygame.draw.rect(s, (255, 224, 150), (wx, wy, 3, 4))
-        # 河流（蜿蜒亮带）
-        riv = [(0, 200)]
-        for x in range(0, W + 20, 20):
-            riv.append((x, 200 + int(15 * math.sin(x * 0.017))))
+        far_mnt = pygame.Surface((W, gh), pygame.SRCALPHA)
+        pygame.draw.polygon(far_mnt, (120, 146, 150), ridge)   # 远山偏青灰
+        far_mnt.set_alpha(150)
+        s.blit(far_mnt, (0, 0))
+
+        # ── 分层城市剪影：由远及近，越近越高大、对比越强 ──
+        # 每层: (基线y, 楼宽范围, 楼高范围, 主色, 侧光色, 窗亮度, 窗密度, x偏移种子)
+        layers = [
+            (150, (14, 30), (30, 78),  (92, 116, 128), (78, 100, 112), 150, 0.28, 1),
+            (168, (20, 44), (52, 128), (66, 86, 104),  (54, 72, 90),   190, 0.40, 2),
+            (196, (30, 62), (88, 196), (44, 58, 76),   (34, 46, 62),   230, 0.52, 3),
+        ]
+        sun_x = 0.19   # 太阳在左上 → 楼的左面受光、右面背光
+        for (base, bw_rng, bh_rng, body, side, winl, wind, seed) in layers:
+            rng2 = random.Random(seed * 991)
+            x = -20
+            while x < W + 20:
+                bw = rng2.randint(*bw_rng)
+                bh = rng2.randint(*bh_rng)
+                gap = rng2.randint(2, 10)
+                x0 = x
+                x += bw + gap
+                # 楼体主面
+                pygame.draw.rect(s, body, (x0, base - bh, bw, bh))
+                # 受光面（左侧窄条，略亮）——伪 3D 立体感
+                litw = max(2, bw // 4)
+                lit = tuple(min(255, c + 26) for c in body)
+                pygame.draw.rect(s, lit, (x0, base - bh, litw, bh))
+                # 背光面（右侧窄条，更暗）
+                darkw = max(2, bw // 5)
+                dark = tuple(max(0, c - 22) for c in side)
+                pygame.draw.rect(s, dark, (x0 + bw - darkw, base - bh, darkw, bh))
+                # 楼顶天线（高楼才有）
+                if bh > (bh_rng[0] + bh_rng[1]) * 0.5 and rng2.random() < 0.5:
+                    ax = x0 + bw // 2
+                    pygame.draw.line(s, (40, 50, 64), (ax, base - bh),
+                                     (ax, base - bh - rng2.randint(6, 16)), 1)
+                    if rng2.random() < 0.6:   # 顶灯
+                        pygame.draw.circle(s, (255, 90, 90), (ax, base - bh - 14), 1)
+                # 窗格（受光面暖、背光面冷，随机亮灭）
+                wy = base - bh + 4
+                while wy < base - 3:
+                    wx = x0 + litw + 2
+                    while wx < x0 + bw - darkw - 1:
+                        if rng2.random() < wind:
+                            warm = rng2.random() < 0.7
+                            c = (255, 226, 150) if warm else (176, 208, 235)
+                            a = winl + rng2.randint(-25, 25)
+                            pygame.draw.rect(s, (min(255, c[0]), min(255, c[1]),
+                                                 min(255, c[2])),
+                                             (wx, wy, 2, 3))
+                        wx += 4
+                    wy += 6
+
+        # ── 地面：草地渐变 + 河流高光 + 近处雾霭 ──
+        gy0 = 200
+        for y in range(gy0, gh):
+            k = (y - gy0) / (gh - gy0)
+            pygame.draw.line(s, lerp_col((98, 150, 92), (58, 104, 64), k),
+                             (0, y), (W, y))
+        # 河流（蜿蜒亮带，带反射高光）
+        riv_top = 236
+        riv = [(0, riv_top)]
+        for xx in range(0, W + 20, 20):
+            riv.append((xx, riv_top + int(11 * math.sin(xx * 0.015))))
         riv += [(W, gh), (0, gh)]
-        pygame.draw.polygon(s, (108, 168, 212), riv)
+        pygame.draw.polygon(s, (96, 156, 204), riv)
+        # 河面高光条
+        for xx in range(0, W, 46):
+            pygame.draw.line(s, (150, 200, 236),
+                             (xx, riv_top + 2 + int(5 * math.sin(xx * 0.015))),
+                             (xx + 20, riv_top + 3 + int(5 * math.sin(xx * 0.015))), 1)
+
+        # ── 整体大气雾：底部往上渐浓的蓝白，强化“远方城市”感 ──
+        # 用普通 alpha 混合（BLEND_RGBA_MAX 会把楼体抬白、变成鬼影）
+        haze = pygame.Surface((W, gh), pygame.SRCALPHA)
+        for y in range(gh):
+            k = y / (gh - 1)
+            a = int(60 * (1 - k) ** 1.5)   # 上浓下淡
+            if a > 0:
+                pygame.draw.line(haze, (200, 220, 240, a), (0, y), (W, y))
+        s.blit(haze, (0, 0))
         return s
 
     def _draw_ground(self):
@@ -737,7 +803,7 @@ class LotterySky:
             return
         gy = int(lerp(H * 0.70, H * 2.4, ease_in(a)))   # 加速坠出画面
         sc = lerp(1.0, 1.28, a)                          # 越近越大→透视感
-        gw, gh = int(W * sc), int(260 * sc)
+        gw, gh = int(W * sc), int(300 * sc)
         key = (gw, gh)
         if self._ground_cache is None or self._ground_cache[0] != key:
             g2 = pygame.transform.smoothscale(self.ground_surf, (gw, gh))
@@ -937,10 +1003,11 @@ class LotterySky:
         if self.card_t > 0:
             self.card_t = clamp01(self.card_t + dt * 1.5)
 
-        # 地球自转（0.032 rad/s ≈ 每分钟 3 度，慢而真实；配合 spin 量化
-        # 控制完整重渲染频率——这是帧时间大头）
+        # 地球自转：写成时间的确定函数（而非累加），保证无论快进/重放，
+        # 光柱落点都稳定命中同一片大陆（下方 _IMPACT_SPIN_T 基准）。
+        # 0.032 rad/s 慢而真实；配合 spin 量化控制重渲染频率（帧时间大头）
         if self.earth is not None:
-            self.earth.spin += dt * 0.032
+            self.earth.spin = _SPIN0 + self.t * 0.032
 
         # 云层：上升期自上而下掠过（镜头在上升），越到后期越快、越淡
         self._update_clouds(dt)
@@ -1316,30 +1383,58 @@ class LotterySky:
             self.world.blit(piece, dest)
 
         # 光柱落点冲击波（球太大时环已出视野，跳过；限制表面尺寸）
+        # 落点在大陆（_SPIN0 已把自转对准沙漠），所以是“陆地/基站”打击感：
+        # 炽热弹坑辉光 + 扩散的尘土冲击环 + 向上翻涌的土石烟柱（轨道炮风格）
+        # 特效画在光柱真正的命中点（球面近端），而非圆盘中心——否则会掉到画面下缘外
         if self.impact_wave > 0.01 and r * 1.3 < math.hypot(W, H):
+            tx, ty = self._beam_strike()
+            cx, cy = tx, ty          # 后续都用命中点作中心
             iw = self.impact_wave
-            rr = min(900, int((1 - iw) * r * 1.1) + 26)
-            wv = pygame.Surface((rr * 2, rr * 2), pygame.SRCALPHA)
-            # 落点是海面：先一圈蓝白水花涟漪（由内向外扩散的水环）
+            prog = 1.0 - iw                          # 打击进程 0→1
+            # ① 弹坑炽热核心（越早越亮，橙黄→暗红冷却）
+            core_r = int(r * (0.10 + 0.16 * prog)) + 8
+            heat = lerp_col((255, 236, 170), (210, 90, 40), prog)
+            core = pygame.Surface((core_r * 2, core_r * 2), pygame.SRCALPHA)
+            for rr2, al in ((core_r, int(210 * iw)),
+                            (int(core_r * 0.62), int(240 * iw)),
+                            (int(core_r * 0.3), 255)):
+                if rr2 > 0:
+                    pygame.draw.circle(core, (*heat, al), (core_r, core_r), rr2)
+            self.world.blit(core, (int(cx) - core_r, int(cy) - core_r))
+            # ② 扩散的尘土冲击环（土黄/棕，由内向外推，越推越淡）
+            # 表面留足边距并 clamp 半径：否则描边圆超出表面会被切成直角边
+            rr = min(900, int(prog * r * 1.1) + 26)
+            lw = max(2, int(r * 0.035))
+            RW = int(rr * 1.25) + lw + 8
+            wv = pygame.Surface((RW * 2, RW * 2), pygame.SRCALPHA)
             for k in range(3):
-                fr = int(rr * (0.35 + 0.3 * k) * (1.2 - iw * 0.5))
+                fr = min(RW - lw - 2,
+                         int(rr * (0.4 + 0.28 * k) * (1.15 - iw * 0.4)))
                 if fr > 0:
-                    pygame.draw.circle(wv, (150, 210, 255, int(90 * iw)),
-                                       (rr, rr), fr, max(2, int(r * 0.03)))
-            # 冲击亮环
-            pygame.draw.circle(wv, (255, 240, 180, int(170 * iw)),
-                               (rr, rr), rr, max(2, int(r * 0.05)))
-            pygame.draw.circle(wv, (255, 255, 255, int(120 * iw)),
-                               (rr, rr), max(1, rr - 10), 3)
-            self.world.blit(wv, (int(cx) - rr, int(cy) - rr))
-            # 水冠（海面被击中激起的水柱，向上喷后回落）
-            crown_h = int((1 - iw) * r * 0.5)
-            if crown_h > 6:
-                cw2 = int(r * 0.28)
-                crown = pygame.Surface((cw2 * 2, crown_h + 8), pygame.SRCALPHA)
-                pygame.draw.circle(crown, (200, 235, 255, int(150 * iw)),
-                                   (cw2, crown_h + 4), cw2)
-                self.world.blit(crown, (int(cx) - cw2, int(cy) - crown_h - 4))
+                    dust = (196, 168, 120) if k % 2 == 0 else (150, 120, 82)
+                    pygame.draw.circle(wv, (*dust, int(80 * iw)),
+                                       (RW, RW), fr, lw)
+            # 冲击亮环（贴地扩散的前沿）
+            pygame.draw.circle(wv, (255, 232, 176, int(150 * iw)),
+                               (RW, RW), min(RW - lw - 2, rr),
+                               max(2, int(r * 0.05)))
+            self.world.blit(wv, (int(cx) - RW, int(cy) - RW))
+            # ③ 土石烟柱（从弹坑向上翻涌，带尘雾；越到后期越高越散）
+            plume_h = int((0.25 + 0.75 * prog) * r * 0.6)
+            if plume_h > 8:
+                pw = int(r * (0.22 + 0.20 * prog))
+                plume = pygame.Surface((pw * 2, plume_h + 8), pygame.SRCALPHA)
+                # 主烟柱（棕灰渐隐）
+                for step in range(6):
+                    f = step / 5.0
+                    py2 = int(plume_h * (1 - f))
+                    wdt = int(pw * (0.5 + 0.5 * f))
+                    col = lerp_col((120, 98, 70), (170, 150, 128), f)
+                    a = int(180 * iw * (1 - 0.55 * f))
+                    if wdt > 0 and a > 0:
+                        pygame.draw.circle(plume, (*col, a),
+                                           (pw, py2), wdt)
+                self.world.blit(plume, (int(cx) - pw, int(cy) - plume_h - 4))
 
     def _get_glow(self, r_int):
         """大气辉光按半径缓存（太空停留期半径恒定，不逐帧重建大表面）"""
@@ -1388,6 +1483,19 @@ class LotterySky:
             pygame.draw.circle(ring, (255, 240, 170, int(160 * (1 - cp) + 60)),
                                (pr, pr), pr, 2)
             self.world.blit(ring, (cx - pr, cy - pr))
+
+    def _beam_strike(self):
+        """光柱在地球球面上的命中点（屏幕坐标）：从北斗中心指向地球圆心，
+        取球面近端。冲击特效与光柱落点闪光都用它，保证一致。"""
+        pts = [(int(x), int(y)) for x, y in self._big_star_positions()]
+        sx = sum(p[0] for p in pts) // len(pts)
+        sy = sum(p[1] for p in pts) // len(pts)
+        ecx, ecy, er = self._earth_view()
+        dx, dy = ecx - sx, ecy - sy
+        dist = math.hypot(dx, dy) or 1
+        tx = sx + dx / dist * (dist - er)   # 球面近端
+        ty = sy + dy / dist * (dist - er)
+        return tx, ty
 
     def _draw_beam(self):
         pts = [(int(x), int(y)) for x, y in self._big_star_positions()]
