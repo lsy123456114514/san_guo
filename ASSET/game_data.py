@@ -2213,6 +2213,19 @@ def load() -> None:
             for resource in RESOURCES:
                 if resource not in data['resources']:
                     data['resources'][resource] = 0
+
+            # 历史资源键迁移：早期版本宠物系统写 pet_food、策略地图写「木材」，
+            # 与商城/转盘/炼金的规范键「宠物食物」「木头」分账（买了喂不了、
+            # 收了看不见）。余额并入规范键后删除旧键，只迁一次。
+            for _legacy, _canonical in (("pet_food", "宠物食物"), ("木材", "木头")):
+                if _legacy in data['resources']:
+                    try:
+                        _bal = int(data['resources'].pop(_legacy) or 0)
+                    except (TypeError, ValueError):
+                        _bal = 0
+                    if _bal > 0:
+                        data['resources'][_canonical] = \
+                            int(data['resources'].get(_canonical, 0) or 0) + _bal
             
             # 检查并添加自动保存相关键
             if 'last_auto_save' not in data:
@@ -2300,11 +2313,14 @@ def save() -> None:
     """
     import time as _time
     max_retries = 3
+    # tmp 必须按进程隔离：历史上所有进程共用 save.json.tmp，两个进程
+    # （游戏本体 + 自动测试/联机等）同时存档会互相截断/占用，触发
+    # WinError 32「另一个程序正在使用此文件」，只能靠重试硬扛。
+    tmp_path = f"{SAVE_PATH}.{os.getpid()}.tmp"
     for attempt in range(max_retries):
         try:
             unhide_file(SAVE_PATH)  # 清除隐藏/只读属性
             # 原子写入：先写临时文件，再重命名替换，防止写入中断导致存档损坏
-            tmp_path = SAVE_PATH + ".tmp"
             with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
                 f.flush()
@@ -2318,6 +2334,12 @@ def save() -> None:
             logger.debug("[存档] 保存成功: %s", SAVE_PATH)
             return
         except PermissionError as e:
+            # 清掉可能残留的本进程 tmp，避免下次 open 撞上只读残留
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError:
+                pass
             if attempt < max_retries - 1:
                 logger.warning("[存档] 权限错误，第%d次重试: %s", attempt + 1, e)
                 _time.sleep(0.5)

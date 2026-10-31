@@ -52,7 +52,7 @@ class TerritoryManager:
             {"id": "mine_2", "name": "铜矿", "x": 480, "y": 380, "type": "mine", "base_production": {"铜矿": 25}, "defense": 120, "faction": "neutral"},
             {"id": "farm_1", "name": "良田", "x": 380, "y": 350, "type": "farm", "base_production": {"粮食": 60}, "defense": 80, "faction": "neutral"},
             {"id": "farm_2", "name": "粮仓", "x": 450, "y": 420, "type": "farm", "base_production": {"粮食": 80}, "defense": 100, "faction": "neutral"},
-            {"id": "forest_1", "name": "林场", "x": 520, "y": 380, "type": "forest", "base_production": {"木材": 40}, "defense": 90, "faction": "neutral"},
+            {"id": "forest_1", "name": "林场", "x": 520, "y": 380, "type": "forest", "base_production": {"木头": 40}, "defense": 90, "faction": "neutral"},
             {"id": "port_1", "name": "港口", "x": 550, "y": 480, "type": "port", "base_production": {"金元宝": 50}, "defense": 180, "faction": "neutral"}
         ]
     

@@ -521,8 +521,8 @@ def pet_menu():
         save()
     
     # 确保宠物食物存在
-    if 'pet_food' not in data['resources']:
-        data['resources']['pet_food'] = 0
+    if '宠物食物' not in data['resources']:
+        data['resources']['宠物食物'] = 0
         save()
     
     pet = Pet.from_dict(data['pet'])
@@ -593,7 +593,7 @@ def pet_menu():
         resources_y = int(screen_height * 0.75)
         left_cx = screen_width // 4
         resource_line = "    ".join([
-            f"宠物食物: {data['resources'].get('pet_food', 0)}",
+            f"宠物食物: {data['resources'].get('宠物食物', 0)}",
             f"宠物蛋: {data['resources'].get('pet_eggs', 0)}",
             f"稀有宠物蛋: {data['resources'].get('rare_pet_eggs', 0)}",
             f"史诗宠物蛋: {data['resources'].get('epic_pet_eggs', 0)}",
@@ -690,9 +690,9 @@ def pet_menu():
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if feed_button.rect.collidepoint(event.pos):
                     # 喂食宠物
-                    if data['resources'].get('pet_food', 0) > 0:
+                    if data['resources'].get('宠物食物', 0) > 0:
                         pet.feed()
-                        data['resources']['pet_food'] -= 1
+                        data['resources']['宠物食物'] -= 1
                         data['pet'] = pet.to_dict()
                         save()
                     elif data['resources'].get('金元宝', 0) >= 10:
@@ -705,7 +705,7 @@ def pet_menu():
                     # 带宠物玩小游戏
                     if pet.play():
                         food_reward = play_with_pet()
-                        data['resources']['pet_food'] = data['resources'].get('pet_food', 0) + food_reward
+                        data['resources']['宠物食物'] = data['resources'].get('宠物食物', 0) + food_reward
                         data['pet'] = pet.to_dict()
                         save()
                 elif hatch_button.rect.collidepoint(event.pos):

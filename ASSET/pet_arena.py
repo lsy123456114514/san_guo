@@ -356,7 +356,7 @@ def battle(player_pet, enemy_pet):
                     battle_log.append(f"战斗胜利！获得{experience}点经验")
                     # 随机获得宠物食物
                     food_reward = random.randint(1, 3)
-                    data['resources']['pet_food'] = data['resources'].get('pet_food', 0) + food_reward
+                    data['resources']['宠物食物'] = data['resources'].get('宠物食物', 0) + food_reward
                     battle_log.append(f"获得{food_reward}个宠物食物")
                     save()
             else:
