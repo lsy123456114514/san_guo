@@ -388,16 +388,31 @@ class MailSystem:
             }
     
     def send_mail(self, subject, content, sender="系统", rewards=None):
-        """发送邮件"""
+        """发送邮件
+
+        注意：data["mail"]["inbox"] 由两套系统共用（gameplay_systems 的
+        邮件中心按 title/attachments/claimed/time 读，本类旧代码按
+        subject/rewards/timestamp 读）。这里写双格式键，两边都能显示、
+        都能领取，避免"无标题/附件领不了/时间 0"的错位。
+        """
         mail_id = f"mail_{datetime.datetime.now().timestamp()}"
+        now = datetime.datetime.now()
         mail = {
             "id": mail_id,
+            "sender": sender,
+            # 双格式：邮件中心读 title，旧社交逻辑读 subject
+            "title": subject,
             "subject": subject,
             "content": content,
-            "sender": sender,
-            "timestamp": datetime.datetime.now().isoformat(),
+            # 双格式：邮件中心读 attachments/claimed，旧社交逻辑读 rewards
+            "attachments": dict(rewards or {}),
+            "rewards": dict(rewards or {}),
+            "claimed": False,
+            # 双格式：邮件中心读 epoch 时间，旧社交逻辑读 iso 字符串
+            "time": now.timestamp(),
+            "timestamp": now.isoformat(),
             "read": False,
-            "rewards": rewards or {}
+            "type": "social",
         }
         data["mail"]["inbox"].append(mail)
         save()
@@ -413,13 +428,21 @@ class MailSystem:
         return False, "邮件不存在"
     
     def claim_rewards(self, mail_id):
-        """领取邮件奖励"""
+        """领取邮件奖励
+
+        用共享的 claimed 标记防重：邮件中心领过（claimed=True）就不能
+        再领，本类领过同样置位，杜绝两边各发一遍奖励。
+        """
         for mail in data["mail"]["inbox"]:
             if mail["id"] == mail_id:
+                if mail.get("claimed"):
+                    return False, "奖励已领取"
+                rewards = mail.get("rewards") or mail.get("attachments") or {}
                 # 发放奖励
-                for resource, amount in mail["rewards"].items():
+                for resource, amount in rewards.items():
                     data["resources"][resource] = data["resources"].get(resource, 0) + amount
-                
+
+                mail["claimed"] = True
                 # 移动到已发送
                 data["mail"]["sent"].append(mail)
                 data["mail"]["inbox"].remove(mail)

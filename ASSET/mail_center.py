@@ -170,16 +170,18 @@ class MailCenter:
             dot_c = COLORS["accent_gold"] if not m["read"] else COLORS["text_dim"]
             pygame.draw.circle(clip, dot_c, (14, r.centery), 5)
 
-            sender = _strip_emoji(m["sender"])[:6]
+            sender = _strip_emoji(m.get("sender", "系统"))[:6]
             s_sur = self.font_small.render(sender, True, COLORS["text_gray"])
             clip.blit(s_sur, (28, r.y + 6))
 
-            title = _strip_emoji(m["title"])
-            t_color = COLORS["text_white"] if not m["read"] else COLORS["text_gray"]
+            # 老社交邮件只有 subject 键，title 兜底；缺省“无标题”
+            title = _strip_emoji(m.get("title") or m.get("subject")
+                                 or "（无标题）")
+            t_color = COLORS["text_white"] if not m.get("read") else COLORS["text_gray"]
             t_sur = self.font_main.render(title[:16], True, t_color)
             clip.blit(t_sur, (28, r.y + 28))
 
-            ts = self.font_small.render(_fmt_time(m["time"]), True, COLORS["text_dim"])
+            ts = self.font_small.render(_fmt_time(m.get("time", 0)), True, COLORS["text_dim"])
             clip.blit(ts, (r.width - ts.get_width() - 10, r.y + 6))
 
             if m.get("attachments") and not m.get("claimed"):
@@ -201,19 +203,24 @@ class MailCenter:
         y = rect.y + pad
         max_w = rect.width - pad * 2
 
-        title = _strip_emoji(m["title"])
+        # 老社交邮件只有 subject 键；read_mail 返回的是原始字典，
+        # 必须兜底，否则当年的 KeyError 'title' 还会复发
+        title = _strip_emoji(m.get("title") or m.get("subject")
+                             or "（无标题）")
         t_sur = self.font_title.render(title[:20], True, COLORS["accent_gold"])
         self.screen.blit(t_sur, (x, y))
         y += t_sur.get_height() + 8
 
-        meta = f"发件人 {_strip_emoji(m['sender'])} · {_fmt_time(m['time'])}"
+        meta = (f"发件人 {_strip_emoji(m.get('sender', '系统'))}"
+                f" · {_fmt_time(m.get('time', 0))}")
         m_sur = self.font_small.render(meta, True, COLORS["text_gray"])
         self.screen.blit(m_sur, (x, y))
         y += m_sur.get_height() + 10
         pygame.draw.line(self.screen, COLORS["divider"], (x, y), (rect.right - pad, y))
         y += 12
 
-        for line in _wrap_text(self.font_small, _strip_emoji(m["content"]), max_w):
+        for line in _wrap_text(self.font_small,
+                               _strip_emoji(m.get("content", "")), max_w):
             if y > rect.bottom - 90:
                 break
             c_sur = self.font_small.render(line, True, COLORS["text_white"])

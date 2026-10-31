@@ -300,15 +300,19 @@ class MailSystem:
         return sum(1 for mail in data["mail"]["inbox"] if not mail["read"])
     
     def get_inbox(self):
-        """获取收件箱"""
+        """获取收件箱
+
+        归一化兜底：老社交邮件（social_system 旧版）只有 subject/rewards
+        键，这里回退读取，保证邮件中心里标题、附件都正常显示可领。
+        """
         return [{
             "id": m.get("id", 0),
             "sender": m.get("sender", "系统"),
-            "title": m.get("title", "（无标题）"),
+            "title": m.get("title") or m.get("subject") or "（无标题）",
             "content": m.get("content", ""),
-            "attachments": m.get("attachments", {}),
+            "attachments": m.get("attachments") or m.get("rewards") or {},
             "type": m.get("type", "system"),
-            "time": m.get("time", 0),
+            "time": m.get("time") or 0,
             "read": m.get("read", False),
             "claimed": m.get("claimed", False)
         } for m in data["mail"]["inbox"]]
