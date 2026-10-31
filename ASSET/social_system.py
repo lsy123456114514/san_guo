@@ -331,23 +331,55 @@ class TaskSystem:
                 data["tasks"]["main"].append(task.copy())
             save()
     
+    # 嵌套奖励类别 → 规范落点。历史 bug：原代码 data[sub_resource][sub_resource]
+    # 把 {"武将碎片": {"张飞": 5}} 写成顶层垃圾键 data["张飞"]["张飞"]，而武将
+    # 仓库/商城读的是 data["hero_fragments"]["张飞"] → 碎片永远到不了手。
+    _SUB_REWARD_CATEGORIES = ("武将碎片", "装备")
+
+    def _grant_reward(self, reward):
+        """发放任务奖励。标量键走 resources，嵌套 dict 走各自规范落点。"""
+        for resource, amount in reward.items():
+            if isinstance(amount, dict):
+                self._grant_sub_reward(resource, amount)
+            else:
+                try:
+                    data["resources"][resource] = \
+                        int(data["resources"].get(resource, 0) or 0) + int(amount)
+                except (TypeError, ValueError):
+                    logger.debug("[任务] 奖励值不可加 %s=%r", resource, amount)
+
+    def _grant_sub_reward(self, category, sub_items):
+        """发放嵌套奖励：武将碎片 → hero_fragments；装备 → 生成真装备。"""
+        if category == "武将碎片":
+            frag = data.setdefault("hero_fragments", {})
+            for hero_name, n in sub_items.items():
+                try:
+                    frag[hero_name] = int(frag.get(hero_name, 0) or 0) + int(n)
+                except (TypeError, ValueError):
+                    logger.debug("[任务] 碎片数量无效 %s=%r", hero_name, n)
+            return
+        if category == "装备":
+            try:
+                from ASSET.equipment_system import EquipmentSystem
+                _type_map = {"武器": "weapon", "防具": "armor",
+                             "铠甲": "armor", "饰品": "accessory"}
+                es = EquipmentSystem()
+                for slot_cn, n in sub_items.items():
+                    et = _type_map.get(slot_cn, "weapon")
+                    for _ in range(int(n or 0)):
+                        es.create_equipment(et, level=2)   # 稀有级
+                return
+            except Exception as _e:
+                logger.debug("[异常静默] 任务装备奖励 %s: %s", type(_e).__name__, _e)
+        # 未知嵌套类别：不写垃圾键，记日志便于发现
+        logger.debug("[任务] 未识别的嵌套奖励类别 %s=%r（已忽略）", category, sub_items)
+
     def complete_task(self, task_id):
         """完成任务"""
         # 检查每日任务
         for task in data["tasks"]["daily"]:
             if task["id"] == task_id and task["progress"] >= task["target"]:
-                # 发放奖励
-                for resource, amount in task["reward"].items():
-                    if isinstance(amount, dict):
-                        # 处理特殊奖励如武将碎片
-                        for sub_resource, sub_amount in amount.items():
-                            if sub_resource not in data:
-                                data[sub_resource] = {}
-                            data[sub_resource][sub_resource] = data[sub_resource].get(sub_resource, 0) + sub_amount
-                    else:
-                        # 处理普通资源
-                        data["resources"][resource] = data["resources"].get(resource, 0) + amount
-                
+                self._grant_reward(task["reward"])
                 # 移动到已完成
                 data["tasks"]["completed"].append(task)
                 data["tasks"]["daily"].remove(task)
@@ -357,18 +389,7 @@ class TaskSystem:
         # 检查主线任务
         for task in data["tasks"]["main"]:
             if task["id"] == task_id and task["progress"] >= task["target"]:
-                # 发放奖励
-                for resource, amount in task["reward"].items():
-                    if isinstance(amount, dict):
-                        # 处理特殊奖励如武将碎片
-                        for sub_resource, sub_amount in amount.items():
-                            if sub_resource not in data:
-                                data[sub_resource] = {}
-                            data[sub_resource][sub_resource] = data[sub_resource].get(sub_resource, 0) + sub_amount
-                    else:
-                        # 处理普通资源
-                        data["resources"][resource] = data["resources"].get(resource, 0) + amount
-                
+                self._grant_reward(task["reward"])
                 # 移动到已完成
                 data["tasks"]["completed"].append(task)
                 data["tasks"]["main"].remove(task)
@@ -438,9 +459,17 @@ class MailSystem:
                 if mail.get("claimed"):
                     return False, "奖励已领取"
                 rewards = mail.get("rewards") or mail.get("attachments") or {}
-                # 发放奖励
+                # 发放奖励：跳过嵌套 dict（原代码 int + dict 会直接 TypeError
+                # 崩掉整个领取流程）
                 for resource, amount in rewards.items():
-                    data["resources"][resource] = data["resources"].get(resource, 0) + amount
+                    if isinstance(amount, dict):
+                        logger.debug("[邮件] 跳过嵌套奖励 %s=%r", resource, amount)
+                        continue
+                    try:
+                        data["resources"][resource] = \
+                            int(data["resources"].get(resource, 0) or 0) + int(amount)
+                    except (TypeError, ValueError):
+                        logger.debug("[邮件] 奖励值不可加 %s=%r", resource, amount)
 
                 mail["claimed"] = True
                 # 移动到已发送

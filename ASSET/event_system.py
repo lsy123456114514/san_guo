@@ -3,7 +3,7 @@
 import pygame
 import random
 import time
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, logger
 
 class EventSystem:
     def __init__(self):
@@ -263,6 +263,23 @@ class EventSystem:
                 return event
         return None
     
+    def _healable_heroes(self):
+        """返回 data['heroes'] 中带 hp 且未满血的武将（dict 形式）"""
+        out = []
+        for _h in (data.get("heroes") or {}).values():
+            if isinstance(_h, dict) and _h.get("hp") is not None \
+                    and _h.get("max_hp") and _h.get("hp", 0) < _h.get("max_hp", 0):
+                out.append(_h)
+        return out
+
+    # cost 键归一：事件数据里历史写法用英文 gold，而 resources 规范键是
+    # 「金元宝」。不归一会导致 resources.get("gold") 恒为 0，检查永远返回
+    # 「资源不足」——例如强盗事件的「逃跑」按钮点了从没成功过。
+    COST_KEY_ALIASES = {"gold": "金元宝"}
+
+    def _norm_cost_key(self, key: str) -> str:
+        return self.COST_KEY_ALIASES.get(key, key)
+
     def handle_choice(self, choice_index):
         """处理玩家选择"""
         if not self.current_event:
@@ -270,13 +287,20 @@ class EventSystem:
         
         choice = self.current_event["choices"][choice_index]
         
-        # 检查资源是否足够
-        for resource, amount in choice.get("cost", {}).items():
+        # 治疗类奖励：没有可治疗武将时先拦（否则扣完 50 金元宝什么都不发生）
+        reward = choice.get("reward", {})
+        if set(reward) == {"heal_all"} and not self._healable_heroes():
+            return "没有需要治疗的武将", False
+
+        # 检查资源是否足够（cost 键先归一到规范资源名）
+        cost = {self._norm_cost_key(k): v
+                for k, v in choice.get("cost", {}).items()}
+        for resource, amount in cost.items():
             if data["resources"].get(resource, 0) < amount:
                 return "资源不足", False
         
         # 消耗资源
-        for resource, amount in choice.get("cost", {}).items():
+        for resource, amount in cost.items():
             if amount > 0:
                 data["resources"][resource] -= amount
         
@@ -322,8 +346,16 @@ class EventSystem:
                 resource = random.choice(resources)
                 data["resources"][resource] += value
             elif key == "heal_all":
-                # 治疗所有武将
-                pass
+                # 治疗所有武将：把带 hp 的武将回满（原来 pass = 花钱无效果）
+                healed = 0
+                for _h in (data.get("heroes") or {}).values():
+                    if isinstance(_h, dict) and _h.get("hp") is not None \
+                            and _h.get("max_hp"):
+                        if _h.get("hp", 0) < _h.get("max_hp", 0):
+                            _h["hp"] = _h["max_hp"]
+                            healed += 1
+                if healed:
+                    logger.info("[事件] 治疗恢复 %d 名武将", healed)
             elif key == "hero":
                 # 添加武将
                 if value == "random":
@@ -337,8 +369,20 @@ class EventSystem:
                     if hero_name not in data["heroes"]:
                         data["heroes"][hero_name] = {"star": 2, "level": 5}
             elif key == "equipment":
-                # 添加装备
-                pass
+                # 添加装备：原来是 pass——「购买稀有装备」花 200 金元宝
+                # 扣完钱什么都不发。按等级名映射到装备等级（普通~传说 0~4）
+                # 发一件真装备到对应栏位（create_equipment 自己会 save）。
+                try:
+                    from ASSET.equipment_system import EquipmentSystem
+                    level_map = {"common": 0, "rare": 2, "epic": 3,
+                                 "legendary": 4}
+                    lvl = level_map.get(str(value), 4 if str(value) == "legendary" else 2)
+                    equip_type = random.choice(["weapon", "armor", "accessory"])
+                    EquipmentSystem().create_equipment(equip_type, level=lvl)
+                    logger.info("[事件] 发放装备: type=%s level=%s", equip_type, lvl)
+                except Exception as _e:
+                    logger.debug("[异常静默] event equipment reward %s: %s",
+                                 type(_e).__name__, _e)
             elif key == "all_stats_bonus":
                 # 添加属性加成
                 data["event_bonus"] = {"attack": value, "defense": value, "duration": reward.get("duration", 300), "start_time": time.time()}
@@ -354,6 +398,18 @@ class EventSystem:
             elif key == "king_title":
                 # 设置王者称号
                 data["story_progress"]["king_title"] = True
+            elif key in data["resources"]:
+                # 兜底：规范资源键（金元宝/食物/木头/水/煤炭/子弹…）
+                # 原来这里没有 else 分支，事件奖励写 "金元宝": 80 /
+                # "食物": 150 时静默丢失——玩家选了「交换资源」扣了木头，
+                # 承诺的 80 金元宝永远不到账。
+                try:
+                    data["resources"][key] = int(data["resources"].get(key, 0)) + int(value)
+                except (TypeError, ValueError):
+                    logger.debug("[事件] 奖励值不可加 key=%s value=%r", key, value)
+            else:
+                logger.debug("[事件] 未识别的奖励键 key=%s value=%r（已忽略）",
+                             key, value)
         
         save()
     
