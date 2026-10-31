@@ -5,7 +5,7 @@ import pygame
 import random
 import math
 import traceback
-from ASSET.game_data import data, save, load_sound, logger, draw_gradient_bg, get_font, open_window
+from ASSET.game_data import data, save, load_sound, logger, draw_gradient_bg, get_font, open_window, EQUIP_SKILLS
 from ASSET import safe_exit
 
 # 颜色主题
@@ -473,9 +473,22 @@ def main():
             return True
 
         def buy_equip(equip_name, equip_type):
-            data["equips"][equip_type] = data["equips"].get(equip_type, 0) + 1
+            """购买/升级装备技能槽。
+
+            技能表 EQUIP_SKILLS 只定义 0~9 级，超过上限后再买不会有任何
+            技能（EQUIP_SKILLS.get(slot).get(level) 返回 None）——曾导致
+            买满 10 次后武器技能从「七星宝刀」直接掉回无技能，越买越弱。
+            现在满级就拦住并提示。
+            """
+            cur = data["equips"].get(equip_type, 0)
+            max_lv = max(EQUIP_SKILLS.get(equip_type, {}), default=9)
+            if cur >= max_lv:
+                return False, f"{equip_name} 已满级（{max_lv}级）"
+            data["equips"][equip_type] = cur + 1
             save()
-            return True
+            lv = data["equips"][equip_type]
+            skill = EQUIP_SKILLS.get(equip_type, {}).get(lv, {})
+            return True, f"{equip_name} 升至{lv}级 · {skill.get('name', '')}"
 
         def craft_time_card(card_level="时间卡"):
             """合成时间卡"""
@@ -765,11 +778,21 @@ def main():
                     draw_shop_item_card(screen, x, y, card_width, card_height,
                                       icon, equip['name'], "装备", font_small, font_icon, scale)
                     
+                    # 当前等级标签：让玩家看得见离满级还有多远
+                    _lv = data["equips"].get(equip["type"], 0)
+                    _mx = max(EQUIP_SKILLS.get(equip["type"], {}), default=9)
+                    _full = _lv >= _mx
+                    _lv_color = COLORS["accent_red"] if _full else COLORS["accent_green"]
+                    _lv_surf = font_small.render(f"Lv.{_lv}/{_mx}", True, _lv_color)
+                    screen.blit(_lv_surf, (x + card_width - _lv_surf.get_width() - 6, y + 6))
+                    
                     # 购买按钮 - 使用相对位置，不进行额外的缩放
                     btn_x = x + 10
                     btn_y = y + card_height - btn_height - 5
                     btn = cached_btn(("equip", equip["name"]), btn_x, btn_y, card_width - 20, btn_height,
-                                     "购买", font_small, COLORS["btn_gold"], COLORS["btn_gold_hover"], (255, 255, 255))
+                                     "满级" if _full else "购买", font_small,
+                                     COLORS["text_gray"] if _full else COLORS["btn_gold"],
+                                     COLORS["btn_gold_hover"], (255, 255, 255))
                     btn.update((mx, my))
                     btn.draw(screen)
                     equip_btns.append((btn, equip["name"], equip["type"]))
@@ -971,7 +994,8 @@ def main():
                     for btn, equip_name, equip_type in equip_btns:
                         if in_container and btn.rect.collidepoint(mx, my):
                             play_sound(click_sound)
-                            if buy_equip(equip_name, equip_type):
+                            bought, tip = buy_equip(equip_name, equip_type)
+                            if bought:
                                 play_sound(success_sound)
                                 floating_texts.append(FloatingText(
                                     f"获得 {equip_name}", mx, my, COLORS["accent_gold"], font_normal
@@ -980,6 +1004,11 @@ def main():
                                     # 生成多种颜色的粒子
                                     particle_color = random.choice([COLORS["accent_gold"], (255, 200, 100), (200, 160, 50)])
                                     particles.append(Particle(mx, my, particle_color, random.uniform(3, 6), random.uniform(3, 7), random.randint(30, 40)))
+                            else:
+                                # 满级拦截：给红色提示，不再假装购买成功
+                                floating_texts.append(FloatingText(
+                                    tip, mx, my, COLORS["accent_red"], font_normal
+                                ))
                     # 时间卡等级选择
                     for i, level in enumerate(card_levels):
                         level_rect = pygame.Rect(container_x + 10 + i * 100, container_y + craft_start_y, 90, 35)
