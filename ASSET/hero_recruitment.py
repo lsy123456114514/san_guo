@@ -63,6 +63,15 @@ RECRUIT_COST = {
     "legendary": {"金元宝": 2000}
 }
 
+# 招募令 → 抵扣对应档位的招募（有票免金元宝）。
+# 修 bug：成就/副本/签到/图鉴/策略榜/任务链/福利 8 个系统都在发
+# 「高级招募令」「顶级招募令」，但招募系统原先只扣金元宝 —— 招募令
+# 全仓无消费端，玩家攒了一堆却永远用不掉（死道具）。
+RECRUIT_TICKETS = {
+    "advanced": "高级招募令",
+    "legendary": "顶级招募令",
+}
+
 class Particle:
     def __init__(self, x, y, color, speed, size, life):
         self.x = x
@@ -114,16 +123,27 @@ def draw_background(surface, width, height):
         surface.blit(glow_surf, (x - size * 2, y - size * 2))
 
 def recruit_hero(recruit_type):
-    """招募武将"""
-    # 检查资源
+    """招募武将
+
+    优先消耗招募令（有票免金元宝），没有票才扣金元宝。
+    """
     cost = RECRUIT_COST[recruit_type]
-    for resource, amount in cost.items():
-        if data['resources'].get(resource, 0) < amount:
-            return None, f"资源不足！需要{amount}{resource}"
-    
-    # 扣除资源
-    for resource, amount in cost.items():
-        data['resources'][resource] -= amount
+    ticket = RECRUIT_TICKETS.get(recruit_type)
+    res = data['resources']
+
+    if ticket and int(res.get(ticket, 0) or 0) > 0:
+        # 有招募令：扣 1 张，金元宝一分不动
+        res[ticket] = int(res[ticket]) - 1
+        paid = ticket
+    else:
+        # 无招募令：回退到金元宝
+        for resource, amount in cost.items():
+            if int(res.get(resource, 0) or 0) < amount:
+                hint = f"（持{ticket}可免费）" if ticket else ""
+                return None, f"资源不足！需要{amount}{resource}{hint}"
+        for resource, amount in cost.items():
+            res[resource] = int(res[resource]) - amount
+        paid = "金元宝"
     save()
     
     # 确定武将品质
@@ -164,7 +184,8 @@ def recruit_hero(recruit_type):
     data["heroes"][hero["name"]] = hero_data
     save()
     
-    return hero_data, f"成功招募到{HERO_QUALITY[quality]['name']}武将：{hero['name']}"
+    return hero_data, (f"成功招募到{HERO_QUALITY[quality]['name']}武将：{hero['name']}"
+                       f"（消耗{paid}）")
 
 def show_recruit_animation(hero_data):
     """显示招募动画"""
@@ -301,11 +322,24 @@ def main():
         title_rect = title_surf.get_rect(center=(screen_width // 2, 100))
         screen.blit(title_surf, title_rect)
         
-        # 资源显示
-        resource_text = f"金元宝: {data['resources'].get('金元宝', 0)}"
+        # 资源显示（含招募令数量，玩家能看出有票可免费用）
+        res = data['resources']
+        resource_text = f"金元宝: {res.get('金元宝', 0)}"
+        _adv = int(res.get('高级招募令', 0) or 0)
+        _leg = int(res.get('顶级招募令', 0) or 0)
+        if _adv or _leg:
+            parts = [f"高级招募令: {_adv}", f"顶级招募令: {_leg}"]
+            resource_text += "   " + "   ".join(parts)
         resource_surf = FONT_MAIN.render(resource_text, True, (255, 255, 255))
         resource_rect = resource_surf.get_rect(topright=(screen_width - 20, 20))
         screen.blit(resource_surf, resource_rect)
+        
+        # 按钮文案按票量动态：有票显示「用票免费」，无票显示金元宝价
+        normal_btn.text = "普通招募 (100金元宝)"
+        advanced_btn.text = (f"高级招募 · 用招募令x1 (剩{_adv})" if _adv
+                             else "高级招募 (500金元宝)")
+        legendary_btn.text = (f"传说招募 · 用招募令x1 (剩{_leg})" if _leg
+                              else "传说招募 (2000金元宝)")
         
         # 按钮
         mouse_pos = pygame.mouse.get_pos()
