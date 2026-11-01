@@ -5,7 +5,7 @@ import time
 import pygame
 import random
 import datetime
-from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font, open_window
+from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font, open_window, grant_rewards
 from ASSET import safe_exit
 
 # 颜色主题
@@ -654,12 +654,16 @@ class TradingSystem:
                 if data["resources"].get("金元宝", 0) >= offer["price"]:
                     # 扣除金币
                     data["resources"]["金元宝"] -= offer["price"]
+                    # 发货给买家（原实现只扣钱不交付 item_name —— 玩家花钱
+                    # 啥都拿不到，纯金币黑洞）。资源/招募令进 resources，
+                    # 其他物品进 items 背包。
+                    grant_rewards({offer["item_name"]: 1}, f"交易购买[{offer['id']}]")
                     # 标记交易完成
                     offer["status"] = "completed"
                     offer["buyer"] = data.get("username", "player")
                     offer["completed_at"] = datetime.datetime.now().isoformat()
                     save()
-                    return True, "购买成功！"
+                    return True, f"购买成功！获得 {offer['item_name']}"
                 else:
                     return False, "金币不足"
         return False, "交易 offer 不存在"

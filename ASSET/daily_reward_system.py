@@ -1,6 +1,7 @@
 """每日签到系统 - 连续签到与奖励领取"""
 
 import time
+from datetime import date
 from ASSET.game_data import data, save, grant_rewards
 
 class DailyRewardSystem:
@@ -96,15 +97,20 @@ class DailyRewardSystem:
             data["daily_reward"]["consecutive_days"] = 0
         
         # 检查是否连续签到
+        # 用整数日期差而非浮点秒差：原实现 days_diff == 1 比较浮点，
+        # 跨夏令时（DST）时相邻两天的本地午夜相差 23/25 小时，
+        # days_diff 变成 0.958 或 1.042，连续签到被误判为中断。
         last_date = data["daily_reward"]["last_checkin_date"]
         if last_date:
-            last_time = time.mktime(time.strptime(last_date, "%Y-%m-%d"))
-            today_time = time.mktime(time.strptime(today, "%Y-%m-%d"))
-            days_diff = (today_time - last_time) / (24 * 3600)
-            
+            try:
+                last_d = date(*map(int, last_date.split("-")))
+                today_d = date(*map(int, today.split("-")))
+                days_diff = (today_d - last_d).days
+            except ValueError:
+                days_diff = None
             if days_diff == 1:
                 data["daily_reward"]["consecutive_days"] += 1
-            elif days_diff > 1:
+            elif days_diff is not None and days_diff > 1:
                 data["daily_reward"]["consecutive_days"] = 1
         else:
             data["daily_reward"]["consecutive_days"] = 1
