@@ -1,7 +1,7 @@
 """策略地图系统 - 领土管理与资源产出"""
 
 import time
-from ASSET.game_data import data, save, logger
+from ASSET.game_data import data, save, logger, grant_rewards
 
 class TerritoryManager:
     """领土管理系统"""
@@ -321,12 +321,9 @@ class SeasonSystem:
         if data["season"]["season_rank"] > rank and rank > 1:
             return False, "排名未达标"
         
-        # 发放奖励
-        for reward_type, amount in reward["rewards"].items():
-            if reward_type in data["resources"]:
-                data["resources"][reward_type] += amount
-            else:
-                data["resources"][reward_type] = amount
+        # 发放奖励（含「至尊称号」字符串奖励——原先塞进 resources 会让
+        # 成就 max_resource 的 max() TypeError，现由统一发放丢弃并记日志）
+        grant_rewards(reward["rewards"], f"赛季奖励[rank{rank}]")
         
         data["season"]["season_rewards_claimed"].append(rank)
         save()
@@ -481,12 +478,7 @@ class GuildSystem:
         
         level = data["guild"]["level"]
         bonus = self.guild_levels[level - 1]["bonus"]
-        
-        for resource, amount in bonus.items():
-            if resource in data["resources"]:
-                data["resources"][resource] += amount
-            else:
-                data["resources"][resource] = amount
+        grant_rewards(bonus, f"公会日奖励[Lv{level}]")
         
         data["guild"]["last_daily_claim"] = today
         data["guild"]["daily_bonus_claimed"] = True

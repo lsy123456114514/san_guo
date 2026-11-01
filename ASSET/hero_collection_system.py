@@ -1,6 +1,6 @@
 """武将图鉴系统 - 名将收集与解锁奖励"""
 
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, grant_rewards
 
 class HeroCollectionSystem:
     """武将图鉴收集系统 - 收集天下名将，解锁奖励"""
@@ -183,11 +183,7 @@ class HeroCollectionSystem:
             return False, "奖励不存在"
         
         # 发放奖励
-        for reward, amount in bonus["rewards"].items():
-            if reward in data["resources"]:
-                data["resources"][reward] += amount
-            else:
-                data["resources"][reward] = amount
+        grant_rewards(bonus["rewards"], f"图鉴[{bonus_id}]")
         
         data["hero_collection"]["claimed_rewards"].append(bonus_id)
         save()

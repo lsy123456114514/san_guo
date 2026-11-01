@@ -3,7 +3,7 @@
 import os
 import time
 import pygame
-from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font, open_window
+from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font, open_window, grant_rewards
 
 class AchievementSystem:
     """成就系统 - 给予玩家成就感和目标感"""
@@ -279,7 +279,11 @@ class AchievementSystem:
             return data.get("resources", {}).get("金元宝", 0)
         elif stat_key == "max_resource":
             resources = data.get("resources", {})
-            return max(resources.values(), default=0)
+            # 只取数值：历史脏档曾把「至尊称号": "天下霸主"」这类字符串奖励
+            # 写进 resources，max() 混入 str 直接 TypeError 崩溃。
+            return max((v for v in resources.values()
+                        if isinstance(v, (int, float)) and not isinstance(v, bool)),
+                       default=0)
         elif stat_key in data.get("battle_stats", {}):
             return data["battle_stats"].get(stat_key, 0)
         return 0
@@ -326,11 +330,7 @@ class AchievementSystem:
             return False, "成就未解锁"
         
         # 发放奖励
-        for reward, amount in achievement["rewards"].items():
-            if reward in data["resources"]:
-                data["resources"][reward] += amount
-            else:
-                data["resources"][reward] = amount
+        grant_rewards(achievement["rewards"], f"成就[{achievement_id}]")
         
         data["achievements"]["claimed_rewards"].append(achievement_id)
         save()

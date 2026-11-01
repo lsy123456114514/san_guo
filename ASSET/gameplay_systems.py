@@ -1,7 +1,7 @@
 """玩法系统 - 活动中心与限时活动推送"""
 
 import time
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, grant_rewards
 
 class ActivityCenter:
     """活动中心 - 借鉴冰河时代的活动推送机制"""
@@ -147,12 +147,7 @@ class ActivityCenter:
             return False, "活动不存在"
         
         rewards = activity["rewards"]
-        
-        for reward_type, amount in rewards.items():
-            if reward_type in data["resources"]:
-                data["resources"][reward_type] += amount
-            else:
-                data["resources"][reward_type] = amount
+        grant_rewards(rewards, f"活动[{activity_id}]")
         
         data["activities"]["claimed_rewards"].append(activity_id)
         
@@ -272,11 +267,7 @@ class MailSystem:
                 if not attachments:
                     return False, "无附件"
                 
-                for reward_type, amount in attachments.items():
-                    if reward_type in data["resources"]:
-                        data["resources"][reward_type] += amount
-                    else:
-                        data["resources"][reward_type] = amount
+                grant_rewards(attachments, f"邮件[{mail_id}]")
                 
                 mail["claimed"] = True
                 save()
@@ -397,16 +388,13 @@ class CheckinCalendar:
         day_index = (consecutive - 1) % 7
         reward = rewards[day_index]
         
-        for reward_type, amount in reward.items():
-            if reward_type == "item":
-                if "items" not in data:
-                    data["items"] = {}
-                data["items"][amount] = data["items"].get(amount, 0) + 1
-            else:
-                if reward_type in data["resources"]:
-                    data["resources"][reward_type] += amount
-                else:
-                    data["resources"][reward_type] = amount
+        # "item" 键的值是物品名（如 中级经验丹 / 高级招募令），发 1 个。
+        # 走统一发放：高级招募令会被识别为招募系统消费键落 resources（原先
+        # 塞进 data["items"]，招募系统只读 resources，签到送的招募令也是死的）。
+        plain = {k: v for k, v in reward.items() if k != "item"}
+        grant_rewards(plain, "每日签到")
+        if "item" in reward:
+            grant_rewards({reward["item"]: 1}, "每日签到道具")
         
         return reward
     
@@ -466,12 +454,7 @@ class CheckinCalendar:
             return False, "本月奖励已领取"
         
         rewards = {"金元宝": 500, "稀有武将碎片": 30}
-        
-        for reward_type, amount in rewards.items():
-            if reward_type in data["resources"]:
-                data["resources"][reward_type] += amount
-            else:
-                data["resources"][reward_type] = amount
+        grant_rewards(rewards, "月度签到")
         
         data["checkin_calendar"]["monthly_rewards_claimed"].append(current_month)
         save()

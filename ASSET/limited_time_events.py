@@ -4,7 +4,7 @@ import os
 import pygame
 import datetime
 import random
-from ASSET.game_data import data, save, logger, draw_gradient_bg, get_font, open_window
+from ASSET.game_data import data, save, logger, grant_rewards, draw_gradient_bg, get_font, open_window
 from ASSET import safe_exit
 
 # 颜色主题
@@ -264,13 +264,10 @@ class LimitedTimeEvents:
     
     def claim_reward(self, event):
         """领取活动奖励"""
-        # 发放奖励
-        for reward, amount in event["rewards"].items():
-            if reward in data["resources"]:
-                data["resources"][reward] = data["resources"].get(reward, 0) + amount
-            else:
-                # 处理特殊奖励（如皮肤、武将等）
-                pass
+        # 统一发放：规范资源落 resources；皮肤/坐骑/红包等非资源奖励原先被
+        # pass 静默吞掉（领了活动只到账金元宝，限定皮肤永远不到手），现落
+        # items 背包不丢数。
+        grant_rewards(event["rewards"], f"限时活动[{event.get('name', '?')}]")
         
         # 将活动移至已完成
         data["limited_time_events"]["completed"].append(event)

@@ -2,7 +2,7 @@
 
 import time
 import random
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, grant_rewards
 
 class DungeonSystem:
     """副本挑战系统"""
@@ -183,25 +183,14 @@ class DungeonSystem:
     def _handle_normal_reward(self, dungeon):
         """处理普通层奖励"""
         rewards = dungeon["base_rewards"]
-        
-        for resource, amount in rewards.items():
-            if resource in data["resources"]:
-                data["resources"][resource] += amount
-            else:
-                data["resources"][resource] = amount
-        
+        grant_rewards(rewards, f"副本普通层[{dungeon['id']}]")
         save()
         return True, rewards
     
     def _handle_boss_reward(self, dungeon, floor):
         """处理BOSS层奖励"""
         rewards = dungeon["boss_rewards"]
-        
-        for resource, amount in rewards.items():
-            if resource in data["resources"]:
-                data["resources"][resource] += amount
-            else:
-                data["resources"][resource] = amount
+        grant_rewards(rewards, f"副本BOSS层[{dungeon['id']}]")
         
         # 更新最高分
         if dungeon["id"] not in data["dungeon"]["best_scores"] or floor > data["dungeon"]["best_scores"][dungeon["id"]]:
@@ -224,11 +213,7 @@ class DungeonSystem:
                     return False, "挑战未完成"
                 
                 # 发放奖励
-                for reward, amount in challenge["rewards"].items():
-                    if reward in data["resources"]:
-                        data["resources"][reward] += amount
-                    else:
-                        data["resources"][reward] = amount
+                grant_rewards(challenge["rewards"], f"副本挑战[{challenge_id}]")
                 
                 data["dungeon"]["claimed_rewards"].append(challenge_id)
                 save()
@@ -243,11 +228,7 @@ class DungeonSystem:
                     return False, "挑战未完成"
                 
                 # 发放奖励
-                for reward, amount in challenge["rewards"].items():
-                    if reward in data["resources"]:
-                        data["resources"][reward] += amount
-                    else:
-                        data["resources"][reward] = amount
+                grant_rewards(challenge["rewards"], f"副本挑战[{challenge_id}]")
                 
                 data["dungeon"]["claimed_rewards"].append(challenge_id)
                 save()

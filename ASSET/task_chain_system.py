@@ -1,7 +1,7 @@
 """任务链系统 - 日常/周常任务与奖励循环"""
 
 import time
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, grant_rewards
 
 class TaskChainSystem:
     """任务链系统 - 引导玩家持续游玩，形成循环"""
@@ -268,11 +268,7 @@ class TaskChainSystem:
                 if not self.is_task_complete(task_id):
                     return False, "任务未完成"
                 
-                for reward, amount in task["rewards"].items():
-                    if reward in data["resources"]:
-                        data["resources"][reward] += amount
-                    else:
-                        data["resources"][reward] = amount
+                grant_rewards(task["rewards"], f"任务链[{task_id}]")
                 
                 data["task_chains"]["claimed_rewards"].append(task_id)
                 save()
@@ -284,11 +280,7 @@ class TaskChainSystem:
                 if not self.is_task_complete(task_id):
                     return False, "任务未完成"
                 
-                for reward, amount in task["rewards"].items():
-                    if reward in data["resources"]:
-                        data["resources"][reward] += amount
-                    else:
-                        data["resources"][reward] = amount
+                grant_rewards(task["rewards"], f"任务链[{task_id}]")
                 
                 data["task_chains"]["claimed_rewards"].append(task_id)
                 save()
@@ -324,11 +316,7 @@ class TaskChainSystem:
             return False, "任务链未完成"
         
         # 发放奖励
-        for reward, amount in chain["rewards"].items():
-            if reward in data["resources"]:
-                data["resources"][reward] += amount
-            else:
-                data["resources"][reward] = amount
+        grant_rewards(chain["rewards"], f"任务链终局[{chain_id}]")
         
         data["task_chains"]["completed_chains"].append(chain_id)
         save()

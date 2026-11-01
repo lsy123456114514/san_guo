@@ -1,7 +1,7 @@
 """每日签到系统 - 连续签到与奖励领取"""
 
 import time
-from ASSET.game_data import data, save
+from ASSET.game_data import data, save, grant_rewards
 
 class DailyRewardSystem:
     """每日签到奖励系统"""
@@ -120,22 +120,14 @@ class DailyRewardSystem:
             claimed_id = f"{current_month}_{day}"
             
             # 发放奖励
-            for resource, amount in reward["rewards"].items():
-                if resource in data["resources"]:
-                    data["resources"][resource] += amount
-                else:
-                    data["resources"][resource] = amount
+            grant_rewards(reward["rewards"], f"每日奖励[day{day}]")
             
-            # 发放额外奖励
+            # 发放额外奖励（bonus 里的高级/顶级招募令原先写进 data["items"]，
+            # 但招募系统只读 data["resources"]——送的招募令用不掉；统一发放
+            # 会把招募令识别为消费键落 resources，其他道具落 items 背包）
             if reward["bonus"]:
-                bonus_item = reward["bonus"]["item"]
-                bonus_count = reward["bonus"]["count"]
-                if "items" not in data:
-                    data["items"] = {}
-                if bonus_item in data["items"]:
-                    data["items"][bonus_item] += bonus_count
-                else:
-                    data["items"][bonus_item] = bonus_count
+                grant_rewards({reward["bonus"]["item"]: reward["bonus"]["count"]},
+                              f"每日奖励bonus[day{day}]")
             
             data["daily_reward"]["claimed_rewards"].append(claimed_id)
             save()

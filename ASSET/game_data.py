@@ -2226,6 +2226,30 @@ def load() -> None:
                     if _bal > 0:
                         data['resources'][_canonical] = \
                             int(data['resources'].get(_canonical, 0) or 0) + _bal
+
+            # 奖励孤儿键迁移：历史 8 个系统的发放代码把奖励一律塞进
+            # resources，产生两类脏键（只迁一次）：
+            #   a) 字符串值（「至尊称号": "天下霸主"」）——混进 resources 后
+            #      成就 max_resource 的 max(values()) 直接 TypeError 崩溃，必须删；
+            #   b) 无消费端的数值孤儿键（经验/装备精炼石/传说武将碎片…）——
+            #      搬进 items 背包（与 daily_reward bonus 落点一致）不丢数。
+            # 招募令与宠物蛋有活跃消费端，留在 resources 不动。
+            _KNOWN_ORPHANS = ("经验", "装备精炼石", "策略点", "传说武将碎片",
+                              "稀有武将碎片", "武将碎片", "中级经验丹", "初级经验丹",
+                              "传说武将", "春季限定皮肤", "周年限定武将")
+            _items_bag = None
+            for _k in list(data['resources'].keys()):
+                _v = data['resources'][_k]
+                if isinstance(_v, bool) or not isinstance(_v, (int, float)):
+                    # 字符串/None/混合值：无落点且会崩 max()，删除
+                    logger.debug("[迁移] 删除 resources 非数值奖励键 %s=%r", _k, _v)
+                    data['resources'].pop(_k, None)
+                elif _k in _KNOWN_ORPHANS:
+                    if _items_bag is None:
+                        _items_bag = data.setdefault('items', {})
+                    _items_bag[_k] = int(_items_bag.get(_k, 0) or 0) + int(_v)
+                    data['resources'].pop(_k, None)
+                    logger.debug("[迁移] 孤儿奖励键 %s=%s 搬入 items 背包", _k, _v)
             
             # 检查并添加自动保存相关键
             if 'last_auto_save' not in data:
@@ -2348,6 +2372,48 @@ def save() -> None:
         except Exception as e:
             logger.error("[存档] 保存失败: %s", e, exc_info=True)
             return
+
+# ── 奖励发放统一落点 ──────────────────────────────────────────────────────────
+# 任务链/成就/图鉴/副本/活动/签到/赛季/每日奖励 8 个系统曾各自复制同一段
+# 「不在 resources 就塞进去」的代码，导致三类 bug：
+#   1. 「至尊称号": "天下霸主"」这类字符串奖励被塞进 resources，成就进度项
+#      max_resource 执行 max(resources.values()) 直接 TypeError 崩溃；
+#   2. 经验/装备精炼石/策略点/传说武将碎片 等无消费端的键变成存档孤儿键；
+#   3. 招募令有消费端（hero_recruitment 读 resources）却混在孤儿堆里分不清。
+# 落点规则：规范资源 + 招募令 → resources；其他数值奖励 → items 背包
+# （与 daily_reward bonus 既有落点一致）；字符串奖励 → 丢弃并记日志。
+RECRUIT_TICKET_KEYS = ("高级招募令", "顶级招募令")   # 与 hero_recruitment.RECRUIT_TICKETS 一致
+PET_EGG_KEYS = ("pet_eggs", "rare_pet_eggs", "epic_pet_eggs", "legendary_pet_eggs")
+# 不在 RESOURCES 但有真实消费端的键：时间卡+/++ 被地图减时使用；粮食/铁矿/铜矿
+# 是策略地图自产自销的经济。新档 resources 初始只有 RESOURCES，首次发放这些键
+# 时必须进 resources，否则掉进 items 背包后策略地图读不到。
+LEGACY_RESOURCE_KEYS = ("时间卡+", "时间卡++", "粮食", "铁矿", "铜矿")
+
+
+def grant_rewards(rewards, source=""):
+    """统一发放标量奖励。返回实际发放的 {键: 数量}。
+
+    rewards 为 {"金元宝": 500, "经验": 100} 形状的扁平 dict。
+    字符串/非数值奖励（称号类）没有落点，直接丢弃——写进 resources 会让
+    成就 max_resource 的 max() TypeError 崩溃，这是历史实锤 bug。
+    """
+    granted = {}
+    for key, amount in (rewards or {}).items():
+        if isinstance(amount, bool) or not isinstance(amount, (int, float)):
+            logger.debug("[奖励] %s 非数值奖励无落点，丢弃 %s=%r", source, key, amount)
+            continue
+        n = int(amount)
+        if n == 0:
+            continue
+        if key in RESOURCES or key in RECRUIT_TICKET_KEYS \
+                or key in LEGACY_RESOURCE_KEYS or key in data["resources"]:
+            data["resources"][key] = int(data["resources"].get(key, 0) or 0) + n
+        else:
+            items = data.setdefault("items", {})
+            items[key] = int(items.get(key, 0) or 0) + n
+        granted[key] = n
+    return granted
+
 
 def auto_save() -> bool:
     """Save the game if at least ``AUTO_SAVE_INTERVAL`` seconds have passed.
