@@ -351,18 +351,29 @@ class CheckinCalendar:
     
     def _update_daily_reward_streak(self):
         """更新每日奖励系统"""
-        daily_reward = data.get("daily_reward", {})
+        # setdefault 而非 get(..., {})：get 会在键缺失时返回临时 dict，
+        # 后面所有写入都落在临时对象上静默丢失。
+        daily_reward = data.setdefault("daily_reward", {})
+        daily_reward.setdefault("consecutive_days", 0)
+        daily_reward.setdefault("monthly_checkins", 0)
         today = time.strftime("%Y-%m-%d")
         
         if daily_reward.get("last_checkin_date"):
             last_date = daily_reward["last_checkin_date"]
-            last_time = time.mktime(time.strptime(last_date, "%Y-%m-%d"))
-            today_time = time.mktime(time.strptime(today, "%Y-%m-%d"))
-            days_diff = (today_time - last_time) / (24 * 3600)
-            
+            # 用整数日期差而非浮点秒差：原实现 days_diff == 1 比较浮点，
+            # 跨夏令时（DST）时相邻两天的本地午夜相差 23/25 小时，
+            # days_diff 变 0.958 或 1.042，连续签到被静默误判（同
+            # daily_reward_system.claim_reward 的历史 bug）。
+            try:
+                from datetime import date as _date
+                last_d = _date(*map(int, last_date.split("-")))
+                today_d = _date(*map(int, today.split("-")))
+                days_diff = (today_d - last_d).days
+            except ValueError:
+                days_diff = None
             if days_diff == 1:
                 daily_reward["consecutive_days"] += 1
-            elif days_diff > 1:
+            elif days_diff is not None and days_diff > 1:
                 daily_reward["consecutive_days"] = 1
         else:
             daily_reward["consecutive_days"] = 1

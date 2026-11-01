@@ -196,12 +196,14 @@ def draw_equip_info(surface, x, y, font_small):
                 y_offset += 20
     
     # 宠物蛋信息
-    pet_eggs = ["宠物蛋", "稀有宠物蛋", "史诗宠物蛋", "传说宠物蛋"]
-    has_pet_eggs = False
-    for egg in pet_eggs:
-        if data['resources'].get(egg, 0) > 0:
-            has_pet_eggs = True
-            break
+    # 读英文键（pet_system 孵化与商城发货统一用的规范键），显示中文名。
+    # 历史 bug：这里读中文键「稀有宠物蛋」，而商城发货写 rare_pet_eggs，
+    # 仓库永远看不到买到的宠物蛋。
+    pet_eggs = [("pet_eggs", "宠物蛋", COLORS["text_white"]),
+                ("rare_pet_eggs", "稀有宠物蛋", (30, 255, 30)),
+                ("epic_pet_eggs", "史诗宠物蛋", (0, 100, 255)),
+                ("legendary_pet_eggs", "传说宠物蛋", (255, 165, 0))]
+    has_pet_eggs = any(data['resources'].get(k, 0) > 0 for k, _, _ in pet_eggs)
     
     if has_pet_eggs:
         y_offset += 10
@@ -209,22 +211,10 @@ def draw_equip_info(surface, x, y, font_small):
         surface.blit(egg_title, (x, y + y_offset))
         y_offset += 25
         
-        for egg in pet_eggs:
-            amount = data['resources'].get(egg, 0)
+        for egg_key, egg_name, egg_color in pet_eggs:
+            amount = data['resources'].get(egg_key, 0)
             if amount > 0:
-                # 根据宠物蛋类型显示不同颜色
-                if egg == "宠物蛋":
-                    egg_color = COLORS["text_white"]
-                elif egg == "稀有宠物蛋":
-                    egg_color = (30, 255, 30)  # 绿色
-                elif egg == "史诗宠物蛋":
-                    egg_color = (0, 100, 255)  # 蓝色
-                elif egg == "传说宠物蛋":
-                    egg_color = (255, 165, 0)  # 橙色
-                else:
-                    egg_color = COLORS["text_white"]
-                
-                egg_info = f"{egg}: {amount}"
+                egg_info = f"{egg_name}: {amount}"
                 egg_surf = font_small.render(egg_info, True, egg_color)
                 surface.blit(egg_surf, (x, y + y_offset))
                 y_offset += 20

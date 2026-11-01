@@ -2227,6 +2227,22 @@ def load() -> None:
                         data['resources'][_canonical] = \
                             int(data['resources'].get(_canonical, 0) or 0) + _bal
 
+            # 宠物蛋键迁移：历史商城 buy_resource 把普通「宠物蛋」写成中文键，
+            # 稀有/史诗/传说虽写英文键但仓库展示读中文键——两套键分账。孵化
+            # 消费端（pet_system）统一读英文键，中文键余额并入后删除，只迁一次。
+            for _cn_egg, _en_egg in (("宠物蛋", "pet_eggs"),
+                                     ("稀有宠物蛋", "rare_pet_eggs"),
+                                     ("史诗宠物蛋", "epic_pet_eggs"),
+                                     ("传说宠物蛋", "legendary_pet_eggs")):
+                if _cn_egg in data['resources']:
+                    try:
+                        _bal = int(data['resources'].pop(_cn_egg) or 0)
+                    except (TypeError, ValueError):
+                        _bal = 0
+                    if _bal > 0:
+                        data['resources'][_en_egg] = \
+                            int(data['resources'].get(_en_egg, 0) or 0) + _bal
+
             # 奖励孤儿键迁移：历史 8 个系统的发放代码把奖励一律塞进
             # resources，产生两类脏键（只迁一次）：
             #   a) 字符串值（「至尊称号": "天下霸主"」）——混进 resources 后

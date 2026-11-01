@@ -455,15 +455,18 @@ def main():
 
         # 购买逻辑（全部免费）
         def buy_resource(resource_name, amount):
-            # 处理不同品质的宠物蛋
-            if resource_name == "稀有宠物蛋":
-                data["resources"]["rare_pet_eggs"] = data["resources"].get("rare_pet_eggs", 0) + amount
-            elif resource_name == "史诗宠物蛋":
-                data["resources"]["epic_pet_eggs"] = data["resources"].get("epic_pet_eggs", 0) + amount
-            elif resource_name == "传说宠物蛋":
-                data["resources"]["legendary_pet_eggs"] = data["resources"].get("legendary_pet_eggs", 0) + amount
-            else:
-                data["resources"][resource_name] = data["resources"].get(resource_name, 0) + amount
+            # 宠物蛋统一落 pet_system 孵化读的英文键：历史 bug —— 只有稀有/
+            # 史诗/传说映射了英文键，普通「宠物蛋」落 else 写中文键，而孵化
+            # 界面（pet_system.hatch_selection_menu）读的是 pet_eggs，
+            # 买的普通蛋永远显示"没有"孵不了。
+            egg_key_map = {
+                "宠物蛋": "pet_eggs",
+                "稀有宠物蛋": "rare_pet_eggs",
+                "史诗宠物蛋": "epic_pet_eggs",
+                "传说宠物蛋": "legendary_pet_eggs",
+            }
+            target = egg_key_map.get(resource_name, resource_name)
+            data["resources"][target] = data["resources"].get(target, 0) + amount
             save()
             return True
 
