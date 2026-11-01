@@ -401,12 +401,12 @@ class TaskSystem:
 class MailSystem:
     """邮件系统"""
     def __init__(self):
-        # 初始化邮件数据
-        if "mail" not in data:
-            data["mail"] = {
-                "inbox": [],
-                "sent": []
-            }
+        # 始终补齐 mail schema（含 archived —— gameplay 版邮件中心会读写），
+        # 防旧档只有 inbox/sent 时另一套系统 KeyError。
+        m = data.setdefault("mail", {})
+        m.setdefault("inbox", [])
+        m.setdefault("sent", [])
+        m.setdefault("archived", [])
     
     def send_mail(self, subject, content, sender="系统", rewards=None):
         """发送邮件
@@ -657,22 +657,25 @@ def draw_mail_system(screen, font_big, font_main, font_small):
     MailSystem()  # 构造时初始化 data["mail"]
     
     # 邮件列表
+    # 双格式兜底：gameplay 版邮件中心/AI 写的是 title/attachments/time，
+    # social 版 send_mail 写的是 subject/rewards/timestamp —— inbox 两套共用，
+    # 原实现直接下标 subject/timestamp/rewards 会在收到邮件中心邮件时 KeyError。
     y_offset = screen_height * 0.2
     for mail in data["mail"]["inbox"]:
         mail_rect = pygame.Rect(50, y_offset, screen_width - 100, 80)
         
         # 背景
-        if not mail["read"]:
+        if not mail.get("read"):
             pygame.draw.rect(screen, (40, 60, 90, 200), mail_rect, border_radius=10)
         else:
             pygame.draw.rect(screen, (40, 40, 70, 200), mail_rect, border_radius=10)
         pygame.draw.rect(screen, COLORS["accent_gold"], mail_rect, 2, border_radius=10)
         
         # 邮件信息
-        subject_surf = font_main.render(mail["subject"], True, COLORS["accent_gold"])
-        sender_surf = font_small.render(f"发件人: {mail['sender']}", True, COLORS["text_gray"])
-        time_surf = font_small.render(mail["timestamp"].split("T")[0], True, COLORS["text_gray"])
-        content_surf = font_small.render(mail["content"][:30] + "...", True, COLORS["text_white"])
+        subject_surf = font_main.render(mail.get("subject") or mail.get("title", "(无标题)"), True, COLORS["accent_gold"])
+        sender_surf = font_small.render(f"发件人: {mail.get('sender', '系统')}", True, COLORS["text_gray"])
+        time_surf = font_small.render(str(mail.get("timestamp", mail.get("time", "")))[:10], True, COLORS["text_gray"])
+        content_surf = font_small.render(mail.get("content", "")[:30] + "...", True, COLORS["text_white"])
         
         screen.blit(subject_surf, (60, y_offset + 10))
         screen.blit(sender_surf, (60, y_offset + 35))
@@ -680,7 +683,7 @@ def draw_mail_system(screen, font_big, font_main, font_small):
         screen.blit(content_surf, (60, y_offset + 55))
         
         # 领取奖励按钮
-        if mail["rewards"]:
+        if mail.get("rewards") or mail.get("attachments"):
             claim_btn = Button("领取", screen_width - 150, y_offset + 20, 100, 40, font_small, normal_color=COLORS["accent_green"])
             claim_btn.draw(screen)
         
@@ -898,12 +901,12 @@ def main():
                 def render_mail(surface, mail, x, y):
                     screen_width = surface.get_width()
                     mail_rect = pygame.Rect(0, y, screen_width, 90)
-                    bg_color = (40, 60, 90, 200) if mail["read"] else (40, 40, 70, 200)
+                    bg_color = (40, 60, 90, 200) if mail.get("read") else (40, 40, 70, 200)
                     pygame.draw.rect(surface, bg_color, mail_rect, border_radius=10)
                     pygame.draw.rect(surface, COLORS["accent_gold"], mail_rect, 2, border_radius=10)
                     
-                    subject_surf = font_main.render(mail["subject"], True, COLORS["accent_gold"])
-                    sender_surf = font_small.render(f"发件人: {mail['sender']}", True, COLORS["text_white"])
+                    subject_surf = font_main.render(mail.get("subject") or mail.get("title", "(无标题)"), True, COLORS["accent_gold"])
+                    sender_surf = font_small.render(f"发件人: {mail.get('sender', '系统')}", True, COLORS["text_white"])
                     time_text = str(mail.get("timestamp", mail.get("time", "")))[:10]
                     time_surf = font_small.render(time_text, True, COLORS["text_gray"])
                     

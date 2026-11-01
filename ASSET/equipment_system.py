@@ -582,15 +582,24 @@ class SkillSystem:
 class GuildSystem:
     """公会系统"""
     def __init__(self):
-        # 初始化公会数据
-        if "guild" not in data:
-            data["guild"] = {
-                "name": "",
-                "level": 1,
-                "members": [],
-                "resources": 0,
-                "created_at": None
-            }
+        # 始终补齐公会 schema：历史 bug —— 原实现 if "guild" not in data 才建
+        # 含 "resources" 的 dict，但 default_save["guild"] 已提供一份不含
+        # "resources" 的 schema，这个 if 永远短路。玩家创建公会后再次进入
+        # draw_guild_system 读 data["guild"]["resources"] 直接 KeyError 崩溃。
+        g = data.setdefault("guild", {})
+        g.setdefault("id", None)
+        g.setdefault("name", "")
+        g.setdefault("level", 1)
+        g.setdefault("experience", 0)
+        g.setdefault("members", [])
+        g.setdefault("leader", "")
+        g.setdefault("join_requests", [])
+        g.setdefault("guild_war_score", 0)
+        g.setdefault("territories", [])
+        g.setdefault("daily_bonus_claimed", False)
+        g.setdefault("last_daily_claim", "")
+        g.setdefault("resources", 0)       # 公会资源（draw_guild_system 展示）
+        g.setdefault("created_at", None)
     
     def create_guild(self, guild_name):
         """创建公会"""
@@ -598,6 +607,11 @@ class GuildSystem:
             return False, "已经加入或创建了公会"
         
         data["guild"]["name"] = guild_name
+        # 同步写 id/leader：strategy_map_system 那套（若未来启用）全靠
+        # data["guild"]["id"] 判断是否已入会，这里保持 schema 一致。
+        if not data["guild"].get("id"):
+            data["guild"]["id"] = f"guild_{int(time.time())}"
+        data["guild"]["leader"] = data.get("username", "player")
         data["guild"]["members"].append({
             "username": data.get("username", "player"),
             "role": "leader",
@@ -614,6 +628,11 @@ class GuildSystem:
         
         # 这里简化处理，实际应该有公会列表
         data["guild"]["name"] = guild_name
+        # 同步写 id/leader（与 create_guild 保持 schema 一致）
+        if not data["guild"].get("id"):
+            data["guild"]["id"] = f"guild_{int(time.time())}"
+        if not data["guild"].get("leader"):
+            data["guild"]["leader"] = data.get("username", "player")
         data["guild"]["members"].append({
             "username": data.get("username", "player"),
             "role": "member",

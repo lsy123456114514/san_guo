@@ -191,12 +191,13 @@ class MailSystem:
     """邮件系统 - 游戏内消息和奖励发放"""
     
     def __init__(self):
-        if "mail" not in data:
-            data["mail"] = {
-                "inbox": [],
-                "sent": [],
-                "archived": []
-            }
+        # 始终补齐 mail schema：历史 bug —— 原实现 if "mail" not in data 才建
+        # 含 "archived" 的 dict，但旧档（social 旧版初始化的）只有 inbox/sent，
+        # 这个 if 短路后 add_mail L246 读 data["mail"]["archived"] 直接 KeyError。
+        m = data.setdefault("mail", {})
+        m.setdefault("inbox", [])
+        m.setdefault("sent", [])
+        m.setdefault("archived", [])
         
         self._check_system_mails()
     
@@ -260,7 +261,7 @@ class MailSystem:
         """领取附件"""
         for mail in data["mail"]["inbox"]:
             if mail.get("id") == mail_id:
-                if mail["claimed"]:
+                if mail.get("claimed"):
                     return False, "附件已领取"
                 
                 attachments = mail.get("attachments", {})
@@ -288,7 +289,7 @@ class MailSystem:
     
     def get_unread_count(self):
         """获取未读邮件数量"""
-        return sum(1 for mail in data["mail"]["inbox"] if not mail["read"])
+        return sum(1 for mail in data["mail"]["inbox"] if not mail.get("read"))
     
     def get_inbox(self):
         """获取收件箱
